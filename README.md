@@ -60,7 +60,7 @@ All other behaviour (rate budgets, sync concurrency, pagination sizes) is config
 
 ## API Rate Limits
 
-OpenXBL free tier: **150 requests/hour**. The app budgets 145 (5-call safety buffer). Current usage is shown in the nav bar.
+OpenXBL free tier: **150 requests/hour**. The app auto-detects your plan's limit from API response headers and keeps a 5-call safety buffer. Current usage is shown in the nav bar.
 
 | Operation | API calls |
 |-----------|-----------|
@@ -207,22 +207,19 @@ XBOX_DEV=1 uvicorn main:app --reload --port 8000
 uvicorn main:app --host 0.0.0.0 --port 8000
 ```
 
+**Windows:** `start.bat` launches the dev server and opens the browser automatically.
+
+**SQLite backups:** `litestream.yml` is pre-configured for local file replication. Uncomment the S3 section to replicate to any S3-compatible storage.
+
 If `--reload` misses changes across multiple files, delete `__pycache__/` and restart.
 
 ## Gotchas
-
-**Timestamps** — Xbox returns `"0001-01-01T..."` for locked achievements. All time-based queries use `valid_ts_sql()` from `database/validators.py` to filter these out.
 
 **htmx tbody swaps** — Only `<tr>` elements are accepted in tbody replacements. SVG `<defs>` must live in the parent template, not the partial.
 
 **Glass + animation** — Never wrap glass elements in an animated container. The parent's `transform` transition creates a compositor layer that breaks `backdrop-filter` on children. Animate each glass element individually.
 
-**Uvicorn + `__pycache__`** — `--reload` can miss multi-file changes. Delete `__pycache__/` and do a hard restart.
-
 ## Further Reading
 
 `architecture.html` (open locally in a browser) contains an interactive diagram of the full system — hover any box for per-module details including line counts, key functions, and data flow.
 
-## License
-
-MIT
