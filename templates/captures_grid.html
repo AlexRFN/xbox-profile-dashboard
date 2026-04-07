@@ -1,0 +1,19 @@
+{% from "macros.html" import capture_card %}
+{% for s in screenshots %}
+    {{ capture_card(s, eager_count=0) }}
+{% endfor %}
+
+{% if has_more %}
+<div id="captures-load-more" hx-swap-oob="true" class="load-more-wrap">
+    <button class="outline"
+            hx-get="/api/captures/grid?page={{ page + 1 }}"
+            hx-target="#captures-grid"
+            hx-swap="beforeend"
+            hx-indicator="#captures-load-more-spinner">
+        Load More
+    </button>
+    <span id="captures-load-more-spinner" class="htmx-indicator" aria-busy="true"></span>
+</div>
+{% else %}
+<div id="captures-load-more" hx-swap-oob="true"></div>
+{% endif %}

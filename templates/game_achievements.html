@@ -1,0 +1,69 @@
+{% from "macros.html" import icon %}
+{% if achievements %}
+<div class="achievements-grid anim-stagger">
+    {% for ach in achievements %}
+    {% set rarity_lc = ach.rarity_category | lower if ach.rarity_category else 'common' %}
+    <div class="ach-card anim-pop {% if ach.progress_state == 'Achieved' %}ach-unlocked ach-rarity-{{ rarity_lc }}{% else %}ach-locked{% endif %}" style="--i: {{ loop.index0 }}"{% if ach.progress_state != 'Achieved' and ach.locked_description %} title="{{ ach.locked_description }}"{% endif %}>
+        {% set media = ach.media_assets | fromjson if ach.media_assets is string else ach.media_assets %}
+        <div class="ach-icon-wrap">
+            {% if media and media | length > 0 %}
+            <img src="{{ media[0].url if media[0] is mapping else '' }}" alt="" class="ach-icon"
+                 loading="lazy" decoding="async" width="48" height="48">
+            {% else %}
+            <div class="ach-icon ach-icon-placeholder">
+                <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.4">
+                    <path d="M12 2l3.09 6.26L22 9.27l-5 4.87L18.18 22 12 18.27 5.82 22 7 14.14l-5-4.87 6.91-1.01z"/>
+                </svg>
+            </div>
+            {% endif %}
+            {% if ach.progress_state == 'Achieved' and rarity_lc in ['legendary', 'epic'] %}
+            <div class="ach-rarity-glow ach-rarity-glow-{{ rarity_lc }}"></div>
+            {% endif %}
+        </div>
+        <div class="ach-info">
+            <div class="ach-name">{{ ach.name }}</div>
+            <div class="ach-desc">
+                {% if ach.progress_state == "Achieved" or not ach.is_secret %}
+                    {{ ach.description }}
+                {% else %}
+                    <em>Secret achievement</em>
+                {% endif %}
+            </div>
+            <div class="ach-meta">
+                <span class="ach-gs">{{ ach.gamerscore }}G</span>
+                {% if ach.rarity_category %}
+                <span class="rarity rarity-{{ rarity_lc }}">
+                    {%- if rarity_lc == 'legendary' -%}
+                    {{ icon('star', 10, 'rarity-icon') }}
+                    {%- elif rarity_lc == 'epic' -%}
+                    {{ icon('star-half', 10, 'rarity-icon') }}
+                    {%- elif rarity_lc == 'rare' -%}
+                    {{ icon('circle-dot', 10, 'rarity-icon') }}
+                    {%- endif -%}
+                    {{ ach.rarity_category }}
+                    {% if ach.rarity_percentage %}({{ "%.1f" | format(ach.rarity_percentage) }}%){% endif %}
+                </span>
+                {% endif %}
+                {% if ach.progress_state == "Achieved" and ach.time_unlocked %}
+                <span class="ach-date">{{ ach.time_unlocked | shortdate }}</span>
+                {% endif %}
+            </div>
+        </div>
+        {% if ach.progress_state != 'Achieved' %}
+        <div class="ach-locked-overlay">
+            {{ icon('lock', 16) }}
+        </div>
+        {% endif %}
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="empty-state">
+    <svg viewBox="0 0 64 64" width="56" height="56" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.3">
+        <path d="M32 8l6 14 15 2.5-11 10.5 3 15L32 42l-13 8 3-15L11 24.5 26 22z"/>
+        <circle cx="32" cy="32" r="28" stroke-dasharray="4 4" opacity="0.5"/>
+    </svg>
+    <p>No achievements loaded yet.</p>
+    <small>Click "Fetch Stats &amp; Achievements" to load them.</small>
+</div>
+{% endif %}

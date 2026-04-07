@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.ruff_cache/
+.ecc/
+
+# Environment
+.env
+
+# Database
+data/*.db
+data/*.db-shm
+data/*.db-wal
+data/*.db-journal
+data/jinja_cache/
+static/css/bundle.css
+static/js/app.js
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Checkpoints and temp files
+checkpoint/
+.tmp_compare/
+liquid-glass-main/
+_ul
+*.bak
+.documentation_updated
+SANITIZATION_REPORT.md
+
+# Orphaned test scripts (no test runner)
+/test_xbox_*.py

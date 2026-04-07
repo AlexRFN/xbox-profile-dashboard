@@ -1,0 +1,91 @@
+{% from "macros.html" import timeline_event_card %}
+{% for group in grouped_events %}
+{% set skip_header = (page > 1 and loop.first) %}
+{% if skip_header %}
+{# Continuation of previous page's last month — just emit events, no header #}
+{% for event in group.events %}
+{{ timeline_event_card(event, loop.index0) }}
+{% endfor %}
+{% else %}
+<div class="timeline-month">
+    <div class="timeline-month-header anim-drop">
+        <div class="timeline-month-header-top">
+            <h3 class="timeline-month-label">{{ group.label }}</h3>
+            <span class="timeline-month-count">{{ group.event_count }} event{{ 's' if group.event_count != 1 else '' }}</span>
+        </div>
+        <div class="timeline-month-summary">
+            {% if group.achievement_count %}
+            <span class="month-stat month-stat-ach">{{ group.achievement_count }} achievement{{ 's' if group.achievement_count != 1 else '' }}</span>
+            {% endif %}
+            {% if group.completion_count %}
+            <span class="month-stat month-stat-comp">{{ group.completion_count }} completion{{ 's' if group.completion_count != 1 else '' }}</span>
+            {% endif %}
+            {% if group.first_played_count %}
+            <span class="month-stat month-stat-start">{{ group.first_played_count }} started</span>
+            {% endif %}
+            {% if group.gamerscore %}
+            <span class="month-stat month-stat-gs">{{ "{:,}".format(group.gamerscore) }}G earned</span>
+            {% endif %}
+        </div>
+    </div>
+    {% for event in group.events %}
+    {{ timeline_event_card(event, loop.index0) }}
+    {% endfor %}
+</div>
+{% endif %}
+{% endfor %}
+
+<!-- OOB swap: update the load-more button -->
+<div id="timeline-load-more" hx-swap-oob="true" class="timeline-load-more">
+    {% if has_more %}
+    <button class="outline"
+            hx-get="/api/timeline/events?page={{ page + 1 }}"
+            hx-target="#timeline"
+            hx-swap="beforeend"
+            hx-include="#timeline-filters"
+            hx-indicator="#load-more-spinner">
+        Load More
+    </button>
+    <span id="load-more-spinner" class="htmx-indicator" aria-busy="true"></span>
+    {% endif %}
+</div>
+
+<!-- OOB swap: update stats cards (no anim classes — OOB targets don't trigger afterSwap) -->
+{% if timeline_stats %}
+{% set ts = timeline_stats %}
+<div id="timeline-stats" hx-swap-oob="true" class="stat-grid stat-grid-4">
+    <article class="stat-card" style="--i: 0">
+        <div class="stat-icon" style="color: var(--xbox-green)">
+            <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+        </div>
+        <h3 data-countup>{{ "{:,}".format(ts.achievement_count) }}</h3>
+        <p>Achievements</p>
+    </article>
+    <article class="stat-card" style="--i: 1">
+        <div class="stat-icon" style="color: var(--cyan)">
+            <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 21h8m-4-4v4m-5.2-4h10.4c1.68 0 2.52 0 3.16-.33a3 3 0 001.31-1.3C22 14.72 22 13.88 22 12.2V7.8c0-1.68 0-2.52-.33-3.16a3 3 0 00-1.3-1.31C19.72 3 18.88 3 17.2 3H6.8c-1.68 0-2.52 0-3.16.33a3 3 0 00-1.31 1.3C2 5.28 2 6.12 2 7.8v4.4c0 1.68 0 2.52.33 3.16a3 3 0 001.3 1.31C4.28 17 5.12 17 6.8 17z"/></svg>
+        </div>
+        <h3 data-countup>{{ "{:,}".format(ts.completion_count) }}</h3>
+        <p>Completions</p>
+    </article>
+    <article class="stat-card" style="--i: 2">
+        <div class="stat-icon" style="color: #3b82f6">
+            <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 12h4m-2-2v4m6-3h.01m3 0h.01"/></svg>
+        </div>
+        <h3 data-countup>{{ "{:,}".format(ts.first_played_count) }}</h3>
+        <p>Games Started</p>
+    </article>
+    <article class="stat-card" style="--i: 3">
+        <div class="stat-icon" style="color: var(--gold)">
+            <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+        </div>
+        <h3 data-countup>{{ "{:,}".format(ts.total_gamerscore) }}</h3>
+        <p>Gamerscore</p>
+    </article>
+</div>
+
+<!-- OOB swap: update result count -->
+<div id="timeline-result-count" hx-swap-oob="true" class="timeline-result-count">
+    {{ ts.total_events }} event{{ 's' if ts.total_events != 1 else '' }}
+</div>
+{% endif %}

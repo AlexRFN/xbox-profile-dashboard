@@ -1,0 +1,260 @@
+{% extends "base.html" %}
+{% from "macros.html" import stat_card, progress_bar, icon %}
+{% block title %}Achievements - Xbox{% endblock %}
+
+{% block content %}
+<hgroup class="page-header anim-drop">
+    <h1>Achievements</h1>
+    <p>{{ "{:,}".format(stats.unlocked) }} unlocked of {{ "{:,}".format(stats.total_achievements) }}</p>
+</hgroup>
+
+{% if stats.total_achievements == 0 %}
+<article>
+    <p>No achievements loaded yet. Go to your Library and use "Fetch All Details" to load achievement data.</p>
+</article>
+{% else %}
+
+<!-- Stat Cards -->
+<div class="stat-grid anim-stagger">
+    {% call stat_card(stats.unlocked, "Unlocked", "var(--xbox-green)", 0) %}
+    <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <circle cx="12" cy="8" r="7"/><path d="M8.21 13.89L7 23l5-3 5 3-1.21-9.12"/>
+    </svg>
+    {% endcall %}
+    {% call stat_card(stats.locked, "Locked", "var(--text-tertiary)", 1) %}
+    <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/>
+    </svg>
+    {% endcall %}
+    {% call stat_card("{:,}".format(stats.unlocked_gamerscore or 0), "Gamerscore Earned", "var(--rarity-legendary)", 2) %}
+    <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <path d="M12 2l3.09 6.26L22 9.27l-5 4.87L18.18 22 12 18.27 5.82 22 7 14.14l-5-4.87 6.91-1.01z"/>
+    </svg>
+    {% endcall %}
+    {% call stat_card(((stats.unlocked / stats.total_achievements * 100) | round(1) if stats.total_achievements else 0)|string + "%", "Unlock Rate", "var(--color-teal)", 3) %}
+    <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+    </svg>
+    {% endcall %}
+    {% call stat_card("{:,}".format(stats.total_gamerscore or 0), "Total Available", "var(--rarity-epic)", 4) %}
+    <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <path d="M6 3h12l4 6-10 13L2 9z"/><path d="M2 9h20"/>
+    </svg>
+    {% endcall %}
+</div>
+
+<!-- Rarity Breakdown Bar -->
+{% if stats.rarity_breakdown %}
+<div class="rarity-section">
+    <div class="rarity-bar anim-blur-rise" title="Rarity distribution of unlocked achievements">
+        {% for r in stats.rarity_breakdown %}
+        <div class="rarity-bar-seg rarity-bar-{{ r.category | lower }}"
+             style="flex-grow: {{ r.count }}"
+             title="{{ r.category }}: {{ r.count }} ({{ r.percentage }}%) — {{ '{:,}'.format(r.gamerscore or 0) }}G"></div>
+        {% endfor %}
+    </div>
+    <div class="rarity-strip anim-stagger">
+        {% for r in stats.rarity_breakdown %}
+        <div class="rarity-strip-item rarity-strip-{{ r.category | lower }} anim-blur-rise" style="--i: {{ loop.index0 }}">
+            <span class="rarity-strip-count">{{ r.count }}</span>
+            <span class="rarity-strip-label">{{ r.category }}</span>
+            <span class="rarity-strip-gs">{{ "{:,}".format(r.gamerscore or 0) }}G</span>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+<!-- Trophy Case — Showcase -->
+{% if stats.showcase_rarest or stats.showcase_highest_gs or stats.showcase_latest %}
+<section>
+    <h4 class="section-title anim-drop">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M6 9H4.5a2.5 2.5 0 010-5H6"/><path d="M18 9h1.5a2.5 2.5 0 000-5H18"/>
+            <path d="M4 22h16"/><path d="M10 14.66V17c0 3-3.25 5-6 5"/><path d="M14 14.66V17c0 3 3.25 5 6 5"/>
+            <path d="M18 2H6v7a6 6 0 0012 0V2z"/>
+        </svg>
+        Trophy Case
+    </h4>
+    <div class="showcase-grid anim-stagger">
+        {% for item in [
+            (stats.showcase_rarest, "RAREST", "rarity"),
+            (stats.showcase_highest_gs, "BIGGEST", "gamerscore"),
+            (stats.showcase_latest, "LATEST", "recent")
+        ] %}
+        {% set ach = item[0] %}
+        {% set label = item[1] %}
+        {% set kind = item[2] %}
+        {% if ach %}
+        {% set rarity_lc = ach.rarity_category | lower if ach.rarity_category else 'common' %}
+            <a href="/game/{{ ach.title_id }}" class="showcase-card showcase-card-{{ rarity_lc }} anim-blur-rise" style="--i: {{ loop.index0 }}">
+                {% if ach.game_image %}
+                <div class="showcase-card-art" style="background-image: url('{{ ach.game_image|thumb(240) }}')"></div>
+                {% endif %}
+                <div class="showcase-label showcase-label-{{ kind }}">{{ label }}</div>
+                <div class="showcase-card-body">
+                    {% set media = ach.media_assets | fromjson if ach.media_assets is string else ach.media_assets %}
+                    {% if media and media | length > 0 %}
+                    <img src="{{ media[0].url if media[0] is mapping else '' }}" alt="" class="showcase-icon"
+                         loading="lazy" decoding="async" width="64" height="64">
+                    {% endif %}
+                    <div class="showcase-info">
+                        <div class="showcase-name">{{ ach.name }}</div>
+                        <div class="showcase-game">{{ ach.game_name }}</div>
+                        <div class="showcase-meta">
+                            <span class="ach-gs">{{ ach.gamerscore }}G</span>
+                            {% if ach.rarity_category %}
+                            <span class="rarity rarity-{{ rarity_lc }}">
+                                {{ ach.rarity_category }}{% if ach.rarity_percentage %} ({{ "%.1f" | format(ach.rarity_percentage) }}%){% endif %}
+                            </span>
+                            {% endif %}
+                            {% if ach.time_unlocked and ach.time_unlocked[:4] != '0001' %}
+                            <span class="ach-date">{{ ach.time_unlocked | shortdate }}</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </a>
+        {% endif %}
+        {% endfor %}
+    </div>
+</section>
+{% endif %}
+
+<!-- Near Completion — Almost There -->
+{% if near_completion %}
+<section>
+    <h4 class="section-title anim-drop">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><path d="M22 4L12 14.01l-3-3"/>
+        </svg>
+        Almost There
+    </h4>
+    <div class="near-completion-list anim-stagger">
+        {% for game in near_completion %}
+        <a href="/game/{{ game.title_id }}" class="near-completion-row anim-blur-rise" style="--i: {{ loop.index0 }}">
+            <img src="{{ game.display_image|thumb(48) }}" alt="" class="near-completion-img" loading="lazy" decoding="async" width="32" height="32">
+            <span class="near-completion-name">{{ game.name }}</span>
+            <div class="near-completion-progress">
+                {{ progress_bar(game.progress_percentage, wrap_class="progress-cell") }}
+            </div>
+            <span class="near-completion-remaining">
+                {{ game.total_achievements - game.current_achievements }} left
+            </span>
+        </a>
+        {% endfor %}
+    </div>
+</section>
+{% endif %}
+
+<!-- Search + Filter Bar -->
+<section>
+    <h4 class="section-title anim-drop">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>
+        </svg>
+        Browse All
+        <span class="ach-count" id="ach-result-count">{{ "{:,}".format(ach_total) }} achievements</span>
+    </h4>
+
+    <div class="filters-inline anim-stagger" id="ach-filters">
+        <input type="search" name="q" placeholder="Search achievements..."
+               value="{{ q }}"
+               class="library-filter-input anim-drop" style="--i: 0"
+               hx-get="/api/achievements/grid"
+               hx-trigger="keyup changed delay:300ms"
+               hx-target="#ach-grid-wrap"
+               hx-include="#ach-filters">
+        <select name="rarity"
+                class="library-filter-input anim-drop" style="--i: 1"
+                hx-get="/api/achievements/grid"
+                hx-trigger="change"
+                hx-target="#ach-grid-wrap"
+                hx-include="#ach-filters">
+            <option value="">All Rarities</option>
+            <option value="legendary" {% if rarity == "legendary" %}selected{% endif %}>Legendary</option>
+            <option value="epic" {% if rarity == "epic" %}selected{% endif %}>Epic</option>
+            <option value="rare" {% if rarity == "rare" %}selected{% endif %}>Rare</option>
+            <option value="common" {% if rarity == "common" %}selected{% endif %}>Common</option>
+        </select>
+        <select name="status"
+                class="library-filter-input anim-drop" style="--i: 2"
+                hx-get="/api/achievements/grid"
+                hx-trigger="change"
+                hx-target="#ach-grid-wrap"
+                hx-include="#ach-filters">
+            <option value="">All Status</option>
+            <option value="unlocked" {% if status_filter == "unlocked" %}selected{% endif %}>Unlocked</option>
+            <option value="locked" {% if status_filter == "locked" %}selected{% endif %}>Locked</option>
+        </select>
+        <select name="game"
+                class="library-filter-input anim-drop" style="--i: 3"
+                hx-get="/api/achievements/grid"
+                hx-trigger="change"
+                hx-target="#ach-grid-wrap"
+                hx-include="#ach-filters">
+            <option value="">All Games</option>
+            {% for g in games_list %}
+            <option value="{{ g.title_id }}" {% if game_filter == g.title_id %}selected{% endif %}>{{ g.name }} ({{ g.ach_count }})</option>
+            {% endfor %}
+        </select>
+        <select name="sort"
+                class="library-filter-input anim-drop" style="--i: 4"
+                hx-get="/api/achievements/grid"
+                hx-trigger="change"
+                hx-target="#ach-grid-wrap"
+                hx-include="#ach-filters">
+            <option value="date_desc" {% if sort == "date_desc" %}selected{% endif %}>Newest First</option>
+            <option value="date_asc" {% if sort == "date_asc" %}selected{% endif %}>Oldest First</option>
+            <option value="gs_desc" {% if sort == "gs_desc" %}selected{% endif %}>Gamerscore &darr;</option>
+            <option value="gs_asc" {% if sort == "gs_asc" %}selected{% endif %}>Gamerscore &uarr;</option>
+            <option value="rarity_asc" {% if sort == "rarity_asc" %}selected{% endif %}>Rarest First</option>
+            <option value="rarity_desc" {% if sort == "rarity_desc" %}selected{% endif %}>Most Common</option>
+            <option value="name_asc" {% if sort == "name_asc" %}selected{% endif %}>Name A-Z</option>
+        </select>
+        <select name="group"
+                class="library-filter-input anim-drop" style="--i: 5"
+                hx-get="/api/achievements/grid"
+                hx-trigger="change"
+                hx-target="#ach-grid-wrap"
+                hx-include="#ach-filters">
+            <option value="" {% if not group %}selected{% endif %}>No Grouping</option>
+            <option value="game" {% if group == "game" %}selected{% endif %}>By Game</option>
+            <option value="rarity" {% if group == "rarity" %}selected{% endif %}>By Rarity</option>
+        </select>
+    </div>
+
+    <!-- Achievement Grid -->
+    <div class="ach-grid anim-stagger" id="ach-grid-wrap">
+        {% set oob = false %}
+        {% include "achievements_grid.html" %}
+    </div>
+
+    <!-- Pagination -->
+    {% set total_pages = (ach_total / ach_per_page) | round(0, 'ceil') | int %}
+    <div id="ach-pagination" class="pagination anim-blur-rise">
+    {% if total_pages > 1 %}
+        <nav>
+            <a href="#" class="pg-arrow {% if ach_page <= 1 %}disabled{% endif %}"
+               {% if ach_page > 1 %}hx-get="/api/achievements/grid?page={{ ach_page - 1 }}" hx-target="#ach-grid-wrap" hx-include="#ach-filters"{% endif %}>&lsaquo;</a>
+            {% for p in range(1, total_pages + 1) %}
+                {% if p == 1 or p == total_pages or (p >= ach_page - 1 and p <= ach_page + 1) %}
+            <a href="#" class="{% if p == ach_page %}active{% endif %}"
+               hx-get="/api/achievements/grid?page={{ p }}"
+               hx-target="#ach-grid-wrap"
+               hx-include="#ach-filters">{{ p }}</a>
+                {% elif p == 2 and ach_page > 3 %}
+            <span class="pg-ellipsis">&hellip;</span>
+                {% elif p == total_pages - 1 and ach_page < total_pages - 2 %}
+            <span class="pg-ellipsis">&hellip;</span>
+                {% endif %}
+            {% endfor %}
+            <a href="#" class="pg-arrow {% if ach_page >= total_pages %}disabled{% endif %}"
+               {% if ach_page < total_pages %}hx-get="/api/achievements/grid?page={{ ach_page + 1 }}" hx-target="#ach-grid-wrap" hx-include="#ach-filters"{% endif %}>&rsaquo;</a>
+        </nav>
+    {% endif %}
+    </div>
+</section>
+
+{% endif %}
+{% endblock %}

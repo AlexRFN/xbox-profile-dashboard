@@ -1,0 +1,91 @@
+{% from "macros.html" import icon %}
+{# htmx partial — achievement browse grid cards + OOB pagination + OOB result count #}
+
+{% if group == "game" %}
+{# Grouped by game — detect game boundaries #}
+{% set ns = namespace(current_game="") %}
+{% for ach in achievements %}
+{% if ach.game_name != ns.current_game %}
+{% if ns.current_game %}
+</div></div>
+{% endif %}
+{% set ns.current_game = ach.game_name %}
+<div class="ach-game-group">
+    <a href="/game/{{ ach.title_id }}" class="ach-group-header anim-drop">
+        <img src="{{ ach.game_image|thumb(48) }}" alt="" class="ach-group-img" loading="lazy" decoding="async" width="32" height="32">
+        <span class="ach-group-name">{{ ach.game_name }}</span>
+    </a>
+    <div class="ach-grid anim-stagger">
+{% endif %}
+{% include "achievements_card.html" %}
+{% endfor %}
+{% if ns.current_game %}
+</div></div>
+{% endif %}
+
+{% elif group == "rarity" %}
+{# Grouped by rarity tier #}
+{% set ns = namespace(current_rarity="") %}
+{% for ach in achievements %}
+{% set r = ach.rarity_category or 'Unknown' %}
+{% if r != ns.current_rarity %}
+{% if ns.current_rarity %}
+</div></div>
+{% endif %}
+{% set ns.current_rarity = r %}
+<div class="ach-rarity-group">
+    <div class="ach-group-header ach-group-rarity-{{ r | lower }} anim-drop">
+        <span class="rarity rarity-{{ r | lower }}">{{ r }}</span>
+    </div>
+    <div class="ach-grid anim-stagger">
+{% endif %}
+{% include "achievements_card.html" %}
+{% endfor %}
+{% if ns.current_rarity %}
+</div></div>
+{% endif %}
+
+{% else %}
+{# No grouping — flat grid (stagger handled by parent .ach-grid) #}
+{% for ach in achievements %}
+{% include "achievements_card.html" %}
+{% endfor %}
+{% endif %}
+
+{% if achievements | length == 0 %}
+<div class="empty-state" style="grid-column: 1 / -1; padding: 3rem 2rem;">
+    <svg viewBox="0 0 64 64" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.3">
+        <circle cx="28" cy="28" r="20"/><path d="M42 42l16 16" stroke-width="2.5"/>
+    </svg>
+    <p>No achievements match your filters.</p>
+</div>
+{% endif %}
+
+{# OOB elements — only rendered for htmx partial responses, not {% include %} #}
+{% if oob is not defined or oob != false %}
+<span id="ach-result-count" hx-swap-oob="true">{{ "{:,}".format(ach_total) }} achievements</span>
+
+{% set total_pages = (ach_total / ach_per_page) | round(0, 'ceil') | int %}
+<div id="ach-pagination" class="pagination" hx-swap-oob="true">
+{% if total_pages > 1 %}
+    <nav>
+        <a href="#" class="pg-arrow {% if ach_page <= 1 %}disabled{% endif %}"
+           {% if ach_page > 1 %}hx-get="/api/achievements/grid?page={{ ach_page - 1 }}" hx-target="#ach-grid-wrap" hx-include="#ach-filters"{% endif %}>&lsaquo;</a>
+        {% for p in range(1, total_pages + 1) %}
+            {% if p == 1 or p == total_pages or (p >= ach_page - 1 and p <= ach_page + 1) %}
+        <a href="#" class="{% if p == ach_page %}active{% endif %}"
+           hx-get="/api/achievements/grid?page={{ p }}"
+           hx-target="#ach-grid-wrap"
+           hx-include="#ach-filters">{{ p }}</a>
+            {% elif p == 2 and ach_page > 3 %}
+        <span class="pg-ellipsis">&hellip;</span>
+            {% elif p == total_pages - 1 and ach_page < total_pages - 2 %}
+        <span class="pg-ellipsis">&hellip;</span>
+            {% endif %}
+        {% endfor %}
+        <a href="#" class="pg-arrow {% if ach_page >= total_pages %}disabled{% endif %}"
+           {% if ach_page < total_pages %}hx-get="/api/achievements/grid?page={{ ach_page + 1 }}" hx-target="#ach-grid-wrap" hx-include="#ach-filters"{% endif %}>&rsaquo;</a>
+    </nav>
+{% endif %}
+</div>
+{% endif %}

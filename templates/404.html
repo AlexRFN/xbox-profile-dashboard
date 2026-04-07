@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}Not Found - Xbox{% endblock %}
+
+{% block content %}
+<article style="text-align: center; padding: 3rem 1rem;">
+    <h1 style="font-size: 3rem; margin-bottom: 0.5rem; color: var(--text-tertiary)">404</h1>
+    <p>{{ message or "Page not found" }}</p>
+    <a href="/library" role="button" class="outline" style="margin-top: 1rem">Back to Library</a>
+</article>
+{% endblock %}

@@ -1,0 +1,137 @@
+/* Xbox Dashboard — friends */
+
+/* ========== Friends ========== */
+.friends-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 1rem;
+    content-visibility: auto;
+    contain-intrinsic-size: auto 1500px;
+}
+
+.friends-grid > .anim-slide-blur { transition-delay: calc(var(--i, 0) * 50ms); }
+
+.friend-card {
+    display: flex;
+    gap: 1rem;
+    padding: 1rem;
+    border-radius: var(--radius-lg);
+    align-items: center;
+    border: 1px solid transparent;
+    background: transparent;
+    transition: border-color var(--dur-normal) var(--ease-effect), transform var(--dur-normal) var(--ease-spatial);
+    contain: layout style paint;
+}
+
+.friend-card:hover {
+    transform: translateY(-3px);
+}
+
+
+.friend-avatar-wrap {
+    position: relative;
+    flex-shrink: 0;
+}
+
+.friend-avatar {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    transition: transform var(--dur-fast) var(--ease-spatial);
+}
+
+.friend-card:hover .friend-avatar {
+    transform: scale(1.08);
+}
+
+.friend-status-ring {
+    position: absolute;
+    bottom: -1px;
+    right: -1px;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    border: 2px solid var(--surface-card);
+}
+
+.friend-status-ring.online {
+    background: var(--xbox-green);
+    box-shadow: 0 0 6px rgba(0, 210, 106, 0.4);
+}
+
+.friend-status-ring.online::after {
+    content: '';
+    position: absolute;
+    inset: -2px;
+    border-radius: 50%;
+    background: rgba(0, 210, 106, 0.5);
+    animation: online-pulse 2s ease-in-out infinite;
+    pointer-events: none;
+}
+
+.friend-status-ring.offline {
+    background: var(--text-tertiary);
+}
+
+@keyframes online-pulse {
+    0%   { transform: scale(1); opacity: 0.3; }
+    50%  { transform: scale(1.8); opacity: 0; }
+    100% { transform: scale(1); opacity: 0.3; }
+}
+
+.friend-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.friend-name {
+    font-weight: 600;
+    font-size: 0.95rem;
+}
+
+.friend-fav {
+    color: var(--gold);
+    margin-left: 0.25rem;
+}
+
+.friend-gs {
+    font-family: var(--font-mono);
+    font-size: 0.85rem;
+    color: var(--xbox-green);
+    font-weight: 600;
+}
+
+.friend-presence {
+    font-size: 0.8rem;
+    color: var(--text-tertiary);
+    margin-top: 0.15rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.friend-rich-presence {
+    font-size: 0.75rem;
+    color: var(--text-tertiary);
+    margin-top: 0.1rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-style: italic;
+}
+
+.friend-device-tag {
+    display: inline-block;
+    font-size: 0.65rem;
+    color: var(--text-tertiary);
+    background: var(--glass-bg);
+    padding: 0.1rem 0.4rem;
+    border-radius: var(--radius-sm);
+    margin-top: 0.25rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.status-offline { border-left: 3px solid var(--text-tertiary); }
+

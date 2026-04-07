@@ -1,0 +1,264 @@
+{# SVG icon sprite — usage: {{ icon('search', 18) }} #}
+{% macro icon(name, size=16, cls="") %}
+<svg class="icon {{ cls }}" width="{{ size }}" height="{{ size }}" aria-hidden="true"><use href="/static/img/icons.svg#icon-{{ name }}"/></svg>
+{%- endmacro %}
+
+{# Stat card — reusable across profile and achievements pages.
+   Use as a call block: {% call stat_card(value, label) %}<svg>...</svg>{% endcall %} #}
+{% macro stat_card(value, label, color="", i=0) %}
+<article class="stat-card reveal-item reveal-border anim-blur-rise" style="--i: {{ i }}">
+    <div class="stat-icon"{% if color %} style="color: {{ color }}"{% endif %}>
+        {{ caller() }}
+    </div>
+    <h3 data-countup>{{ value }}</h3>
+    <p>{{ label }}</p>
+</article>
+{% endmacro %}
+
+{# Device/platform tags — reusable across library table and game detail.
+   devices: raw value (string or list), is_gamepass: bool, gp_label: "GP" or "Game Pass" #}
+{% macro device_tags(devices, is_gamepass=false, gp_label="GP") %}
+{% set devs = devices | fromjson if devices is string else (devices or []) %}
+{% if devs or is_gamepass %}
+<div class="device-tags">
+    {% for dev in devs %}
+    <span class="tag tag-{{ dev | lower }}">{{ dev }}</span>
+    {% endfor %}
+    {% if is_gamepass %}<span class="tag tag-gamepass">{{ gp_label }}</span>{% endif %}
+</div>
+{% endif %}
+{% endmacro %}
+
+{# Gamerscore display — shows "current / total" or "—" if no total. #}
+{% macro gamerscore_display(current, total) %}
+{% if total %}
+<span class="gs-current{% if current >= total and total > 0 %} gs-maxed{% endif %}">{{ "{:,}".format(current) }}</span>
+<span class="gs-total">/ {{ "{:,}".format(total) }}</span>
+{% else %}
+<span class="gs-total">—</span>
+{% endif %}
+{% endmacro %}
+
+{# Progress bar — reusable across library table, profile, game detail #}
+{% macro progress_bar(percentage, wrap_class="progress-cell") %}
+{% set pct = [percentage, 100] | min %}
+{% set pct_class = 'complete' if pct == 100 else 'high' if pct > 50 else 'low' if pct > 0 else 'zero' %}
+<div class="{{ wrap_class }}">
+    <div class="progress-bar-track">
+        <div class="progress-bar-fill progress-bar-{{ pct_class }}" style="width: {{ pct }}%"></div>
+    </div>
+    <span class="pct-{{ pct_class }}">{{ percentage }}%</span>
+</div>
+{% endmacro %}
+
+{# Timeline event card — used by timeline.html and timeline_events.html #}
+{% macro timeline_event_card(event, i=0) %}
+{% if event.event_type == 'achievement_batch' %}
+{# Achievement batch: collapsed group of same-game same-day achievements #}
+<div class="timeline-event timeline-event-achievement timeline-batch">
+    <div class="timeline-dot timeline-dot-achievement anim-pop" style="--i: {{ i }}"></div>
+    <div class="timeline-event-card timeline-batch-card reveal-item anim-slide-blur" style="--i: {{ i }}">
+        <a href="/game/{{ event.title_id }}" class="timeline-batch-header">
+            <img src="{{ event.game_image|thumb(48) }}" alt="{{ event.game_name }}" class="timeline-event-img"
+                 {% if event.game_blurhash %}data-blurhash="{{ event.game_blurhash }}"{% endif %}
+                 loading="lazy" decoding="async" width="48" height="48">
+            <div class="timeline-event-body">
+                <div class="timeline-event-header">
+                    <span class="timeline-type-badge badge-achievement">{{ event.batch_count }} Achievements</span>
+                    <span class="timeline-event-date">{{ event.event_date | shortdate }}</span>
+                </div>
+                <div class="timeline-event-title">{{ event.game_name }}</div>
+                <div class="timeline-event-sub">
+                    <span class="timeline-gs">{{ event.batch_gamerscore }}G</span>
+                </div>
+            </div>
+            <button type="button" class="timeline-batch-toggle" onclick="event.preventDefault();event.stopPropagation();this.closest('.timeline-batch').classList.toggle('open')" aria-label="Expand achievements">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+            </button>
+        </a>
+        <div class="timeline-batch-list">
+            {% for b in event.batch_events %}
+            <a href="/game/{{ b.title_id }}" class="timeline-batch-item{% if b.rarity %} timeline-batch-item-{{ b.rarity | lower }}{% endif %}">
+                {% set media = b.achievement_media | fromjson if b.achievement_media is string else b.achievement_media %}
+                {% if media and media | length > 0 %}
+                <img src="{{ media[0].url if media[0] is mapping else '' }}" alt="" class="timeline-batch-icon"
+                     loading="lazy" decoding="async" width="28" height="28">
+                {% else %}
+                <div class="timeline-batch-icon-placeholder"></div>
+                {% endif %}
+                <span class="timeline-batch-name">{{ b.event_title }}</span>
+                {% if b.event_value %}<span class="timeline-gs">{{ b.event_value }}G</span>{% endif %}
+                {% if b.rarity %}<span class="timeline-rarity rarity-{{ b.rarity | lower }}">{{ b.rarity }}{% if b.rarity_pct %} ({{ "%.1f" | format(b.rarity_pct) }}%){% endif %}</span>{% endif %}
+            </a>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% elif event.event_type == 'completion' %}
+{# Completion: celebration hero card #}
+<a href="/game/{{ event.title_id }}" class="timeline-event timeline-event-completion timeline-event-celebration">
+    <div class="timeline-dot timeline-dot-completion anim-pop" style="--i: {{ i }}"></div>
+    <div class="timeline-event-card timeline-event-card-celebration reveal-item anim-slide-blur" style="--i: {{ i }}">
+        {% if event.game_image %}
+        <div class="timeline-celebration-art" style="background-image: url('{{ event.game_image|thumb(48) }}')"></div>
+        {% endif %}
+        <div class="timeline-celebration-body">
+            <div class="timeline-event-header">
+                <span class="timeline-type-badge badge-completion">
+                    {{ icon('trophy', 10, 'rarity-icon') }}
+                    100% Complete
+                </span>
+                <span class="timeline-event-date">{{ event.event_date | shortdate }}</span>
+            </div>
+            <div class="timeline-event-title timeline-celebration-title">{{ event.game_name }}</div>
+            <div class="timeline-event-sub">
+                <span class="timeline-gs">{{ event.event_detail }}</span>
+            </div>
+        </div>
+        <div class="timeline-celebration-confetti" aria-hidden="true">
+            <span></span><span></span><span></span><span></span><span></span>
+            <span></span><span></span><span></span>
+        </div>
+    </div>
+</a>
+{% elif event.event_type == 'first_played' %}
+{# First played: compact subtle card #}
+<a href="/game/{{ event.title_id }}" class="timeline-event timeline-event-first_played">
+    <div class="timeline-dot timeline-dot-first_played anim-pop" style="--i: {{ i }}"></div>
+    <div class="timeline-event-card timeline-event-card-compact reveal-item anim-slide-blur" style="--i: {{ i }}">
+        <img src="{{ event.game_image|thumb(48) }}" alt="{{ event.game_name }}" class="timeline-event-img"
+             {% if event.game_blurhash %}data-blurhash="{{ event.game_blurhash }}"{% endif %}
+             loading="lazy" decoding="async" width="32" height="32">
+        <div class="timeline-event-body">
+            <div class="timeline-event-header">
+                <span class="timeline-type-badge badge-first-played">Started</span>
+                <span class="timeline-event-date">{{ event.event_date | shortdate }}</span>
+            </div>
+            <div class="timeline-event-title">Started playing <strong>{{ event.game_name }}</strong></div>
+        </div>
+    </div>
+</a>
+{% else %}
+{# Achievement: rarity-styled card with achievement icon #}
+{% set rarity_class = (' timeline-event-rarity-' + (event.rarity | lower)) if event.rarity else '' %}
+<a href="/game/{{ event.title_id }}" class="timeline-event timeline-event-achievement{{ rarity_class }}">
+    <div class="timeline-dot timeline-dot-achievement{% if event.rarity %} timeline-dot-rarity-{{ event.rarity | lower }}{% endif %} anim-pop" style="--i: {{ i }}"></div>
+    <div class="timeline-event-card reveal-item anim-slide-blur" style="--i: {{ i }}">
+        {% set media = event.achievement_media | fromjson if event.achievement_media is string else event.achievement_media %}
+        {% if media and media | length > 0 %}
+        <img src="{{ media[0].url if media[0] is mapping else '' }}" alt="" class="timeline-event-img"
+             loading="lazy" decoding="async" width="48" height="48">
+        {% else %}
+        <img src="{{ event.game_image|thumb(48) }}" alt="{{ event.game_name }}" class="timeline-event-img"
+             {% if event.game_blurhash %}data-blurhash="{{ event.game_blurhash }}"{% endif %}
+             loading="lazy" decoding="async" width="48" height="48">
+        {% endif %}
+        <div class="timeline-event-body">
+            <div class="timeline-event-header">
+                <span class="timeline-type-badge badge-achievement">Achievement</span>
+                <span class="timeline-event-date">{{ event.event_date | shortdate }}</span>
+            </div>
+            <div class="timeline-event-title">{{ event.event_title }}</div>
+            <div class="timeline-event-sub">
+                {{ event.game_name }}
+                {% if event.event_value %}
+                <span class="timeline-gs">{{ event.event_value }}G</span>
+                {% endif %}
+                {% if event.rarity %}
+                <span class="timeline-rarity rarity-{{ event.rarity | lower }}">{{ event.rarity }}{% if event.rarity_pct %} ({{ "%.1f" | format(event.rarity_pct) }}%){% endif %}</span>
+                {% endif %}
+            </div>
+            {% if event.event_detail and event.event_detail | length > 0 %}
+            <div class="timeline-event-desc" title="{{ event.event_detail }}">{{ event.event_detail }}</div>
+            {% endif %}
+        </div>
+    </div>
+</a>
+{% endif %}
+{% endmacro %}
+
+{# Capture card — used by captures.html and game_detail.html #}
+{% macro capture_card(s, i=0, eager_count=12) %}
+<div class="capture-card reveal-item anim-pop" style="--i: {{ i }}"
+     data-content-id="{{ s.content_id }}"
+     data-game="{{ s.title_name }}"
+     data-date="{{ s.capture_date }}"
+     data-res="{{ s.resolution_width }}x{{ s.resolution_height }}"
+     data-full="{{ s.download_uri }}"
+     data-thumb="{{ s.thumbnail_large_uri or s.thumbnail_small_uri }}"
+     data-size="{{ s.file_size or 0 }}"
+     onclick="openLightboxFromCard(this)">
+    <div class="capture-thumb">
+        <img src="{{ s.thumbnail_large_uri or s.thumbnail_small_uri or s.download_uri }}"
+             alt="{{ s.title_name }}" width="754" height="424" {% if i < eager_count %}fetchpriority="high" decoding="async"{% else %}loading="lazy" decoding="async"{% endif %}>
+        <div class="capture-select-check">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="20 6 9 17 4 12"/>
+            </svg>
+        </div>
+        <div class="capture-overlay">
+            <span class="capture-date">{{ s.capture_date | shortdate }}</span>
+            {% if s.resolution_width and s.resolution_width >= 3840 %}
+            <span class="capture-4k-badge">4K</span>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endmacro %}
+
+{# Pagination — shared across library table/grid views.
+   hx_endpoint: "/api/library/table" or "/api/library/grid"
+   hx_target: "#game-table-body" or "#library-grid-wrap"
+   oob: true for OOB swap (htmx partials), false for initial render #}
+{% macro pagination(page, total, per_page, hx_endpoint, hx_target, oob=false) %}
+<div id="pagination" class="pagination{% if not oob %} anim-blur-rise{% endif %}"{% if oob %} hx-swap-oob="true"{% endif %}>
+    {% set total_pages = (total / per_page) | round(0, 'ceil') | int %}
+    {% if total_pages > 1 %}
+    <nav>
+        <a href="#" class="pg-arrow {% if page <= 1 %}disabled{% endif %}"
+           {% if page > 1 %}hx-get="{{ hx_endpoint }}?page={{ page - 1 }}" hx-target="{{ hx_target }}" hx-include="#filters"{% endif %}>&lsaquo;</a>
+        {% for p in range(1, total_pages + 1) %}
+            {% if p == 1 or p == total_pages or (p >= page - 1 and p <= page + 1) %}
+        <a href="#" class="{% if p == page %}active{% endif %}"
+           hx-get="{{ hx_endpoint }}?page={{ p }}"
+           hx-target="{{ hx_target }}"
+           hx-include="#filters">{{ p }}</a>
+            {% elif p == 2 and page > 3 %}
+        <span class="pg-ellipsis">&hellip;</span>
+            {% elif p == total_pages - 1 and page < total_pages - 2 %}
+        <span class="pg-ellipsis">&hellip;</span>
+            {% endif %}
+        {% endfor %}
+        <a href="#" class="pg-arrow {% if page >= total_pages %}disabled{% endif %}"
+           {% if page < total_pages %}hx-get="{{ hx_endpoint }}?page={{ page + 1 }}" hx-target="{{ hx_target }}" hx-include="#filters"{% endif %}>&rsaquo;</a>
+    </nav>
+    {% endif %}
+</div>
+{% endmacro %}
+
+{# Achievement card — used by achievements.html (recent, rarest, highest) #}
+{% macro achievement_card(ach, show_percentage=false, show_date=true, i=0) %}
+<a href="/game/{{ ach.title_id }}" class="ach-card ach-unlocked anim-pop" style="--i: {{ i }}">
+    {% set media = ach.media_assets | fromjson if ach.media_assets is string else ach.media_assets %}
+    {% if media and media | length > 0 %}
+    <img src="{{ media[0].url if media[0] is mapping else '' }}" alt="" class="ach-icon"
+         loading="lazy" decoding="async" width="48" height="48">
+    {% endif %}
+    <div class="ach-info">
+        <div class="ach-name">{{ ach.name }}</div>
+        <div class="ach-desc">{{ ach.game_name }}</div>
+        <div class="ach-meta">
+            <span class="ach-gs">{{ ach.gamerscore }}G</span>
+            {% if ach.rarity_category %}
+            <span class="rarity rarity-{{ ach.rarity_category | lower }}">
+                {{ ach.rarity_category }}
+                {% if show_percentage and ach.rarity_percentage %}({{ "%.1f" | format(ach.rarity_percentage) }}%){% endif %}
+            </span>
+            {% endif %}
+            {% if show_date and ach.time_unlocked %}
+            <span class="ach-date">{{ ach.time_unlocked | shortdate }}</span>
+            {% endif %}
+        </div>
+    </div>
+</a>
+{% endmacro %}

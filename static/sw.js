@@ -1,0 +1,99 @@
+// Service Worker — caches app shell for instant repeat loads
+// Version is updated by the server via query param on registration
+
+const CACHE_NAME = 'xbox-v2';
+
+// App shell — cached on install
+const APP_SHELL = [
+  '/',
+  '/static/css/bundle.css',
+  '/static/js/vendor/lenis.min.js',
+  '/static/js/vendor/htmx.min.js',
+  '/static/js/vendor/chart.umd.min.js',
+  '/static/js/vendor/minisearch.min.js',
+  '/static/js/vendor/confetti.browser.min.js',
+  '/static/js/vendor/hotkeys.min.js',
+  '/static/js/glass-webgpu.js',
+  '/static/js/glass.js',
+  '/static/js/app.js',
+  '/static/img/Xbox_one_logo.svg.png',
+  '/static/img/icons.svg',
+];
+
+self.addEventListener('install', (e) => {
+  e.waitUntil(
+    caches.open(CACHE_NAME)
+      .then(cache => cache.addAll(APP_SHELL))
+      .then(() => self.skipWaiting())
+  );
+});
+
+self.addEventListener('activate', (e) => {
+  e.waitUntil(
+    caches.keys().then(keys =>
+      Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)))
+    ).then(() => self.clients.claim())
+  );
+});
+
+self.addEventListener('fetch', (e) => {
+  const url = new URL(e.request.url);
+
+  // Skip non-GET, API calls, and cross-origin requests
+  if (e.request.method !== 'GET') return;
+  if (url.pathname.startsWith('/api/')) return;
+  if (url.origin !== self.location.origin) return;
+
+  // Static assets with ?v= — cache-first (immutable, versioned)
+  if (url.pathname.startsWith('/static/') && url.searchParams.has('v')) {
+    e.respondWith(
+      caches.match(e.request, { ignoreSearch: false }).then(cached => {
+        if (cached) return cached;
+        return fetch(e.request).then(resp => {
+          if (resp.ok) {
+            const clone = resp.clone();
+            caches.open(CACHE_NAME).then(c => c.put(e.request, clone));
+          }
+          return resp;
+        });
+      })
+    );
+    return;
+  }
+
+  // HTML pages — network-first, fall back to cache
+  // Skip caching for htmx SPA partial requests (they return fragments, not full pages)
+  if (e.request.headers.get('accept')?.includes('text/html')) {
+    const isHtmx = e.request.headers.get('HX-Request') === 'true';
+    if (isHtmx) {
+      // Let htmx requests pass through to the network without caching
+      return;
+    }
+    e.respondWith(
+      fetch(e.request)
+        .then(resp => {
+          if (resp.ok) {
+            const clone = resp.clone();
+            caches.open(CACHE_NAME).then(c => c.put(e.request, clone));
+          }
+          return resp;
+        })
+        .catch(() => caches.match(e.request))
+    );
+    return;
+  }
+
+  // Everything else — stale-while-revalidate
+  e.respondWith(
+    caches.match(e.request).then(cached => {
+      const fetched = fetch(e.request).then(resp => {
+        if (resp.ok) {
+          const clone = resp.clone();
+          caches.open(CACHE_NAME).then(c => c.put(e.request, clone));
+        }
+        return resp;
+      }).catch(() => cached);
+      return cached || fetched;
+    })
+  );
+});

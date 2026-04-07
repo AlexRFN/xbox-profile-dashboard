@@ -1,0 +1,55 @@
+{% from "macros.html" import icon %}
+{% set rarity_lc = ach.rarity_category | lower if ach.rarity_category else 'common' %}
+{% set is_unlocked = ach.progress_state == 'Achieved' %}
+<a href="/game/{{ ach.title_id }}" class="ach-grid-card anim-blur-rise {% if is_unlocked %}ach-grid-unlocked ach-grid-rarity-{{ rarity_lc }}{% else %}ach-grid-locked{% endif %}" style="--i: {{ loop.index0 if loop is defined else 0 }}">
+    {% if is_unlocked %}
+    <div class="ach-grid-border ach-grid-border-{{ rarity_lc }}"></div>
+    {% else %}
+    <div class="ach-grid-border ach-grid-border-locked"></div>
+    {% endif %}
+    <div class="ach-grid-body">
+        {% set media = ach.media_assets | fromjson if ach.media_assets is string else ach.media_assets %}
+        <div class="ach-grid-icon-wrap">
+            {% if media and media | length > 0 %}
+            <img src="{{ media[0].url if media[0] is mapping else '' }}" alt="" class="ach-grid-icon{% if not is_unlocked %} ach-grid-icon-locked{% endif %}"
+                 loading="lazy" decoding="async" width="48" height="48">
+            {% else %}
+            <div class="ach-grid-icon ach-grid-icon-placeholder">
+                <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.4">
+                    <path d="M12 2l3.09 6.26L22 9.27l-5 4.87L18.18 22 12 18.27 5.82 22 7 14.14l-5-4.87 6.91-1.01z"/>
+                </svg>
+            </div>
+            {% endif %}
+            {% if is_unlocked and rarity_lc in ['legendary', 'epic'] %}
+            <div class="ach-grid-icon-glow ach-grid-icon-glow-{{ rarity_lc }}"></div>
+            {% endif %}
+        </div>
+        <div class="ach-grid-info">
+            <div class="ach-grid-name">
+                {% if is_unlocked or not ach.is_secret %}{{ ach.name }}{% else %}Secret Achievement{% endif %}
+            </div>
+            <div class="ach-grid-desc">
+                {% if is_unlocked or not ach.is_secret %}
+                    {{ ach.description or '' }}
+                {% else %}
+                    <em>Keep playing to unlock</em>
+                {% endif %}
+            </div>
+            <div class="ach-grid-game">{{ ach.game_name }}</div>
+            <div class="ach-grid-meta">
+                <span class="ach-gs">{{ ach.gamerscore }}G</span>
+                {% if ach.rarity_category %}
+                <span class="rarity rarity-{{ rarity_lc }}">
+                    {{ ach.rarity_category }}{% if ach.rarity_percentage %} ({{ "%.1f" | format(ach.rarity_percentage) }}%){% endif %}
+                </span>
+                {% endif %}
+                {% if is_unlocked and ach.time_unlocked and ach.time_unlocked[:4] != '0001' %}
+                <span class="ach-date">{{ ach.time_unlocked | shortdate }}</span>
+                {% endif %}
+            </div>
+        </div>
+        {% if not is_unlocked %}
+        <div class="ach-grid-lock">{{ icon('lock', 14) }}</div>
+        {% endif %}
+    </div>
+</a>

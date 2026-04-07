@@ -1,0 +1,215 @@
+{% from "macros.html" import icon %}
+{% if is_spa_nav %}
+{# ── SPA partial: <main> innerHTML + metadata for client-side swap ── #}
+<template id="spa-meta"
+    data-title="{{ self.title() }}"
+    data-body-class="{{ self.body_class() }}"
+    data-rate-used="{{ rate_used|default(0) }}"
+    data-page-path="{{ request.url.path }}"></template>
+{% block content %}{% endblock %}
+{% block overlay %}{% endblock %}
+<template id="spa-scripts">{% block scripts %}{% endblock %}</template>
+{% else %}
+{# ── Full page render (direct URL, refresh, first visit) ── #}
+<!DOCTYPE html>
+<html lang="en" data-theme="dark" class="scroll-ready">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Xbox Profile{% endblock %}</title>
+    <link rel="icon" href="/static/img/Xbox_one_logo.svg.png">
+    <link rel="manifest" href="/static/manifest.json">
+    <meta name="theme-color" content="#107c10">
+    <meta name="mobile-web-app-capable" content="yes">
+    <link rel="preconnect" href="https://store-images.s-microsoft.com">
+    <link rel="dns-prefetch" href="https://images-eds-ssl.xboxlive.com">
+    <link rel="dns-prefetch" href="https://screenshotscontent-t2001.media.xboxlive.com">
+    <link rel="dns-prefetch" href="https://screenshotscontent-t3001.media.xboxlive.com">
+    <link rel="dns-prefetch" href="https://screenshotscontent-t4001.media.xboxlive.com">
+    <link rel="preload" href="/static/fonts/inter.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="preload" href="/static/fonts/rajdhani-500.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="preload" href="/static/fonts/rajdhani-600.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="preload" href="/static/fonts/rajdhani-700.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="preload" href="/static/fonts/jetbrains-mono.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="preload" href="{{ static_url('js/glass-webgpu.js') }}" as="script">
+    <link rel="preload" href="{{ static_url('js/app.js') }}" as="script">
+    <link rel="stylesheet" href="{{ css_bundle_url() }}">
+    <script defer src="{{ static_url('js/vendor/htmx.min.js') }}"></script>
+    <!-- Canvas starts hidden; fades in after first render so the CSS aurora is never interrupted -->
+    <style id="aurora-canvas-hide">#aurora-canvas{opacity:0}</style>
+    {% block head %}{% endblock %}
+</head>
+<body class="{% block body_class %}{% endblock %}">
+    <!-- Aurora background — animated gradient blobs with hard-light blending -->
+    <div class="aurora" aria-hidden="true">
+        <svg class="aurora__grain"><filter id="aurora-grain"><feTurbulence type="fractalNoise" baseFrequency="0.65" numOctaves="3" stitchTiles="stitch"/></filter><rect width="100%" height="100%" filter="url(#aurora-grain)"/></svg>
+    </div>
+    <canvas id="aurora-canvas" data-fallback-src="{{ static_url('js/glass.js') }}" aria-hidden="true"></canvas>
+    <a href="#main" class="skip-link">Skip to content</a>
+    <nav class="xbox-nav" id="xbox-nav">
+        <div class="nav-inner">
+            <!-- Left zone: Logo -->
+            <a href="/" class="nav-brand" aria-label="Xbox Profile"
+               hx-get="/" hx-target="#main" hx-swap="innerHTML show:window:top"
+               hx-push-url="true" hx-headers='{"X-SPA-Nav":"true"}'>
+                <img src="/static/img/Xbox_one_logo.svg.png" alt="" class="nav-xbox-logo" width="28" height="28">
+            </a>
+
+            <!-- Center zone: Segmented pill nav -->
+            {% set nav_links = [
+                ('/', 'Profile'),
+                ('/library', 'Library'),
+                ('/achievements', 'Achievements'),
+                ('/timeline', 'Timeline'),
+                ('/captures', 'Captures'),
+                ('/friends', 'Friends'),
+            ] %}
+            <div class="nav-pill">
+                <div class="nav-pill-track" id="nav-pill-track">
+                    <div class="nav-pill-glow" aria-hidden="true">
+                        {% for href, label in nav_links %}<span>{{ label }}</span>{% endfor %}
+                    </div>
+                </div>
+                {% for href, label in nav_links %}
+                <a href="{{ href }}" class="nav-link {% if request.url.path == href or (href == '/library' and request.url.path.startswith('/game/')) %}active{% endif %}" data-nav-idx="{{ loop.index0 }}"{% if request.url.path == href or (href == '/library' and request.url.path.startswith('/game/')) %} aria-current="page"{% endif %}
+                   hx-get="{{ href }}" hx-target="#main" hx-swap="innerHTML show:window:top"
+                   hx-push-url="true" hx-headers='{"X-SPA-Nav":"true"}'>{{ label }}</a>
+                {% endfor %}
+            </div>
+
+            <!-- Right zone: Utilities + profile chip -->
+            <div class="nav-right">
+                <span class="rate-limit-badge" title="API calls used this hour">
+                    {{ icon('clock', 12) }}
+                    {{ rate_used | default(0) }}/150
+                </span>
+                <button class="nav-search-btn" onclick="openCmdPalette()" title="Search (Ctrl+K)" aria-label="Open command palette">
+                    {{ icon('search', 15) }}
+                    <kbd class="nav-search-hint">⌘K</kbd>
+                </button>
+                <button class="theme-toggle" onclick="toggleTheme()" title="Toggle theme" aria-label="Theme: Dark (click to switch)">&#9681;</button>
+                <a href="/" class="nav-profile-chip" title="{{ gamertag | default('Xbox User') }}"
+                   hx-get="/" hx-target="#main" hx-swap="innerHTML show:window:top"
+                   hx-push-url="true" hx-headers='{"X-SPA-Nav":"true"}'>
+                    {% if gamerpic %}
+                    <img src="{{ gamerpic }}" alt="" class="nav-avatar" width="26" height="26" fetchpriority="high" decoding="async">
+                    {% else %}
+                    <div class="nav-avatar nav-avatar-fallback">
+                        {{ icon('user', 16) }}
+                    </div>
+                    {% endif %}
+                    <span class="nav-gamertag">{{ gamertag | default('Xbox User') }}</span>
+                </a>
+            </div>
+        </div>
+        <!-- Edge light -->
+        <div class="nav-edge-light"></div>
+        <!-- Progressive blur below nav (lightbox-style multi-layer) -->
+        <div class="nav-blur-down"><span></span><span></span><span></span><span></span><span class="nav-blur-gradient"></span></div>
+    </nav>
+    <script>
+    // Position nav pill track + glow overlay before first paint
+    (function(){var p=document.querySelector('.nav-pill'),t=document.getElementById('nav-pill-track'),a=p&&p.querySelector('.nav-link.active'),g=t&&t.querySelector('.nav-pill-glow'),f=p&&p.querySelector('.nav-link');if(p&&t&&a&&g&&f){var pr=p.getBoundingClientRect(),ar=a.getBoundingClientRect(),fr=f.getBoundingClientRect(),l=ar.left-pr.left;t.style.left=l+'px';t.style.width=ar.width+'px';g.style.left=(fr.left-pr.left-l-t.clientLeft)+'px';}})();
+    </script>
+
+    <main class="container" id="main">
+        {{ self.content() }}
+    </main>
+
+    <!-- Command Palette (Ctrl+K) -->
+    <div class="cmd-palette" id="cmd-palette" role="dialog" aria-modal="true" aria-label="Command palette" style="display:none">
+        <div class="cmd-backdrop" onclick="closeCmdPalette()"></div>
+        <div class="cmd-panel">
+            <div class="cmd-search-wrap">
+                {{ icon('search', 18, 'cmd-search-icon') }}
+                <input type="search" id="cmd-input" class="cmd-input" placeholder="Search games or jump to..." autocomplete="off" spellcheck="false">
+                <kbd class="cmd-esc-hint">ESC</kbd>
+            </div>
+            <div class="cmd-results" id="cmd-results"></div>
+            <div class="cmd-footer">
+                <span><kbd>↑↓</kbd> Navigate</span>
+                <span><kbd>↵</kbd> Go</span>
+                <span><kbd>ESC</kbd> Close</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Keyboard shortcuts overlay -->
+    <div class="shortcuts-overlay" id="shortcuts-overlay" style="display:none">
+        <div class="cmd-backdrop" onclick="closeShortcuts()"></div>
+        <div class="shortcuts-panel">
+            <h3>Keyboard Shortcuts</h3>
+            <div class="shortcuts-grid">
+                <div class="shortcut-row"><kbd>Ctrl</kbd>+<kbd>K</kbd><span>Command palette</span></div>
+                <div class="shortcut-row"><kbd>/</kbd><span>Focus library search</span></div>
+                <div class="shortcut-row"><kbd>?</kbd><span>Show this help</span></div>
+                <div class="shortcut-row"><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd><span>Sync library</span></div>
+                <div class="shortcut-row"><kbd>↑</kbd><kbd>↓</kbd><span>Navigate palette results</span></div>
+                <div class="shortcut-row"><kbd>Enter</kbd><span>Select palette result</span></div>
+                <div class="shortcut-row"><kbd>Esc</kbd><span>Close overlay</span></div>
+            </div>
+            <button class="outline" onclick="closeShortcuts()" style="margin-top:1rem">Close</button>
+        </div>
+    </div>
+
+    <!-- Overlay container (lightbox etc.) -->
+    <div id="spa-overlay-container">{{ self.overlay() }}</div>
+
+    <footer class="container">
+        <small>
+            {{ gamertag | default('Xbox User') }} &middot;
+            {% if last_sync %}
+                Last sync: {{ last_sync.completed_at | shortdate if last_sync.completed_at else 'In progress...' }}
+            {% else %}
+                Never synced
+            {% endif %}
+        </small>
+    </footer>
+
+    <!-- Lenis smooth scroll (sync — must init before deferred scripts for stable layout timing) -->
+    <script src="{{ static_url('js/vendor/lenis.min.js') }}"></script>
+    <script>
+    (function() {
+        var reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        window.lenis = new Lenis({
+            smoothWheel: !reduced,
+            syncTouch: false,
+            lerp: reduced ? 1 : 0.1,
+            duration: 1.0,
+            easing: function(t) {
+                return 1 - Math.pow(1 - t, 3.5);
+            },
+            autoRaf: false,
+            prevent: function(node) {
+                return node.closest && (
+                    node.closest('.cmd-palette') ||
+                    node.closest('.shortcuts-overlay') ||
+                    node.closest('.lightbox')
+                );
+            }
+        });
+        window.__lenisOwnRaf = false;
+        setTimeout(function() {
+            if (!document.documentElement.classList.contains('glass-refract')) {
+                window.__lenisOwnRaf = true;
+                (function tick(t) {
+                    window.lenis.raf(t);
+                    requestAnimationFrame(tick);
+                })(performance.now());
+            }
+        }, 3000);
+    })();
+    </script>
+
+    <!-- Glass renderer: WebGPU preferred, WebGL2 fallback loaded dynamically if needed -->
+    <script defer src="{{ static_url('js/glass-webgpu.js') }}"></script>
+
+    <script defer src="{{ static_url('js/vendor/minisearch.min.js') }}"></script>
+    <script defer src="{{ static_url('js/vendor/hotkeys.min.js') }}"></script>
+
+    <script defer src="{{ static_url('js/app.js') }}"></script>
+    <script>if('serviceWorker' in navigator)navigator.serviceWorker.register('/sw.js')</script>
+    {{ self.scripts() }}
+</body>
+</html>
+{% endif %}

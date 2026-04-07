@@ -1,0 +1,1123 @@
+/* Xbox Dashboard — library */
+
+/* ========== Library Header ========== */
+.page-header-actions {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 1rem;
+}
+
+.page-header-actions hgroup {
+    margin-bottom: 0;
+}
+
+.library-actions {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+.bulk-progress {
+    font-family: var(--font-mono);
+    font-size: 0.8em;
+    color: var(--text-tertiary);
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* ========== Filters ========== */
+.filters-inline {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+    flex-wrap: wrap;
+}
+
+.filters-inline input[type="search"],
+.filters-inline select,
+.filters-inline button {
+    margin-bottom: 0;
+    font-size: 0.8rem;
+    padding: 0.4rem 0.6rem;
+    height: 2.2rem;
+    background: transparent;
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius-btn);
+}
+
+.filters-inline button {
+    contain: layout style paint;
+}
+
+.filters-inline input[type="search"] {
+    flex: 2;
+    min-width: 160px;
+    /* Search icon + bloom gradients (must combine since background-image is a single property) */
+    background-image:
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' viewBox='0 0 24 24'%3E%3Ccircle cx='11' cy='11' r='7' stroke='%23505366' stroke-width='2'/%3E%3Cpath d='m20 20-3.5-3.5' stroke='%23505366' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E"),
+        linear-gradient(to bottom,
+            rgba(195, 255, 235, 0.10) 0px,
+            rgba(195, 255, 235, 0.03) 3px,
+            transparent 10px
+        ),
+        linear-gradient(to top,
+            rgba(0, 0, 0, 0.12) 0px,
+            transparent 6px
+        );
+    background-repeat: no-repeat, no-repeat, no-repeat;
+    background-position: 0.5rem center, top, bottom;
+    background-size: 14px, 100% 100%, 100% 100%;
+    padding-left: 1.8rem;
+}
+
+.filters-inline select {
+    flex: 1;
+    min-width: 100px;
+}
+
+.filters-inline button {
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+/* ========== Calendar Picker ========== */
+.calendar-picker {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+
+.calendar-toggle-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius-btn);
+    contain: layout style paint;
+    padding: 0.4rem 0.5rem;
+    height: 2.2rem;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: color var(--dur-micro) var(--ease-effect), border-color var(--dur-micro) var(--ease-effect);
+}
+
+.calendar-toggle-btn:hover {
+    color: var(--text-primary);
+    border-color: var(--text-tertiary);
+}
+
+.calendar-dropdown {
+    display: none;
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    z-index: 50;
+    background: transparent;
+    border: 1px solid var(--glass-border);
+    border-radius: 10px;
+    padding: 0.75rem;
+    width: 260px;
+}
+
+.calendar-dropdown.open {
+    display: block;
+}
+
+.cal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 0.5rem;
+}
+
+.cal-title {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: var(--text-sm);
+    color: var(--text-primary);
+    letter-spacing: 0.02em;
+}
+
+.cal-nav {
+    background: transparent;
+    border: 1px solid var(--border-subtle);
+    border-radius: 4px;
+    padding: 0.2rem 0.35rem;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: color var(--dur-micro) var(--ease-effect), border-color var(--dur-micro) var(--ease-effect);
+    display: flex;
+    align-items: center;
+    line-height: 1;
+}
+
+.cal-nav:hover {
+    color: var(--text-primary);
+    border-color: var(--text-tertiary);
+}
+
+.cal-weekdays {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    text-align: center;
+    margin-bottom: 2px;
+}
+
+.cal-weekdays span {
+    font-size: var(--text-2xs);
+    color: var(--text-secondary);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 2px 0;
+}
+
+.cal-days {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 2px;
+}
+
+.cal-day {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    aspect-ratio: 1;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: var(--text-xs);
+    transition: background var(--dur-micro) var(--ease-effect);
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+.cal-day:hover:not(.cal-empty):not(.cal-future) {
+    background: var(--surface-elevated);
+}
+
+.cal-day.cal-empty,
+.cal-day.cal-future {
+    cursor: default;
+}
+
+.cal-day.cal-future {
+    opacity: 0.25;
+}
+
+.cal-day.cal-today .cal-day-num {
+    color: var(--xbox-green);
+    font-weight: 700;
+}
+
+.cal-day-num {
+    color: var(--text-primary);
+    line-height: 1;
+}
+
+.cal-dot {
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: var(--xbox-green);
+    position: absolute;
+    bottom: 2px;
+}
+
+.cal-day.cal-selected {
+    background: var(--xbox-green-subtle);
+    outline: 1px solid var(--xbox-green);
+}
+
+.cal-day.cal-selected .cal-day-num {
+    color: var(--text-primary);
+}
+
+.cal-day.cal-range-anchor {
+    outline-width: 2px;
+    outline-style: solid;
+    outline-color: var(--xbox-green);
+    background: var(--xbox-green);
+}
+
+.cal-day.cal-range-anchor .cal-day-num {
+    color: #fff;
+    font-weight: 600;
+}
+
+.cal-status {
+    padding: 6px 10px;
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    border-top: 1px solid var(--border-subtle);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.cal-status strong {
+    color: var(--xbox-green);
+}
+
+.cal-cancel-range {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 0.7rem;
+    padding: 2px 6px;
+    margin-left: auto;
+    border-radius: 4px;
+    opacity: 0.7;
+}
+
+.cal-cancel-range:hover {
+    opacity: 1;
+    background: var(--surface-hover);
+}
+
+.filter-pill {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    background: var(--xbox-green-subtle);
+    border: 1px solid var(--xbox-green);
+    border-radius: 20px;
+    padding: 0.2rem 0.5rem;
+    font-size: var(--text-xs);
+    font-family: var(--font-display);
+    font-weight: 600;
+    color: var(--xbox-green);
+    letter-spacing: 0.03em;
+}
+
+.filter-pill button {
+    all: unset;
+    cursor: pointer;
+    font-size: var(--text-sm);
+    line-height: 1;
+    opacity: 0.7;
+    transition: opacity var(--dur-micro) var(--ease-effect);
+}
+
+.filter-pill button:hover {
+    opacity: 1;
+}
+
+
+/* ========== Game Table ========== */
+#library-table-wrap {
+    background: var(--glass-bg);
+    backdrop-filter: blur(var(--glass-blur-substrate)) saturate(var(--glass-sat-substrate)) brightness(var(--glass-brightness));
+    -webkit-backdrop-filter: blur(var(--glass-blur-substrate)) saturate(var(--glass-sat-substrate)) brightness(var(--glass-brightness));
+    border: 1px solid var(--glass-border);
+    border-top-color: var(--glass-border-top);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-4), inset 0 1px 0 var(--glass-bevel-highlight), inset 0 -1px 0 var(--glass-bevel-shadow);
+    contain: layout style;
+}
+
+
+.game-table thead th:first-child { border-radius: var(--radius-md) 0 0 0; }
+.game-table thead th:last-child  { border-radius: 0 var(--radius-md) 0 0; }
+
+.game-table {
+    font-size: 0.9rem;
+    border-collapse: separate;
+    border-spacing: 0 2px;
+}
+
+.game-table thead th {
+    background: var(--surface-elevated);
+    color: var(--text-tertiary);
+    font-family: var(--font-display);
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    padding: 0.75rem 0.75rem;
+    border-bottom: 1px solid var(--border-subtle);
+    position: sticky;
+    top: var(--nav-height, 56px);
+    z-index: 10;
+}
+
+.game-table td {
+    padding: 0.75rem 0.75rem;
+    vertical-align: middle;
+    border-bottom: 1px solid transparent;
+    background: transparent;
+    color: var(--text-primary);
+    transition: background var(--dur-fast) var(--ease-effect), box-shadow var(--dur-fast) var(--ease-effect);
+}
+
+.game-row:last-child td {
+    border-bottom: none;
+}
+
+.game-row:last-child td:first-child { border-radius: 0 0 0 var(--radius-md); }
+.game-row:last-child td:last-child  { border-radius: 0 0 var(--radius-md) 0; }
+
+.game-row:nth-child(even) td {
+    background: rgba(255, 255, 255, 0.025);
+}
+
+.game-table .center { text-align: center; }
+
+.game-row {
+    cursor: pointer;
+    transition: background var(--dur-micro) var(--ease-effect);
+}
+
+.recent-row {
+    cursor: pointer;
+}
+
+/* Per-row reveal glow — background on <tr> shows through transparent td backgrounds */
+.game-row:hover,
+.recent-row:hover {
+    background: radial-gradient(
+        circle farthest-corner at var(--reveal-x, -200px) var(--reveal-y, -200px),
+        rgba(150, 255, 200, 0.95) 0%,
+        rgba(0, 255, 128, 0.55) 35%,
+        rgba(0, 210, 106, 0.25) 70%,
+        transparent 100%
+    );
+}
+
+[data-theme="light"] .game-row:hover,
+[data-theme="light"] .recent-row:hover {
+    background: radial-gradient(
+        circle farthest-corner at var(--reveal-x, -200px) var(--reveal-y, -200px),
+        rgba(14, 158, 60, 0.95) 0%,
+        rgba(14, 158, 60, 0.55) 35%,
+        rgba(14, 158, 60, 0.25) 70%,
+        transparent 100%
+    );
+}
+
+.game-row td {
+    transition: background var(--dur-micro) var(--ease-effect), box-shadow var(--dur-micro) var(--ease-effect);
+}
+
+.game-row:hover td {
+    background: var(--xbox-green-subtle) !important;
+    border-bottom-color: rgba(0, 210, 106, 0.1);
+}
+
+.game-row:hover td:first-child {
+    box-shadow: inset 3px 0 0 var(--xbox-green);
+}
+
+.game-row:hover .game-name {
+    color: var(--xbox-green);
+    text-shadow: 0 0 15px var(--xbox-green-glow);
+}
+
+.game-thumb {
+    width: 56px;
+    height: 56px;
+    object-fit: cover;
+    border-radius: var(--radius-lg);
+    display: block;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    transition: transform var(--dur-fast) var(--ease-spatial), box-shadow var(--dur-fast) var(--ease-spatial);
+}
+
+.game-row:hover .game-thumb {
+    transform: scale(1.1) perspective(200px) rotateY(-5deg);
+    box-shadow: var(--shadow-8);
+}
+
+.game-thumb-sm {
+    width: 32px;
+    height: 32px;
+    object-fit: cover;
+    border-radius: var(--radius-sm);
+    transition: transform var(--dur-fast) var(--ease-spatial), box-shadow var(--dur-fast) var(--ease-spatial);
+}
+
+.game-cell {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.3rem;
+}
+
+.game-name-row {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+.game-name {
+    font-weight: 600;
+    text-decoration: none;
+    color: var(--text-primary);
+    transition: color var(--dur-micro) var(--ease-effect), text-shadow var(--dur-micro) var(--ease-effect);
+}
+
+.game-name:hover {
+    text-decoration: underline;
+    color: var(--xbox-green);
+}
+
+.device-tags {
+    display: flex;
+    gap: 0.25rem;
+    flex-wrap: wrap;
+}
+
+.tag {
+    font-family: var(--font-display);
+    font-size: 0.65rem;
+    display: inline-flex;
+    align-items: center;
+    padding: 0.15rem 0.4rem;
+    border-radius: var(--radius-sm);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-weight: 600;
+    line-height: 1;
+}
+
+.tag-pc { background: rgba(30, 64, 175, 0.2); color: #7ba3f5; }
+.tag-xboxseries { background: rgba(0, 210, 106, 0.12); color: #6ee0a0; }
+.tag-xboxone { background: rgba(74, 85, 104, 0.25); color: #a0a8c4; }
+.tag-xbox360 { background: rgba(156, 120, 0, 0.2); color: #d4aa40; }
+.tag-gamepass { background: rgba(0, 210, 106, 0.12); color: #6ee0a0; }
+
+.gs-current {
+    font-family: var(--font-mono);
+    color: var(--xbox-green);
+    font-weight: 600;
+}
+
+.gs-maxed {
+    color: #fcd34d;
+    text-shadow: 0 0 10px rgba(240, 192, 64, 0.5);
+    transition: text-shadow var(--dur-fast) var(--ease-effect);
+}
+
+.gs-maxed:hover {
+    text-shadow: 0 0 16px rgba(240, 192, 64, 0.8), 0 0 4px rgba(240, 192, 64, 0.4);
+}
+
+.gs-total {
+    font-family: var(--font-mono);
+    color: var(--text-tertiary);
+    font-size: 0.85em;
+}
+
+.gs-cell {
+    white-space: nowrap;
+    text-align: center;
+}
+
+.progress-cell {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+}
+
+.progress-cell span {
+    font-family: var(--font-mono);
+    font-size: 0.85em;
+    white-space: nowrap;
+    width: 3.5ch;
+    text-align: right;
+}
+
+/* Progress bars */
+.progress-bar-track {
+    width: 80px;
+    height: 6px;
+    background: var(--border-subtle);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+    position: relative;
+}
+
+.progress-bar-fill {
+    height: 100%;
+    border-radius: var(--radius-sm);
+    transition: width var(--dur-slow) var(--ease-effect);
+    position: relative;
+}
+
+.progress-bar-complete {
+    background: var(--xbox-green);
+    box-shadow: 0 0 10px rgba(0, 210, 106, 0.5), 0 0 4px rgba(0, 210, 106, 0.3);
+    overflow: hidden;
+    position: relative;
+}
+
+.progress-bar-complete::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
+    animation: bar-shine 3s ease-in-out infinite;
+    transform: translateX(-100%);
+}
+
+@keyframes bar-shine {
+    0%   { transform: translateX(-100%); }
+    40%  { transform: translateX(100%); }
+    100% { transform: translateX(100%); }
+}
+
+.progress-bar-high {
+    background: rgba(0, 210, 106, 0.5);
+}
+
+.progress-bar-low {
+    background: rgba(0, 210, 106, 0.3);
+}
+
+.progress-bar-zero {
+    background: transparent;
+}
+
+.pct-complete { font-family: var(--font-mono); color: var(--xbox-green); font-weight: 600; }
+.pct-high { font-family: var(--font-mono); color: #3b82f6; }
+.pct-low { font-family: var(--font-mono); color: #f59e0b; }
+.pct-zero { font-family: var(--font-mono); color: #6b7280; }
+
+.date-cell {
+    white-space: nowrap;
+    font-size: 0.85em;
+    text-align: center;
+    color: var(--text-secondary);
+}
+
+.playtime-cell {
+    white-space: nowrap;
+    font-size: 0.85em;
+    color: var(--text-secondary);
+}
+
+.status-cell { text-align: center; }
+
+/* ========== Grid Rows Mode ========== */
+/* Add .grid-rows to #library-table-wrap or .recent-table-wrap to enable.
+   Remove the class to revert to standard <table> layout. */
+
+.grid-rows table,
+.grid-rows thead,
+.grid-rows tbody,
+.grid-rows tr,
+.grid-rows th,
+.grid-rows td {
+    display: block;
+}
+
+.grid-rows table {
+    display: grid;
+    gap: 10px;
+    border-spacing: 0;
+}
+
+.grid-rows thead tr,
+.grid-rows .game-row,
+.grid-rows .recent-row {
+    display: grid;
+    align-items: center;
+}
+
+/* Library table: 7 columns — thumb, name, gamerscore, completion, status, last played, playtime */
+#library-table-wrap.grid-rows .game-table thead tr,
+#library-table-wrap.grid-rows .game-row {
+    grid-template-columns: 64px 1fr 120px 140px 100px 110px 90px;
+    gap: 0 0.5rem;
+}
+
+/* Recent table: 5 columns — thumb, name, progress, gamerscore, last played */
+.recent-table-wrap.grid-rows .recent-table thead tr,
+.recent-table-wrap.grid-rows .recent-row {
+    grid-template-columns: 48px 1fr 120px 120px 110px;
+    gap: 0 0.5rem;
+}
+
+/* Strip wrapper background in grid mode — each row is its own card.
+   Also remove paint containment so rows can animate outside bounds. */
+.grid-rows {
+    background: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    border: none !important;
+    box-shadow: none !important;
+    contain: none !important;
+    overflow: visible !important;
+}
+
+.grid-rows table,
+.grid-rows tbody {
+    overflow: visible;
+}
+
+/* Row card styling — amplified entrance: more travel + scale than default anim-blur-rise */
+.grid-rows .game-row,
+.grid-rows .recent-row {
+    --rise-distance: 48px;
+    --scale-rise: 0.92;
+    padding: 0.5rem 0.75rem;
+    border-radius: var(--radius-lg);
+    cursor: pointer;
+    position: relative;
+    z-index: 2; /* above parent article (z:1) so WebGL glass rows aren't hidden behind it */
+    overflow: hidden;
+    isolation: isolate;
+    background: transparent;
+    border: 1px solid var(--glass-border);
+    transition: opacity var(--dur-slow) var(--ease-out) var(--stagger-delay, 0ms),
+                transform var(--dur-slow) var(--ease-spring-soft) var(--stagger-delay, 0ms);
+    contain: layout style paint;
+}
+
+.grid-rows .game-row:hover,
+.grid-rows .recent-row:hover {
+    transform: translateY(-1px);
+    transition-delay: 0ms;
+}
+
+/* Rows become full reveal-items */
+.grid-rows .game-row.reveal-item,
+.grid-rows .recent-row.reveal-item {
+    --reveal-intensity: 0.85;
+    --reveal-mid: 0.50;
+    --reveal-tail: 0.22;
+}
+
+/* Noise grain texture — repurpose reveal-item ::after (rim lighting disabled).
+   WebGL handles this for glass panels but these pseudo-elements may still exist. */
+.grid-rows .game-row.reveal-item::after,
+.grid-rows .recent-row.reveal-item::after {
+    display: none;
+    background-size: 200px 200px;
+    transition: none;
+}
+
+/* Even-row banding — use background-color to preserve bloom gradients */
+.grid-rows .game-row:nth-child(even),
+.grid-rows .recent-row:nth-child(even) {
+    background-color: rgba(255, 255, 255, 0.02);
+}
+
+[data-theme="light"] .grid-rows thead tr {
+    background: rgba(255, 255, 255, 0.85);
+    border-color: var(--border-subtle);
+}
+
+[data-oled="true"] .grid-rows thead tr {
+    background: rgba(8, 8, 8, 0.85);
+    border-color: rgba(255, 255, 255, 0.04);
+}
+
+[data-theme="light"] .grid-rows .game-row:nth-child(even),
+[data-theme="light"] .grid-rows .recent-row:nth-child(even) {
+    background-color: rgba(0, 0, 0, 0.02);
+}
+
+/* Header row — glass material matching timeline month headers */
+.grid-rows thead tr {
+    padding: 0.65rem 0.75rem;
+    border-radius: var(--radius-lg);
+    background: var(--glass-bg);
+    backdrop-filter: blur(var(--glass-blur-substrate)) saturate(var(--glass-sat-substrate)) brightness(var(--glass-brightness));
+    -webkit-backdrop-filter: blur(var(--glass-blur-substrate)) saturate(var(--glass-sat-substrate)) brightness(var(--glass-brightness));
+    border: 1px solid var(--border-subtle);
+    border-top-color: var(--glass-border-top);
+    contain: layout style paint;
+}
+
+.grid-rows thead th {
+    background: none;
+    border: none;
+    color: var(--text-tertiary);
+    font-family: var(--font-display);
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    padding: 0;
+}
+
+/* Cell resets — no borders/padding, grid handles spacing */
+.grid-rows td {
+    padding: 0;
+    border: none;
+    background: none !important;
+    vertical-align: middle;
+    display: flex;
+    align-items: center;
+}
+
+.grid-rows .center,
+.grid-rows .gs-cell,
+.grid-rows .status-cell,
+.grid-rows .date-cell {
+    justify-content: center;
+}
+
+/* Hover uses reveal-item system — disable the old td-based hover */
+.grid-rows .game-row:hover td,
+.grid-rows .recent-row:hover td {
+    background: none !important;
+    box-shadow: none;
+    border-bottom-color: transparent;
+}
+
+/* Keep the name glow on hover */
+.grid-rows .game-row:hover .game-name,
+.grid-rows .recent-row:hover .game-name {
+    color: var(--xbox-green);
+    text-shadow: 0 0 15px var(--xbox-green-glow);
+}
+
+/* Thumbnail adjustments */
+.grid-rows .game-thumb {
+    width: 52px;
+    height: 52px;
+}
+
+/* Last row rounding (not needed — each row has its own radius) */
+.grid-rows .game-row:last-child td,
+.grid-rows .recent-row:last-child td {
+    border-radius: 0;
+}
+
+/* Empty state spans full width */
+.grid-rows .empty-state {
+    grid-column: 1 / -1;
+    text-align: center;
+}
+
+/* Sticky header for grid mode — only library, not profile */
+#library-table-wrap.grid-rows thead {
+    position: sticky;
+    top: var(--nav-height, 56px);
+    z-index: 10;
+}
+
+/* ========== Status Pills ========== */
+.status-pill,
+.status-pill:hover,
+.status-pill:focus {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--font-display);
+    font-size: 0.72rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    padding: 0.25rem 0.6rem;
+    border-radius: 100px;
+    border: 1px solid transparent;
+    cursor: pointer;
+    transition: filter var(--dur-fast) var(--ease-effect), transform var(--dur-fast) var(--ease-spatial);
+    line-height: 1.2;
+    white-space: nowrap;
+    min-width: 70px;
+    text-align: center;
+    margin: 0;
+    box-shadow: none;
+}
+
+.status-pill:hover {
+    filter: brightness(1.2);
+    transform: scale(1.05);
+}
+
+.status-pill-unset,
+.status-pill-unset:hover,
+.status-pill-unset:focus {
+    background: rgba(107, 114, 128, 0.12);
+    color: var(--text-tertiary);
+    border-color: rgba(107, 114, 128, 0.2);
+}
+
+.status-pill-backlog,
+.status-pill-backlog:hover,
+.status-pill-backlog:focus {
+    background: rgba(59, 130, 246, 0.12);
+    color: #60a5fa;
+    border-color: rgba(59, 130, 246, 0.25);
+}
+
+.status-pill-playing,
+.status-pill-playing:hover,
+.status-pill-playing:focus {
+    background: rgba(16, 185, 129, 0.12);
+    color: #34d399;
+    border-color: rgba(16, 185, 129, 0.25);
+}
+
+.status-pill-finished,
+.status-pill-finished:hover,
+.status-pill-finished:focus {
+    background: rgba(139, 92, 246, 0.12);
+    color: #a78bfa;
+    border-color: rgba(139, 92, 246, 0.25);
+}
+
+.status-pill-dropped,
+.status-pill-dropped:hover,
+.status-pill-dropped:focus {
+    background: rgba(239, 68, 68, 0.12);
+    color: #f87171;
+    border-color: rgba(239, 68, 68, 0.25);
+}
+
+/* Stale badge */
+.stale-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: rgba(240, 192, 64, 0.15);
+    color: var(--gold);
+    font-size: 0.65rem;
+    font-weight: 700;
+    margin-left: 0.25rem;
+    vertical-align: middle;
+    cursor: help;
+}
+
+
+/* ========== Pagination ========== */
+.pagination {
+    display: flex;
+    justify-content: center;
+    margin: 1.5rem 0;
+}
+
+.pagination nav {
+    display: flex;
+    align-items: center;
+    gap: 0.2rem;
+}
+
+.pagination a {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 2rem;
+    height: 2rem;
+    padding: 0 0.5rem;
+    border-radius: var(--radius-btn);
+    text-decoration: none;
+    font-family: var(--font-mono);
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    transition: background var(--dur-fast) var(--ease-effect), color var(--dur-fast) var(--ease-effect), transform var(--dur-micro) var(--ease-spatial);
+}
+
+.pagination a:hover:not(.disabled) {
+    background: var(--surface-elevated);
+    color: var(--text-primary);
+    transform: scale(1.08);
+}
+
+.pagination a.active {
+    background: var(--xbox-green);
+    color: white;
+    font-weight: 600;
+    box-shadow: 0 0 12px var(--xbox-green-glow);
+}
+
+.pagination .pg-arrow {
+    font-size: 1.1rem;
+    font-weight: 700;
+}
+
+.pagination .pg-arrow.disabled {
+    opacity: 0.3;
+    pointer-events: none;
+}
+
+.pagination .pg-ellipsis {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.5rem;
+    height: 2rem;
+    color: var(--text-tertiary);
+    font-size: 0.85rem;
+    pointer-events: none;
+}
+
+/* ========== Library Grid View ========== */
+.lib-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 1rem;
+}
+
+/* Glass grid card — bloom + bevels on element itself (::before/::after reserved for reveal-item) */
+.lib-grid-card {
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    overflow: hidden;
+    isolation: isolate;
+    background: transparent;
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius-lg);
+    text-decoration: none;
+    color: inherit;
+    transition: transform var(--dur-fast) var(--ease-spatial), box-shadow var(--dur-fast) var(--ease-spatial),
+                border-color var(--dur-fast) var(--ease-effect);
+    contain: layout style paint;
+    content-visibility: auto;
+    contain-intrinsic-block-size: auto 260px;
+}
+
+.lib-grid-card:hover {
+    transform: translateY(-6px);
+}
+
+
+.lib-grid-art {
+    position: relative;
+    aspect-ratio: 1 / 1;
+    background: var(--surface-elevated);
+    overflow: hidden;
+}
+
+.lib-grid-art img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: transform var(--dur-normal) var(--ease-spatial);
+}
+
+.lib-grid-card:hover .lib-grid-art img {
+    transform: scale(1.08);
+}
+
+.lib-grid-art.no-img {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.lib-grid-art.no-img::after {
+    content: '';
+    width: 48px;
+    height: 48px;
+    background: var(--text-tertiary);
+    mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.5'%3E%3Crect x='2' y='2' width='20' height='20' rx='2'/%3E%3Cpath d='m7 15 5-5 5 5'/%3E%3Ccircle cx='16' cy='8' r='2'/%3E%3C/svg%3E") center / contain no-repeat;
+    -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.5'%3E%3Crect x='2' y='2' width='20' height='20' rx='2'/%3E%3Cpath d='m7 15 5-5 5 5'/%3E%3Ccircle cx='16' cy='8' r='2'/%3E%3C/svg%3E") center / contain no-repeat;
+    opacity: 0.3;
+}
+
+.lib-grid-diamond {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    filter: drop-shadow(0 1px 3px rgba(0,0,0,0.5));
+}
+
+.lib-grid-gp {
+    position: absolute;
+    top: 6px;
+    left: 6px;
+    background: var(--xbox-green);
+    color: #fff;
+    font-family: var(--font-display);
+    font-size: 0.65rem;
+    font-weight: 700;
+    padding: 1px 5px;
+    border-radius: var(--radius-sm);
+    letter-spacing: 0.06em;
+}
+
+.lib-grid-info {
+    padding: 0.6rem 0.7rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    min-height: 0;
+    flex: 1;
+}
+
+.lib-grid-name {
+    font-size: 0.82rem;
+    font-weight: 600;
+    line-height: 1.3;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.lib-grid-meta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    margin-top: auto;
+}
+
+.lib-grid-progress {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    flex: 1;
+    min-width: 0;
+}
+
+.lib-grid-progress .progress-bar-track {
+    flex: 1;
+    height: 4px;
+}
+
+.lib-grid-progress span {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    white-space: nowrap;
+    width: 4.5ch;
+    text-align: right;
+    flex-shrink: 0;
+}
+
+.lib-grid-gs {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    color: var(--gold);
+    font-weight: 600;
+    white-space: nowrap;
+    min-width: 6.5ch;
+    text-align: right;
+    flex-shrink: 0;
+}
+
+.lib-grid-empty {
+    grid-column: 1 / -1;
+    text-align: center;
+    padding: 3rem 1rem;
+    color: var(--text-tertiary);
+}
+
+@media (max-width: 600px) {
+    .lib-grid {
+        grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+        gap: 0.75rem;
+    }
+}
+

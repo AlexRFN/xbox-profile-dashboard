@@ -1,0 +1,4 @@
+{% from "macros.html" import capture_card %}
+{% for s in screenshots %}
+    {{ capture_card(s, i=loop.index0) }}
+{% endfor %}

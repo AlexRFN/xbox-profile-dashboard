@@ -1,0 +1,53 @@
+{% from "macros.html" import progress_bar, device_tags, gamerscore_display, pagination %}
+<tr style="display:none" data-total="{{ total }}"></tr>
+{% for game in games %}
+<tr class="game-row anim-blur-rise" style="--i: {{ loop.index0 }}" data-href="/game/{{ game.title_id }}">
+    <td>
+        <img src="{{ game.display_image|thumb(48) }}" alt="{{ game.name }}" class="game-thumb"
+             {% if game.blurhash %}data-blurhash="{{ game.blurhash }}"{% endif %}
+             loading="lazy" decoding="async" width="40" height="40">
+    </td>
+    <td>
+        <div class="game-cell">
+            <div class="game-name-row">
+                <a href="/game/{{ game.title_id }}" class="game-name">{{ game.name }}</a>
+                {% if game.progress_percentage == 100 %}
+                <span class="completion-diamond" title="100% Complete">
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none">
+                        <path d="M12 2L2 9l10 13L22 9z" fill="url(#dgrad)" stroke="rgba(6,182,212,0.6)" stroke-width="1"/>
+                        <path d="M2 9h20M7 2l-1 7M17 2l1 7M8 9l4 13M16 9l-4 13" stroke="rgba(255,255,255,0.3)" stroke-width="0.5"/>
+                    </svg>
+                </span>
+                {% endif %}
+            </div>
+            {{ device_tags(game.devices, game.is_gamepass) }}
+        </div>
+    </td>
+    <td class="gs-cell">{{ gamerscore_display(game.current_gamerscore, game.total_gamerscore) }}</td>
+    <td>
+        {{ progress_bar(game.progress_percentage) }}
+    </td>
+    <td class="status-cell">
+        <button class="status-pill status-pill-{{ game.status }}"
+                onclick="cycleStatus(event, '{{ game.title_id }}', '{{ game.status }}')"
+                data-status="{{ game.status }}">
+            {{ game.status if game.status != 'unset' else '—' }}
+        </button>
+    </td>
+    <td class="date-cell">{{ game.last_played | shortdate or "—" }}</td>
+    <td class="playtime-cell">
+        {{ game.minutes_played | playtime or "—" }}
+        {% if not game.stats_last_fetched %}
+        <span class="stale-badge" title="Details not yet fetched">!</span>
+        {% endif %}
+    </td>
+</tr>
+{% endfor %}
+
+{% if games | length == 0 %}
+<tr><td colspan="7" class="empty-state">No games found matching your filters.</td></tr>
+{% endif %}
+
+{% if oob_pagination %}
+{{ pagination(page, total, per_page, "/api/library/table", "#game-table-body", oob=true) }}
+{% endif %}

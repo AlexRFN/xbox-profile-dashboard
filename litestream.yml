@@ -1,0 +1,19 @@
+dbs:
+  - path: data/xbox.db
+    replicas:
+      # --- Local file backup (works out of the box) ---
+      - type: file
+        path: data/backups
+        retention: 168h          # keep 7 days of WAL snapshots
+        sync-interval: 30s       # replicate every 30 seconds
+
+      # --- S3-compatible remote (uncomment and configure) ---
+      # - type: s3
+      #   bucket: your-bucket-name
+      #   path: xbox-dashboard/
+      #   endpoint: https://s3.amazonaws.com    # or Cloudflare R2, MinIO, etc.
+      #   region: us-east-1
+      #   access-key-id: ${LITESTREAM_ACCESS_KEY_ID}
+      #   secret-access-key: ${LITESTREAM_SECRET_ACCESS_KEY}
+      #   retention: 720h        # 30 days remote retention
+      #   sync-interval: 60s

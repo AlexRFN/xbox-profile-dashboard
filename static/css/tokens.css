@@ -1,0 +1,667 @@
+/* Xbox Dashboard — tokens */
+
+/* ========== Registered Custom Properties (animatable) ========== */
+@property --glass-blur-radius {
+    syntax: "<length>";
+    inherits: true;
+    initial-value: 16px;
+}
+
+@property --glass-tint-alpha {
+    syntax: "<number>";
+    inherits: true;
+    initial-value: 0.55;
+}
+
+
+/* ========== Self-hosted Fonts ========== */
+@font-face {
+    font-family: 'Inter';
+    font-style: normal;
+    font-weight: 400 700;
+    font-display: swap;
+    src: url('/static/fonts/inter.woff2') format('woff2');
+    unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+    font-family: 'JetBrains Mono';
+    font-style: normal;
+    font-weight: 400 600;
+    font-display: swap;
+    src: url('/static/fonts/jetbrains-mono.woff2') format('woff2');
+    unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+    font-family: 'Rajdhani';
+    font-style: normal;
+    font-weight: 500;
+    font-display: swap;
+    src: url('/static/fonts/rajdhani-500.woff2') format('woff2');
+    unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+    font-family: 'Rajdhani';
+    font-style: normal;
+    font-weight: 600;
+    font-display: swap;
+    src: url('/static/fonts/rajdhani-600.woff2') format('woff2');
+    unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+    font-family: 'Rajdhani';
+    font-style: normal;
+    font-weight: 700;
+    font-display: swap;
+    src: url('/static/fonts/rajdhani-700.woff2') format('woff2');
+    unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+/* ========== Modern Reset ========== */
+*, *::before, *::after { box-sizing: border-box; }
+* { margin: 0; padding: 0; }
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; -moz-osx-font-smoothing: grayscale; -webkit-font-smoothing: antialiased; }
+img, picture, video, canvas, svg { display: block; max-width: 100%; }
+input, button, textarea, select { font: inherit; color: inherit; }
+p, h1, h2, h3, h4, h5, h6 { overflow-wrap: break-word; }
+a { color: inherit; }
+table { border-collapse: collapse; width: 100%; }
+
+/* ========== Accessibility ========== */
+.skip-link {
+    position: absolute;
+    top: -100%;
+    left: 1rem;
+    z-index: 10000;
+    padding: 0.75rem 1.5rem;
+    background: var(--xbox-green);
+    color: #fff;
+    font-weight: 600;
+    border-radius: var(--radius-md);
+    text-decoration: none;
+    opacity: 0;
+    transition: opacity 150ms;
+}
+.skip-link:focus {
+    top: 1rem;
+    opacity: 1;
+}
+
+:focus-visible {
+    outline: 2px solid var(--xbox-green);
+    outline-offset: 2px;
+}
+/* Suppress focus ring on mouse clicks (browser handles this, but be explicit) */
+:focus:not(:focus-visible) {
+    outline: none;
+}
+
+/* ========== Icon Sprite Sizing ========== */
+.icon { display: inline-block; vertical-align: middle; flex-shrink: 0; }
+.icon.rarity-icon { margin-right: 2px; vertical-align: -1px; }
+
+/* ========== Design Tokens — Dark (Default) ========== */
+:root {
+    /* Typography */
+    --font-display: 'Rajdhani', 'Segoe UI Variable', system-ui, sans-serif;
+    --font-body: 'Inter', 'Segoe UI Variable', system-ui, sans-serif;
+    --font-mono: 'JetBrains Mono', 'Cascadia Code', 'Consolas', monospace;
+    --font-size: 15px;
+
+    /* Type Scale */
+    --text-2xs: 0.65rem;
+    --text-xs: 0.75rem;
+    --text-sm: 0.85rem;
+    --text-base: 0.9rem;
+    --text-md: 1rem;
+    --text-lg: 1.25rem;
+    --text-xl: 1.5rem;
+    --text-2xl: 1.75rem;
+    --text-3xl: 2rem;
+    --text-4xl: 3rem;
+
+    /* Xbox brand — brighter, more saturated */
+    --xbox-green: #00d26a;
+    --xbox-green-hover: #00b85c;
+    --xbox-green-subtle: rgba(0, 210, 106, 0.10);
+    --xbox-green-glow: rgba(0, 210, 106, 0.25);
+
+    /* Cinematic dark palette */
+    --surface-abyss: #050508;
+    --surface-base: #0a0b10;
+    --surface-card: #12131a;
+    --surface-card-hover: #1a1b24;
+    --surface-elevated: #1e2030;
+    --surface-acrylic: rgba(18, 19, 26, 0.35);
+
+    /* Glass — core */
+    --glass-bg: rgba(10, 10, 16, 0.22);
+    --glass-border: rgba(255, 255, 255, 0.10);
+    --glass-border-top: rgba(195, 255, 235, 0.28); /* aurora-tinted specular edge */
+    --glass-blur: blur(12px) saturate(1.4);
+
+    /* Glass — multi-layer material */
+    --glass-blur-radius: 10px;
+    --glass-tint-alpha: 0.30;
+    --glass-noise-opacity: 0.03;
+    --glass-noise-blend: overlay;
+    --glass-bevel-highlight: rgba(195, 255, 235, 0.22); /* fallback / default — aurora-tinted */
+    --glass-bevel-shadow: rgba(0, 0, 0, 0.35);          /* fallback / default */
+    --glass-brightness: 1.4;
+
+    /* Bevel per tier — perceived glass thickness (substrate=thin/flat → button=thick).
+       Higher tiers also get a soft diffuse sub-glow layer in box-shadow (see CSS).
+       ┌────────────┬──────────────────────────────────┬──────────────────────────┐
+       │ Tier       │ Highlight (top glint)             │ Shadow (bottom edge)     │
+       ├────────────┼──────────────────────────────────┼──────────────────────────┤
+       │ substrate  │ barely visible — flat panel       │ very faint               │
+       │ surface    │ moderate — natural card glass     │ light                    │
+       │ chrome     │ prominent — sticky/floating UI    │ medium                   │
+       │ control    │ medium-high — interactive widget  │ medium                   │
+       │ overlay    │ high — modal/toast glass          │ strong + diffuse bloom   │
+       │ button     │ brightest — thickest glass slab   │ strong + diffuse bloom   │
+       └────────────┴──────────────────────────────────┴──────────────────────────┘ */
+    /* Highlight tinted with aurora ambient (green-cyan, nearly white — perceivable as
+       "light that has passed through the aurora", not as "green paint") */
+    --glass-bevel-h-substrate: rgba(195, 255, 235, 0.08);
+    --glass-bevel-h-surface:   rgba(195, 255, 235, 0.20);
+    --glass-bevel-h-chrome:    rgba(195, 255, 235, 0.30);
+    --glass-bevel-h-control:   rgba(195, 255, 235, 0.26);
+    --glass-bevel-h-overlay:   rgba(195, 255, 235, 0.38);
+    --glass-bevel-h-button:    rgba(195, 255, 235, 0.52);
+
+    --glass-bevel-s-substrate: rgba(0, 0, 0, 0.10);
+    --glass-bevel-s-surface:   rgba(0, 0, 0, 0.28);
+    --glass-bevel-s-chrome:    rgba(0, 0, 0, 0.38);
+    --glass-bevel-s-control:   rgba(0, 0, 0, 0.32);
+    --glass-bevel-s-overlay:   rgba(0, 0, 0, 0.45);
+    --glass-bevel-s-button:    rgba(0, 0, 0, 0.52);
+
+    /* Glass — visual hierarchy tiers (back→front, substrate→button)
+       Logic: larger/deeper panels recede; interactive elements project.
+       Saturation drives perceived elevation. Buttons are the most
+       concentrated glass — they are the primary attention target.
+       ┌─────────────┬──────────┬──────────────────────────────────────────┐
+       │ Tier        │ Sat      │ Who                                      │
+       ├─────────────┼──────────┼──────────────────────────────────────────┤
+       │ substrate   │ 1.10     │ large panel wrappers (library table)     │
+       │ surface     │ 2.20     │ cards — primary reading surfaces         │
+       │ chrome      │ 2.80     │ sticky/floating UI above content         │
+       │ control     │ 2.20     │ small inputs, toggles, view switches     │
+       │ overlay     │ 3.20     │ dropdowns, modals, floating bars         │
+       │ button      │ 4.00     │ glass buttons — most enhanced element    │
+       └─────────────┴──────────┴──────────────────────────────────────────┘ */
+    --glass-sat-substrate: 1.10;
+    --glass-blur-substrate: 8px;
+    --glass-sat-surface:   2.20;
+    /* surface blur = var(--glass-blur-radius) = 10px */
+    --glass-sat-chrome:    2.80;
+    --glass-blur-chrome:   12px;
+    --glass-sat-control:   2.20;
+    --glass-blur-control:  10px;
+    --glass-sat-overlay:   3.20;
+    --glass-blur-overlay:  14px;
+    --glass-sat-button:    4.00;
+    --glass-blur-button:   12px;
+
+    /* Text */
+    --text-primary: #e8eaed;
+    --text-secondary: #8b8fa3;
+    --text-tertiary: #505366;
+
+    /* Borders */
+    --border-subtle: rgba(255, 255, 255, 0.06);
+    --border-default: rgba(255, 255, 255, 0.10);
+
+    /* Accents */
+    --gold: #f0c040;
+    --cyan: #22d3ee;
+    --color-teal: #06b6d4;
+    --color-sky: #60a5fa;
+
+    /* Shadows — dramatic, layered */
+    --shadow-2: 0 1px 3px rgba(0,0,0,0.5), 0 1px 2px rgba(0,0,0,0.4);
+    --shadow-4: 0 2px 8px rgba(0,0,0,0.4), 0 1px 3px rgba(0,0,0,0.5);
+    --shadow-8: 0 4px 16px rgba(0,0,0,0.4), 0 2px 6px rgba(0,0,0,0.5);
+    --shadow-16: 0 8px 32px rgba(0,0,0,0.5), 0 4px 12px rgba(0,0,0,0.4);
+
+    /* Radius */
+    --radius-sm: 4px;
+    --radius-md: 32px;
+    --radius-lg: 16px;
+    --radius-btn: 20px;
+
+    /* Spacing */
+    --container-max: 1280px;
+    --container-padding: 1.5rem;
+
+    /* Motion — easing curves (MD3 Expressive + Fluent-inspired) */
+    --ease-effect: cubic-bezier(0.28, 0.84, 0.30, 1.00);     /* Color/opacity/bg changes         */
+    --ease-spatial: cubic-bezier(0.18, 1.20, 0.14, 1.00);    /* Transforms — 20% overshoot      */
+    --ease-spring: cubic-bezier(0.22, 1.72, 0.48, 1);        /* Punchy entrance — 72% overshoot */
+    --ease-spring-soft: cubic-bezier(0.24, 1.52, 0.20, 1.00);/* Expressive spring — 52% oversh  */
+    --ease-enter: cubic-bezier(0.03, 0.8, 0.08, 1);          /* Emphasized decelerate — appear   */
+    --ease-exit: cubic-bezier(0.40, 0, 0.82, 0.10);          /* Emphasized accelerate — leave    */
+    --ease-out: cubic-bezier(0.08, 1.18, 0.18, 1);           /* Scroll reveals — 18% bounce      */
+
+    /* Motion — durations */
+    --dur-micro: 180ms;
+    --dur-fast: 340ms;
+    --dur-normal: 550ms;
+    --dur-slow: 820ms;
+
+    /* Motion — composites */
+    --transition-fast: var(--dur-micro) var(--ease-effect);
+    --transition-normal: var(--dur-fast) var(--ease-effect);
+    --transition-spring: 550ms var(--ease-spring);
+    --stagger: 60ms;
+
+    /* Motion — spatial offsets (how far elements travel) */
+    --slide-distance: 40px;     /* Horizontal slide for tab transitions       */
+    --rise-distance: 48px;      /* Vertical rise for stat/chart cards          */
+    --drop-distance: 30px;      /* Vertical drop for headers/filters           */
+    --push-distance: 72px;      /* Vertical push for timeline events           */
+
+    /* Motion — scale factors (entrance physics) */
+    --scale-rise: 0.88;         /* Shrink on blur-rise entrance                */
+    --scale-hero: 1.10;         /* Slight zoom-out on hero entrance            */
+    --scale-pop: 0.70;          /* Punch-in for cards/friends                  */
+
+    /* Motion — nav pill slide */
+    --ease-pill: cubic-bezier(0.16, 1.30, 0.3, 1.00);
+    --dur-pill: 280ms;
+
+    /* Status colors */
+    --status-unset: #6b7280;
+    --status-backlog: #3b82f6;
+    --status-playing: #10b981;
+    --status-finished: #8b5cf6;
+    --status-dropped: #ef4444;
+
+    /* Rarity */
+    --rarity-common: #9ca3af;
+    --rarity-rare: #3b82f6;
+    --rarity-epic: #8b5cf6;
+    --rarity-legendary: #f59e0b;
+    --rarity-diamond: #22d3ee;
+
+    /* Liquid Glass — specular + edge lighting (visible, not just tinting) */
+    --liquid-specular: rgba(255, 255, 255, 0.06);
+    --liquid-inner-glow: rgba(0, 210, 106, 0.06);
+    --liquid-edge-light: rgba(0, 210, 106, 0.20);
+    --liquid-sweep-color: rgba(255, 255, 255, 0.03);
+}
+
+/* ========== Light Theme ========== */
+[data-theme="light"] {
+    --xbox-green: #0e9e3c;
+    --xbox-green-hover: #0a8532;
+    --xbox-green-subtle: rgba(14, 158, 60, 0.08);
+    --xbox-green-glow: rgba(14, 158, 60, 0.15);
+
+    --surface-abyss: #f0f1f5;
+    --surface-base: #f5f6fa;
+    --surface-card: #ffffff;
+    --surface-card-hover: #f8f9fb;
+    --surface-elevated: #ecedf2;
+    --surface-acrylic: rgba(255, 255, 255, 0.75);
+
+    --glass-bg: rgba(255, 255, 255, 0.35);
+    --glass-border: rgba(255, 255, 255, 0.50);
+    --glass-border-top: rgba(255, 255, 255, 0.70);
+    --glass-blur: blur(12px) saturate(1.2);
+
+    --glass-blur-radius: 10px;
+    --glass-tint-alpha: 0.35;
+    --glass-noise-opacity: 0.02;
+    --glass-bevel-highlight: rgba(255, 255, 255, 0.70);
+    --glass-bevel-shadow: rgba(0, 0, 0, 0.06);
+    --glass-brightness: 1.05;
+
+    --glass-bevel-h-substrate: rgba(255, 255, 255, 0.28);
+    --glass-bevel-h-surface:   rgba(255, 255, 255, 0.52);
+    --glass-bevel-h-chrome:    rgba(255, 255, 255, 0.70);
+    --glass-bevel-h-control:   rgba(255, 255, 255, 0.60);
+    --glass-bevel-h-overlay:   rgba(255, 255, 255, 0.82);
+    --glass-bevel-h-button:    rgba(255, 255, 255, 0.95);
+
+    --glass-bevel-s-substrate: rgba(0, 0, 0, 0.03);
+    --glass-bevel-s-surface:   rgba(0, 0, 0, 0.06);
+    --glass-bevel-s-chrome:    rgba(0, 0, 0, 0.10);
+    --glass-bevel-s-control:   rgba(0, 0, 0, 0.08);
+    --glass-bevel-s-overlay:   rgba(0, 0, 0, 0.13);
+    --glass-bevel-s-button:    rgba(0, 0, 0, 0.16);
+    --glass-specular-opacity: 0.10;
+
+    /* Light theme: compressed saturation (ambient light already high) */
+    --glass-sat-substrate: 1.05;
+    --glass-sat-surface:   1.40;
+    --glass-sat-chrome:    1.70;
+    --glass-sat-control:   1.50;
+    --glass-sat-overlay:   1.90;
+    --glass-sat-button:    2.40;
+
+    --text-primary: #1a1b2e;
+    --text-secondary: #5a5d72;
+    --text-tertiary: #9496a8;
+
+    --border-subtle: rgba(0, 0, 0, 0.06);
+    --border-default: rgba(0, 0, 0, 0.10);
+
+    --gold: #d4a017;
+    --cyan: #0891b2;
+
+    --shadow-2: 0 1px 3px rgba(0,0,0,0.08);
+    --shadow-4: 0 2px 6px rgba(0,0,0,0.06), 0 1px 3px rgba(0,0,0,0.08);
+    --shadow-8: 0 4px 12px rgba(0,0,0,0.06), 0 2px 6px rgba(0,0,0,0.08);
+    --shadow-16: 0 8px 24px rgba(0,0,0,0.08), 0 4px 12px rgba(0,0,0,0.06);
+
+    --liquid-specular: rgba(255, 255, 255, 0.08);
+    --liquid-inner-glow: rgba(14, 158, 60, 0.05);
+    --liquid-edge-light: rgba(14, 158, 60, 0.15);
+    --liquid-sweep-color: rgba(255, 255, 255, 0.03);
+}
+
+[data-theme="light"] .aurora,
+[data-theme="light"] body::after {
+    display: none !important;
+}
+
+[data-theme="light"] .tag-pc { background: #dbeafe; color: #1e40af; }
+[data-theme="light"] .tag-xboxseries { background: #d1fae5; color: #065f46; }
+[data-theme="light"] .tag-xboxone { background: #e2e8f0; color: #4a5568; }
+[data-theme="light"] .tag-xbox360 { background: #fef3c7; color: #92400e; }
+[data-theme="light"] .tag-gamepass { background: #d1fae5; color: #065f46; }
+
+[data-theme="light"] .status-pill-backlog { color: #2563eb; }
+[data-theme="light"] .status-pill-playing { color: #059669; }
+[data-theme="light"] .status-pill-finished { color: #7c3aed; }
+[data-theme="light"] .status-pill-dropped { color: #dc2626; }
+[data-theme="light"] .progress-bar-complete { box-shadow: 0 0 6px rgba(14, 158, 60, 0.4); }
+
+[data-theme="light"] .ach-unlocked {
+    background: rgba(14, 158, 60, 0.06);
+}
+
+[data-theme="light"] .hero-bg {
+    filter: blur(30px) brightness(0.85);
+    opacity: 0.30;
+}
+
+[data-theme="light"] .completed-game-card {
+    background: rgba(14, 158, 60, 0.04);
+}
+
+[data-theme="light"] .completed-game-card:hover {
+    background: rgba(14, 158, 60, 0.08);
+}
+
+[data-theme="light"] .friend-status-ring {
+    border-color: #ffffff;
+}
+
+[data-theme="light"] .hero-progress-track {
+    background: rgba(0, 0, 0, 0.1);
+}
+
+[data-theme="light"] .data-item {
+    border-bottom-color: #e5e5e5;
+}
+
+[data-theme="light"] .game-table thead th {
+    background: var(--surface-elevated);
+}
+
+[data-theme="light"] .game-row:nth-child(even) td,
+[data-theme="light"] .recent-row:nth-child(even) td {
+    background: rgba(0, 0, 0, 0.025);
+}
+
+[data-theme="light"] .game-row:hover td,
+[data-theme="light"] .recent-row:hover td {
+    background: rgba(14, 158, 60, 0.06) !important;
+}
+
+[data-theme="light"] .friend-fav {
+    color: #d97706;
+}
+
+[data-theme="light"] .xbox-nav.scrolled {
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
+
+[data-theme="light"] .nav-edge-light {
+    display: none;
+}
+
+[data-theme="light"] .nav-blur-down > .nav-blur-gradient {
+    background: linear-gradient(to bottom, rgba(255, 255, 255, 0.15), transparent);
+}
+
+[data-theme="light"] .nav-pill {
+    background: rgba(0, 0, 0, 0.04);
+    border-color: rgba(0, 0, 0, 0.06);
+}
+
+[data-theme="light"] .nav-pill-track {
+    background: rgba(14, 158, 60, 0.10);
+    border-color: rgba(14, 158, 60, 0.15);
+    box-shadow: 0 0 8px rgba(14, 158, 60, 0.10);
+}
+
+[data-theme="light"] .nav-link:hover {
+    background: rgba(0, 0, 0, 0.04);
+}
+
+[data-theme="light"] .theme-toggle:hover {
+    background: rgba(0, 0, 0, 0.04);
+}
+
+[data-theme="light"] .nav-profile-chip {
+    background: rgba(0, 0, 0, 0.03);
+    border-color: rgba(0, 0, 0, 0.06);
+}
+
+[data-theme="light"] .nav-profile-chip:hover {
+    background: rgba(0, 0, 0, 0.06);
+    box-shadow: 0 0 8px rgba(14, 158, 60, 0.12);
+}
+
+[data-theme="light"] .playing-game-card {
+    background: rgba(16, 185, 129, 0.04);
+}
+
+[data-theme="light"] .playing-game-card:hover {
+    background: rgba(16, 185, 129, 0.08);
+}
+
+/* ========== OLED Theme ========== */
+[data-oled="true"] {
+    --surface-abyss: #000000;
+    --surface-base: #000000;
+    --surface-card: #080808;
+    --surface-card-hover: #0f0f0f;
+    --surface-elevated: #0a0a0a;
+    --surface-acrylic: rgba(5, 5, 5, 0.85);
+
+    --glass-bg: rgba(8, 8, 8, 0.28);
+    --glass-blur-radius: 10px;
+    --glass-tint-alpha: 0.28;
+    --glass-noise-opacity: 0.025;
+    --glass-border-top: rgba(185, 255, 225, 0.22); /* aurora-tinted, OLED-compensated */
+    --glass-bevel-highlight: rgba(185, 255, 228, 0.20); /* fallback tinted */
+    --glass-bevel-shadow: rgba(0, 0, 0, 0.50);
+    --glass-brightness: 0.80;
+
+    /* OLED: slightly more saturated tint — pure black background makes
+       the aurora ambient color contrast more clearly */
+    --glass-bevel-h-substrate: rgba(185, 255, 228, 0.06);
+    --glass-bevel-h-surface:   rgba(185, 255, 228, 0.15);
+    --glass-bevel-h-chrome:    rgba(185, 255, 228, 0.23);
+    --glass-bevel-h-control:   rgba(185, 255, 228, 0.20);
+    --glass-bevel-h-overlay:   rgba(185, 255, 228, 0.31);
+    --glass-bevel-h-button:    rgba(185, 255, 228, 0.44);
+
+    --glass-bevel-s-substrate: rgba(0, 0, 0, 0.25);
+    --glass-bevel-s-surface:   rgba(0, 0, 0, 0.48);
+    --glass-bevel-s-chrome:    rgba(0, 0, 0, 0.58);
+    --glass-bevel-s-control:   rgba(0, 0, 0, 0.52);
+    --glass-bevel-s-overlay:   rgba(0, 0, 0, 0.65);
+    --glass-bevel-s-button:    rgba(0, 0, 0, 0.70);
+    --glass-specular-opacity: 0.12;
+
+    /* OLED: push saturation harder to compensate for dimmed brightness */
+    --glass-sat-substrate: 1.20;
+    --glass-sat-surface:   2.40;
+    --glass-sat-chrome:    3.20;
+    --glass-sat-control:   2.50;
+    --glass-sat-overlay:   3.80;
+    --glass-sat-button:    5.00;
+
+    --border-subtle: rgba(255, 255, 255, 0.04);
+    --border-default: rgba(255, 255, 255, 0.07);
+
+    --shadow-2: none;
+    --shadow-4: none;
+    --shadow-8: 0 4px 16px rgba(0,0,0,0.9);
+    --shadow-16: 0 8px 32px rgba(0,0,0,0.95);
+
+    --liquid-specular: rgba(255, 255, 255, 0.08);
+    --liquid-inner-glow: rgba(0, 210, 106, 0.08);
+    --liquid-edge-light: rgba(0, 210, 106, 0.25);
+    --liquid-sweep-color: rgba(255, 255, 255, 0.04);
+}
+
+[data-oled="true"] body {
+    background: #000;
+}
+
+/* Dark mode: dim aurora */
+[data-theme="dark"] .aurora {
+    opacity: 0.62;
+}
+
+[data-oled="true"] .aurora {
+    opacity: 0.52;
+}
+
+[data-oled="true"] body::after {
+    opacity: 0.015;
+}
+
+[data-oled="true"] .game-row:nth-child(even) td,
+[data-oled="true"] .recent-row:nth-child(even) td {
+    background: rgba(255, 255, 255, 0.02);
+}
+
+/* Cap glass saturation on sRGB displays — high sat values can clip to banding on non-P3 */
+@media not (color-gamut: p3) {
+    :root {
+        --glass-sat-button:  2.80;
+        --glass-sat-overlay: 2.60;
+        --glass-sat-chrome:  2.40;
+    }
+}
+
+[data-oled="true"] .tag-pc { background: #0c1a3d; color: #93b5f5; }
+[data-oled="true"] .tag-xboxseries { background: #03261a; color: #7ae0c0; }
+[data-oled="true"] .tag-xboxone { background: #1a1e24; color: #b0b8c4; }
+[data-oled="true"] .tag-xbox360 { background: #2a1f00; color: #d4aa40; }
+[data-oled="true"] .tag-gamepass { background: #052e05; color: #7ae07a; }
+
+[data-oled="true"] .hero-bg {
+    filter: blur(20px) brightness(0.25);
+    opacity: 0.65;
+}
+
+[data-oled="true"] .completed-game-card {
+    background: rgba(0, 210, 106, 0.04);
+}
+
+[data-oled="true"] .completed-game-card:hover {
+    background: rgba(0, 210, 106, 0.08);
+}
+
+[data-oled="true"] .completion-diamond {
+    filter: drop-shadow(0 0 2px rgba(34, 211, 238, 0.3));
+}
+
+[data-oled="true"] .progress-bar-complete::after {
+    display: none;
+}
+
+[data-oled="true"] .gs-maxed {
+    color: var(--gold);
+    text-shadow: none;
+}
+
+[data-oled="true"] .completion-diamond-lg {
+    filter: drop-shadow(0 0 3px rgba(34, 211, 238, 0.3));
+}
+
+[data-oled="true"] .friend-status-ring {
+    border-color: #080808;
+}
+
+[data-oled="true"] .friend-status-ring.online {
+    box-shadow: 0 0 4px rgba(0, 210, 106, 0.5);
+}
+
+[data-oled="true"] .friend-status-ring.online::after {
+    animation: none;
+}
+
+[data-oled="true"] .online-pulse {
+    animation: none;
+}
+
+[data-oled="true"] .hero-progress-track {
+    background: #1a1a1a;
+}
+
+[data-oled="true"] .playing-game-card {
+    background: rgba(16, 185, 129, 0.04);
+}
+
+[data-oled="true"] .playing-game-card:hover {
+    background: rgba(16, 185, 129, 0.08);
+}
+
+/* ========== P3 Wide-Gamut Glass Enhancement ========== */
+@media (color-gamut: p3) {
+    :root {
+        --glass-bg: color(display-p3 0.07 0.07 0.10 / 0.18);
+    }
+
+    [data-theme="light"] {
+        --glass-bg: color(display-p3 1.0 1.0 1.0 / 0.35);
+    }
+
+    [data-oled="true"] {
+        --glass-bg: color(display-p3 0.03 0.03 0.03 / 0.28);
+    }
+}
+
+/* ========== Accessibility: Reduced Transparency ========== */
+@media (prefers-reduced-transparency: reduce) {
+    :root {
+        --glass-bg: rgba(18, 19, 26, 0.92);
+        --glass-blur-radius: 0px;
+        --glass-noise-opacity: 0;
+        --glass-tint-alpha: 0.92;
+        --glass-specular-opacity: 0;
+    }
+
+    [data-theme="light"] {
+        --glass-bg: rgba(255, 255, 255, 0.95);
+        --glass-tint-alpha: 0.95;
+    }
+
+    [data-oled="true"] {
+        --glass-bg: rgba(8, 8, 8, 0.95);
+        --glass-tint-alpha: 0.95;
+    }
+}

@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Xbox Dashboard — Architecture</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #08090a; color: #e0e0e0;
+    font-family: 'Segoe UI Variable', system-ui, sans-serif;
+    min-height: 100vh; display: flex; flex-direction: column; align-items: center;
+    padding: 20px 12px 40px;
+  }
+  h1 { font-size: 1.3rem; color: #fff; letter-spacing: .5px; margin-bottom: 2px; }
+  .subtitle { color: #666; font-size: .8rem; margin-bottom: 14px; }
+  svg { max-width: 100%; height: auto; }
+
+  #tooltip {
+    position: fixed; pointer-events: none; opacity: 0;
+    background: #111827; border: 1px solid #374151; border-radius: 10px;
+    padding: 12px 16px; font-size: .8rem; line-height: 1.55;
+    color: #d1d5db; max-width: 340px; z-index: 99;
+    transition: opacity .12s;
+    box-shadow: 0 8px 32px rgba(0,0,0,.6);
+    backdrop-filter: blur(8px);
+  }
+  #tooltip.show { opacity: 1; }
+  #tooltip .tt-title { color: #fff; font-weight: 600; margin-bottom: 5px; font-size: .9rem; }
+  #tooltip .tt-detail { color: #9ca3af; }
+
+  .legend {
+    display: flex; flex-wrap: wrap; justify-content: center; gap: 18px;
+    margin-bottom: 16px;
+  }
+  .legend-item { display: flex; align-items: center; gap: 6px; font-size: .72rem; color: #777; }
+  .legend-swatch { width: 10px; height: 10px; border-radius: 2px; }
+</style>
+</head>
+<body>
+<h1>Xbox Profile Dashboard — Architecture</h1>
+<p class="subtitle">Hover any box for details</p>
+
+<div class="legend">
+  <div class="legend-item"><div class="legend-swatch" style="background:#22c55e"></div>Entry point</div>
+  <div class="legend-item"><div class="legend-swatch" style="background:#3b82f6"></div>Routers (7)</div>
+  <div class="legend-item"><div class="legend-swatch" style="background:#a855f7"></div>Business logic</div>
+  <div class="legend-item"><div class="legend-swatch" style="background:#f59e0b"></div>Data layer</div>
+  <div class="legend-item"><div class="legend-swatch" style="background:#ef4444"></div>External API</div>
+  <div class="legend-item"><div class="legend-swatch" style="background:#06b6d4"></div>Templates</div>
+  <div class="legend-item"><div class="legend-swatch" style="background:#64748b"></div>Static / Utilities</div>
+  <div class="legend-item" style="margin-left:12px">
+    <svg width="30" height="8"><line x1="0" y1="4" x2="30" y2="4" stroke="#666" stroke-width="1.5"/></svg> runtime
+  </div>
+  <div class="legend-item">
+    <svg width="30" height="8"><line x1="0" y1="4" x2="30" y2="4" stroke="#666" stroke-width="1.5" stroke-dasharray="4,3"/></svg> startup / background
+  </div>
+</div>
+
+<div id="tooltip"></div>
+
+<svg id="diagram" viewBox="0 0 960 960" xmlns="http://www.w3.org/2000/svg">
+<defs>
+  <!-- Arrowheads -->
+  <marker id="a" viewBox="0 0 8 6" refX="8" refY="3" markerWidth="7" markerHeight="5" orient="auto-start-reverse"><path d="M0,0 L8,3 L0,6Z" fill="#444"/></marker>
+  <marker id="ag" viewBox="0 0 8 6" refX="8" refY="3" markerWidth="7" markerHeight="5" orient="auto-start-reverse"><path d="M0,0 L8,3 L0,6Z" fill="#22c55e"/></marker>
+  <marker id="ab" viewBox="0 0 8 6" refX="8" refY="3" markerWidth="7" markerHeight="5" orient="auto-start-reverse"><path d="M0,0 L8,3 L0,6Z" fill="#3b82f6"/></marker>
+  <marker id="ap" viewBox="0 0 8 6" refX="8" refY="3" markerWidth="7" markerHeight="5" orient="auto-start-reverse"><path d="M0,0 L8,3 L0,6Z" fill="#a855f7"/></marker>
+  <marker id="ao" viewBox="0 0 8 6" refX="8" refY="3" markerWidth="7" markerHeight="5" orient="auto-start-reverse"><path d="M0,0 L8,3 L0,6Z" fill="#f59e0b"/></marker>
+  <marker id="ar" viewBox="0 0 8 6" refX="8" refY="3" markerWidth="7" markerHeight="5" orient="auto-start-reverse"><path d="M0,0 L8,3 L0,6Z" fill="#ef4444"/></marker>
+  <marker id="at" viewBox="0 0 8 6" refX="8" refY="3" markerWidth="7" markerHeight="5" orient="auto-start-reverse"><path d="M0,0 L8,3 L0,6Z" fill="#06b6d4"/></marker>
+  <marker id="ay" viewBox="0 0 8 6" refX="8" refY="3" markerWidth="7" markerHeight="5" orient="auto-start-reverse"><path d="M0,0 L8,3 L0,6Z" fill="#888"/></marker>
+  <!-- Glow -->
+  <filter id="glow"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+  <!-- Layer bg -->
+  <linearGradient id="layerBg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".02"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>
+</defs>
+
+<!-- ===== LAYER BACKGROUNDS ===== -->
+<rect x="0" y="0" width="960" height="70" rx="0" fill="#0a0b0c"/>
+<rect x="0" y="70" width="960" height="80" rx="0" fill="#060806"/>
+<rect x="0" y="150" width="960" height="155" rx="0" fill="#08090e"/>
+<rect x="0" y="305" width="960" height="160" rx="0" fill="#0a080e"/>
+<rect x="0" y="465" width="960" height="175" rx="0" fill="#0c0a06"/>
+<rect x="0" y="640" width="960" height="320" rx="0" fill="#080a0c"/>
+
+<!-- ===== LAYER LABELS ===== -->
+<text x="16" y="22" fill="#444" font-size="10" font-weight="700" letter-spacing="2.5">CLIENT</text>
+<text x="16" y="90" fill="#1a4a1a" font-size="10" font-weight="700" letter-spacing="2.5">ENTRY POINT</text>
+<text x="16" y="170" fill="#1a2a5a" font-size="10" font-weight="700" letter-spacing="2.5">ROUTING</text>
+<text x="16" y="325" fill="#2a1a4a" font-size="10" font-weight="700" letter-spacing="2.5">BUSINESS LOGIC</text>
+<text x="16" y="485" fill="#3a2a0a" font-size="10" font-weight="700" letter-spacing="2.5">DATA &amp; API</text>
+<text x="16" y="660" fill="#0a2a3a" font-size="10" font-weight="700" letter-spacing="2.5">PRESENTATION</text>
+
+<!-- ================== CLIENT ================== -->
+<g class="node" data-tip="Browser|htmx for SPA navigation (X-SPA-Nav header), SSE streams for sync progress, View Transitions API, WebGPU/WebGL glass rendering, service worker for offline caching">
+  <rect x="340" y="30" width="280" height="34" rx="17" fill="#161618" stroke="#333" stroke-width="1"/>
+  <text x="480" y="52" text-anchor="middle" fill="#aaa" font-size="12" font-weight="500">Browser  —  htmx · WebGPU · SSE</text>
+</g>
+
+<!-- ================== ENTRY POINT ================== -->
+<g class="node" data-tip="main.py — 199 lines|FastAPI app, lifespan (init DB, start scheduler, build CSS/JS bundle, auto-resolve Xbox identity from API), Brotli compression middleware, security headers (CSP, X-Frame, Referrer-Policy), cache-control for static files (immutable with ?v= hash), service worker route, registers all 7 routers">
+  <rect x="300" y="95" width="360" height="40" rx="8" fill="#0b1f0b" stroke="#22c55e" stroke-width="1.8" filter="url(#glow)"/>
+  <text x="480" y="112" text-anchor="middle" fill="#4ade80" font-size="13" font-weight="700">main.py</text>
+  <text x="480" y="126" text-anchor="middle" fill="#2d6b2d" font-size="9.5">FastAPI · Brotli · CSP · cache headers · lifespan · 199L</text>
+</g>
+
+<!-- browser ↔ main -->
+<line x1="480" y1="64" x2="480" y2="95" stroke="#444" stroke-width="1.2" marker-end="url(#a)"/>
+<text x="502" y="82" fill="#555" font-size="8">HTTP</text>
+
+<!-- ================== ROUTERS ================== -->
+<!-- Row 1: page-rendering routers -->
+<g class="node" data-tip="routers/pages.py — 194 lines|7 full-page routes: / (dashboard with stats + heatmap), /library (table + grid views), /game/{id} (hero + tracking + achievements), /timeline (events + heatmap + sidebar), /achievements (browse grid + stats), /captures (screenshots by game), /friends. All use asyncio.gather for parallel DB queries.">
+  <rect x="46" y="190" width="122" height="40" rx="6" fill="#0c1530" stroke="#3b82f6" stroke-width="1.5"/>
+  <text x="107" y="207" text-anchor="middle" fill="#60a5fa" font-size="11.5" font-weight="600">pages.py</text>
+  <text x="107" y="222" text-anchor="middle" fill="#3a5a8a" font-size="8.5">7 full pages · 194L</text>
+</g>
+
+<g class="node" data-tip="routers/library.py — 97 lines|/api/library/table (htmx tbody swap + OOB pagination), /api/library/grid (card grid partial), /api/export/csv, /api/export/json. All use LibraryFilters dependency injection.">
+  <rect x="180" y="190" width="110" height="40" rx="6" fill="#0c1530" stroke="#3b82f6" stroke-width="1.5"/>
+  <text x="235" y="207" text-anchor="middle" fill="#60a5fa" font-size="11.5" font-weight="600">library.py</text>
+  <text x="235" y="222" text-anchor="middle" fill="#3a5a8a" font-size="8.5">table/grid/export · 97L</text>
+</g>
+
+<g class="node" data-tip="routers/game.py — 83 lines|/api/timeline/events (Load More htmx partial), /api/heatmap (year/rolling partial), PUT /api/game/{id}/tracking (status, notes, date, rating update)">
+  <rect x="302" y="190" width="110" height="40" rx="6" fill="#0c1530" stroke="#3b82f6" stroke-width="1.5"/>
+  <text x="357" y="207" text-anchor="middle" fill="#60a5fa" font-size="11.5" font-weight="600">game.py</text>
+  <text x="357" y="222" text-anchor="middle" fill="#3a5a8a" font-size="8.5">timeline/tracking · 83L</text>
+</g>
+
+<g class="node" data-tip="routers/captures.py — 78 lines|/api/captures/grid (paginated htmx partial), /api/captures/game/{id} (expand game screenshots), /api/captures/download (CDN proxy — streams Xbox CDN image through server for same-origin download)">
+  <rect x="424" y="190" width="120" height="40" rx="6" fill="#0c1530" stroke="#3b82f6" stroke-width="1.5"/>
+  <text x="484" y="207" text-anchor="middle" fill="#60a5fa" font-size="11.5" font-weight="600">captures.py</text>
+  <text x="484" y="222" text-anchor="middle" fill="#3a5a8a" font-size="8.5">CDN proxy · 78L</text>
+</g>
+
+<!-- Row 2: API-only routers -->
+<g class="node" data-tip="routers/sync_routes.py — 83 lines|POST /api/sync (unified 4-phase SSE stream), POST /api/sync/full (library only), POST /api/sync/game/{id} (single game), POST /api/sync/screenshots (captures SSE), GET /api/sync/status, sync failures CRUD, blurhash backfill trigger">
+  <rect x="556" y="190" width="130" height="40" rx="6" fill="#0c1530" stroke="#3b82f6" stroke-width="1.5"/>
+  <text x="621" y="207" text-anchor="middle" fill="#60a5fa" font-size="11.5" font-weight="600">sync_routes.py</text>
+  <text x="621" y="222" text-anchor="middle" fill="#3a5a8a" font-size="8.5">SSE sync · 83L</text>
+</g>
+
+<g class="node" data-tip="routers/stats.py — 72 lines|GET /api/stats (dashboard JSON), /api/rate-limit, /api/games/index (MiniSearch JSON), /api/activity/month (heatmap click detail), /api/scheduler (status/pause/resume), /api/random-backlog (random backlog game pick)">
+  <rect x="698" y="190" width="110" height="40" rx="6" fill="#0c1530" stroke="#3b82f6" stroke-width="1.5"/>
+  <text x="753" y="207" text-anchor="middle" fill="#60a5fa" font-size="11.5" font-weight="600">stats.py</text>
+  <text x="753" y="222" text-anchor="middle" fill="#3a5a8a" font-size="8.5">JSON APIs · 72L</text>
+</g>
+
+<g class="node" data-tip="routers/friends.py — 26 lines|POST /api/friends/refresh — fetches friends list from Xbox API, upserts to DB, returns count. Handles rate limit errors with 429 response.">
+  <rect x="820" y="190" width="100" height="40" rx="6" fill="#0c1530" stroke="#3b82f6" stroke-width="1.5"/>
+  <text x="870" y="207" text-anchor="middle" fill="#60a5fa" font-size="11.5" font-weight="600">friends.py</text>
+  <text x="870" y="222" text-anchor="middle" fill="#3a5a8a" font-size="8.5">refresh · 26L</text>
+</g>
+
+<!-- main → routers: single fan-out line + annotation -->
+<path d="M480,135 L480,160 M480,160 L107,190 M480,160 L235,190 M480,160 L357,190 M480,160 L484,190 M480,160 L621,190 M480,160 L753,190 M480,160 L870,190" fill="none" stroke="#1a5c1a" stroke-width="1" marker-end="url(#ag)"/>
+<text x="430" y="158" fill="#2d6b2d" font-size="8.5">include_router()</text>
+
+<!-- ================== BUSINESS LOGIC ================== -->
+<g class="node" data-tip="helpers.py — 449 lines|Jinja2 filters: playtime, shortdate, timeago, fromjson. Template globals: static_url (cache-bust), css_bundle_url. page_ctx() — common context for all pages (rate_used, last_sync, gamerpic, reads xbox_api.GAMERTAG live). LibraryFilters dataclass + FastAPI dependency. group_events_by_month() with achievement batching. build_heatmap_grid() (week×7 grid with quartile intensity). sse_response() wrapper. normalize_image_url(). CSS + JS bundle build.">
+  <rect x="46" y="350" width="230" height="50" rx="8" fill="#180d30" stroke="#a855f7" stroke-width="1.8"/>
+  <text x="161" y="370" text-anchor="middle" fill="#c084fc" font-size="13" font-weight="600">helpers.py</text>
+  <text x="161" y="386" text-anchor="middle" fill="#6b4a9a" font-size="9.5">filters · page_ctx · bundle · 449L</text>
+</g>
+
+<g class="node" data-tip="sync/ — 6 modules (~815L total)|core.py (78L) — sync_guard mutex, budget fitting, fire_and_forget|orchestrator.py (207L) — unified 4-phase SSE stream (library → games → friends → captures)|games.py (206L) — full library sync, per-game detail, change detection|achievements.py (121L) — achievement sync helpers, bulk upsert|profile.py (67L) — profile sync, friends sync, blurhash backfill|screenshots.py (115L) — paginated screenshot sync">
+  <rect x="310" y="350" width="240" height="50" rx="8" fill="#180d30" stroke="#a855f7" stroke-width="1.8"/>
+  <text x="430" y="370" text-anchor="middle" fill="#c084fc" font-size="13" font-weight="600">sync/</text>
+  <text x="430" y="386" text-anchor="middle" fill="#6b4a9a" font-size="9.5">6 modules · SSE streaming · change detection · 815L</text>
+</g>
+
+<g class="node" data-tip="scheduler.py — 182 lines|APScheduler AsyncIOScheduler (UTC) with 4 periodic jobs:|• library_sync — every 4h, 2 API calls|• detail_sync — every 2h (offset 1h), smart change detection, 50% budget cap|• friends_sync — every 30m, 1 API call|• db_optimize — every 6h, PRAGMA optimize|All jobs skip if manual sync running or insufficient budget.">
+  <rect x="586" y="350" width="220" height="50" rx="8" fill="#180d30" stroke="#a855f7" stroke-width="1.8"/>
+  <text x="696" y="370" text-anchor="middle" fill="#c084fc" font-size="13" font-weight="600">scheduler.py</text>
+  <text x="696" y="386" text-anchor="middle" fill="#6b4a9a" font-size="9.5">APScheduler · 4h/2h/30m/6h jobs · 182L</text>
+</g>
+
+<g class="node" data-tip="models.py|SyncResult: success, message, games_updated, api_calls_used|TrackingUpdate: status, notes, finished_date, rating">
+  <rect x="840" y="358" width="90" height="34" rx="6" fill="#1a1a1a" stroke="#525252" stroke-width="1"/>
+  <text x="885" y="375" text-anchor="middle" fill="#888" font-size="10" font-weight="500">models.py</text>
+  <text x="885" y="386" text-anchor="middle" fill="#555" font-size="8">Pydantic</text>
+</g>
+
+<!-- Routers → helpers (page routes render templates via helpers.templates) -->
+<path d="M107,230 Q107,290 130,350" fill="none" stroke="#3b82f666" stroke-width="1.2" marker-end="url(#ab)"/>
+<path d="M235,230 Q200,290 175,350" fill="none" stroke="#3b82f644" stroke-width="1" marker-end="url(#ab)"/>
+<path d="M357,230 Q300,290 220,350" fill="none" stroke="#3b82f644" stroke-width="1" marker-end="url(#ab)"/>
+<path d="M484,230 Q400,290 250,350" fill="none" stroke="#3b82f633" stroke-width="1" marker-end="url(#ab)"/>
+<text x="68" y="282" fill="#3b82f666" font-size="8.5" font-weight="500">templates + filters</text>
+
+<!-- Routers → sync (sync_routes only) -->
+<path d="M621,230 Q570,290 480,350" fill="none" stroke="#3b82f666" stroke-width="1.2" marker-end="url(#ab)"/>
+<text x="570" y="278" fill="#3b82f666" font-size="8.5" font-weight="500">SSE generators</text>
+
+<!-- Scheduler → sync (background calls) -->
+<path d="M610,375 L550,375" fill="none" stroke="#a855f744" stroke-width="1.2" stroke-dasharray="5,3" marker-end="url(#ap)"/>
+<text x="580" y="368" fill="#a855f744" font-size="8">background</text>
+
+<!-- main → scheduler (startup) -->
+<path d="M660,130 Q730,240 700,350" fill="none" stroke="#22c55e33" stroke-width="1" stroke-dasharray="5,3" marker-end="url(#ag)"/>
+<text x="718" y="248" fill="#22c55e44" font-size="8" transform="rotate(-70,718,248)">startup</text>
+
+<!-- main → helpers (startup: register filters, build CSS) -->
+<path d="M300,130 Q180,240 165,350" fill="none" stroke="#22c55e33" stroke-width="1" stroke-dasharray="5,3" marker-end="url(#ag)"/>
+<text x="208" y="248" fill="#22c55e44" font-size="8" transform="rotate(-80,208,248)">startup</text>
+
+<!-- ================== DATA & API ================== -->
+<g class="node" data-tip="database/ — 13 modules (~1563L total)|connection.py (39L) — aiosqlite pool, WAL mode, PRAGMA tuning|setup.py (214L) — schema creation, idempotent migrations|games.py (321L) — upsert (preserves manual tracking), queries, stats|achievements.py (205L) — upsert, progress tracking, pagination|stats.py (203L) — dashboard stats, rarity stats, page context (cached)|timeline.py (205L) — UNION ALL query (3 event types)|heatmap.py (80L) — activity grid by month/year|screenshots.py (166L) — captures grouped by game|friends.py (95L) — upsert, presence queries|sync.py (51L) — sync log create/update, failure tracking|rate_limit.py (47L) — in-memory counter, budget check, header sync|cache.py (31L) — thread-safe TTL cache (monotonic time)|settings.py (15L) · validators.py (23L)">
+  <rect x="100" y="510" width="330" height="54" rx="8" fill="#1a1400" stroke="#f59e0b" stroke-width="1.8" filter="url(#glow)"/>
+  <text x="265" y="530" text-anchor="middle" fill="#fbbf24" font-size="14" font-weight="700">database/</text>
+  <text x="265" y="546" text-anchor="middle" fill="#8b6b14" font-size="9.5">13 modules · SQLite WAL · 9 tables · TTL cache · 1563L</text>
+</g>
+
+<g class="node" data-tip="xbox_api.py — 217 lines|Shared httpx.AsyncClient with 30s timeout. OpenXBL API v2 (xbl.io).|resolve_identity() — called at startup to auto-fetch XUID + gamertag from /account (only OPENXBL_API_KEY required in .env).|Every request: checks can_make_requests() budget → GET → logs call to rate_limit_log.|Endpoints: /player/titleHistory (game list), /achievements/stats (minutes played), /achievements/title (rarity data, paginated), /achievements/player (progress, paginated), /achievements/x360 (legacy), /friends, /dvr/screenshots (paginated), /account (profile/gamerpic).|Rate limit: 150/hour, budget of 145 with 5-call buffer.">
+  <rect x="510" y="510" width="290" height="54" rx="8" fill="#1a0808" stroke="#ef4444" stroke-width="1.8" filter="url(#glow)"/>
+  <text x="655" y="530" text-anchor="middle" fill="#f87171" font-size="14" font-weight="700">xbox_api.py</text>
+  <text x="655" y="546" text-anchor="middle" fill="#8b3a3a" font-size="9.5">httpx async · OpenXBL v2 · identity resolve · 217L</text>
+</g>
+
+<!-- Utilities (inline with data layer) -->
+<g class="node" data-tip="logging_config.py — 34 lines|JSON structured logging for production, text format for dev. Called once at startup from main.py.">
+  <rect x="840" y="510" width="90" height="26" rx="4" fill="#141414" stroke="#3f3f46" stroke-width="1"/>
+  <text x="885" y="527" text-anchor="middle" fill="#71717a" font-size="9">logging_config</text>
+</g>
+<g class="node" data-tip="blurhash_utils.py — 21 lines|encode_from_bytes(image_bytes) → blurhash string. Uses Pillow to resize (32px) + pure-Python blurhash encoder. Called by sync.py backfill_blurhashes() for image placeholders.">
+  <rect x="840" y="542" width="90" height="26" rx="4" fill="#141414" stroke="#3f3f46" stroke-width="1"/>
+  <text x="885" y="559" text-anchor="middle" fill="#71717a" font-size="9">blurhash_utils</text>
+</g>
+
+<!-- helpers → database -->
+<path d="M161,400 L220,510" fill="none" stroke="#a855f755" stroke-width="1.2" marker-end="url(#ap)"/>
+<text x="170" y="448" fill="#a855f755" font-size="8" transform="rotate(-60,170,448)">page_ctx queries</text>
+
+<!-- sync → database -->
+<path d="M380,400 L310,510" fill="none" stroke="#a855f755" stroke-width="1.2" marker-end="url(#ap)"/>
+<text x="320" y="450" fill="#a855f755" font-size="8" transform="rotate(-70,320,450)">upsert · read</text>
+
+<!-- sync → xbox_api -->
+<path d="M480,400 L580,510" fill="none" stroke="#a855f755" stroke-width="1.2" marker-end="url(#ap)"/>
+<text x="550" y="448" fill="#a855f755" font-size="8" transform="rotate(60,550,448)">API calls</text>
+
+<!-- sync → blurhash -->
+<path d="M530,395 Q780,420 840,553" fill="none" stroke="#3f3f4644" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#ay)"/>
+
+<!-- scheduler → database -->
+<path d="M640,400 Q500,460 400,510" fill="none" stroke="#a855f733" stroke-width="1" stroke-dasharray="5,3" marker-end="url(#ap)"/>
+
+<!-- scheduler → xbox_api -->
+<path d="M730,400 Q700,460 680,510" fill="none" stroke="#a855f733" stroke-width="1" stroke-dasharray="5,3" marker-end="url(#ap)"/>
+
+<!-- routers → database (direct — stats, friends, captures) -->
+<path d="M753,230 Q810,400 430,530" fill="none" stroke="#3b82f622" stroke-width="1" stroke-dasharray="5,3" marker-end="url(#ab)"/>
+<path d="M870,230 Q900,430 790,530" fill="none" stroke="#3b82f622" stroke-width="1" stroke-dasharray="5,3" marker-end="url(#ab)"/>
+<text x="844" y="340" fill="#3b82f633" font-size="8" transform="rotate(70,844,340)">direct queries</text>
+
+<!-- captures.py → xbox_api (CDN proxy) -->
+<path d="M520,230 Q600,300 640,510" fill="none" stroke="#3b82f622" stroke-width="1" stroke-dasharray="5,3" marker-end="url(#ab)"/>
+
+<!-- friends.py → xbox_api (API call) -->
+<path d="M890,230 Q920,400 780,530" fill="none" stroke="#3b82f622" stroke-width="1" stroke-dasharray="5,3" marker-end="url(#ab)"/>
+
+<!-- xbox_api ↔ database (rate limit logging) -->
+<path d="M510,537 L430,537" fill="none" stroke="#ef444433" stroke-width="1.2" stroke-dasharray="3,3" marker-end="url(#ar)"/>
+<text x="470" y="530" text-anchor="middle" fill="#ef444444" font-size="8.5" font-weight="500">log_api_call()</text>
+
+<!-- Database / API → external -->
+<g class="node" data-tip="data/xbox.db|SQLite database in WAL mode. 9 tables: games (20 columns), achievements (composite PK, rarity + progress), friends, screenshots, sync_log, rate_limit_log, settings, schema_migrations, sync_failures. 17 indexes for query performance.">
+  <rect x="180" y="588" width="150" height="34" rx="6" fill="#12100a" stroke="#f59e0b44" stroke-width="1"/>
+  <text x="255" y="610" text-anchor="middle" fill="#b48c30" font-size="11" font-weight="500">data/xbox.db  ~15 MB</text>
+</g>
+<line x1="255" y1="564" x2="255" y2="588" stroke="#f59e0b33" stroke-width="1.2" marker-end="url(#ao)"/>
+
+<g class="node" data-tip="OpenXBL API — xbl.io|Third-party Xbox Live data proxy. 150 requests/hour rate limit (shared across all endpoints). Provides: title history, achievement progress/rarity, friend presence, DVR screenshots, player profile. Some endpoints return paginated results (150/page for achievements, 100/page for screenshots).">
+  <rect x="560" y="588" width="180" height="34" rx="6" fill="#120808" stroke="#ef444444" stroke-width="1"/>
+  <text x="650" y="610" text-anchor="middle" fill="#dc5050" font-size="11" font-weight="500">OpenXBL API  xbl.io</text>
+</g>
+<line x1="650" y1="564" x2="650" y2="588" stroke="#ef444433" stroke-width="1.2" marker-end="url(#ar)"/>
+<text x="668" y="580" fill="#ef444433" font-size="8">150/hr</text>
+
+<!-- ================== PRESENTATION ================== -->
+<!-- Template hierarchy — evenly distributed across full width -->
+<g class="node" data-tip="templates/base.html|Layout shell for all pages. Contains: nav bar (6 links: Profile, Library, Achievements, Timeline, Captures, Friends), rate limit badge, theme toggle (light/dark/OLED), CSS bundle link, script tags (htmx, Chart.js, MiniSearch, hotkeys, confetti, Lenis, glass renderers, app.js), aurora background container, service worker registration, toast container.">
+  <rect x="20" y="700" width="200" height="44" rx="6" fill="#0a1820" stroke="#06b6d4" stroke-width="1.5"/>
+  <text x="120" y="717" text-anchor="middle" fill="#22d3ee" font-size="12" font-weight="600">base.html</text>
+  <text x="120" y="733" text-anchor="middle" fill="#155e75" font-size="9">Layout · nav · theme · scripts</text>
+</g>
+
+<g class="node" data-tip="macros.html — 9 reusable Jinja2 macros|icon(name) — SVG sprite reference from icons.svg|stat_card(value, label) — animated counter card with call block|device_tags(devices) — platform badges (PC, XboxSeries, etc.)|gamerscore_display(current, total) — formatted GS with maxed state|progress_bar(pct) — styled track with percentage|timeline_event_card(event) — achievement/completion/first-played cards|capture_card(s) — screenshot thumbnail with lightbox|pagination(page, total) — htmx-powered page nav with OOB swap|achievement_card(ach) — unlock status, rarity badge, gamerscore">
+  <rect x="260" y="700" width="200" height="44" rx="6" fill="#0a1820" stroke="#06b6d4" stroke-width="1.5"/>
+  <text x="360" y="717" text-anchor="middle" fill="#22d3ee" font-size="12" font-weight="600">macros.html</text>
+  <text x="360" y="733" text-anchor="middle" fill="#155e75" font-size="9">9 reusable components</text>
+</g>
+
+<g class="node" data-tip="9 page templates|index.html — dashboard (stat cards, charts, heatmap, completed games)|library.html — filterable table/grid with SVG defs for diamonds|game_detail.html — cinematic hero, tracking form, achievement grid|timeline.html — vertical timeline with filters, heatmap sidebar|achievements.html — browse grid with stats, rarity breakdown|captures.html — screenshot gallery by game|friends.html — presence cards sorted by online status|error.html — exception handler page|404.html — not found page">
+  <rect x="500" y="700" width="200" height="44" rx="6" fill="#0a1820" stroke="#06b6d488" stroke-width="1.5"/>
+  <text x="600" y="717" text-anchor="middle" fill="#22d3ee" font-size="12" font-weight="600">9 page templates</text>
+  <text x="600" y="733" text-anchor="middle" fill="#155e75" font-size="9">{% extends "base.html" %}</text>
+</g>
+
+<g class="node" data-tip="8 htmx partials|library_table.html — tbody rows + OOB pagination swap|library_grid.html — game cards for grid view|timeline_events.html — event groups + OOB load-more button|game_achievements.html — achievement cards for game detail|achievements_grid.html — filtered achievement browse grid|achievements_card.html — single achievement card partial|captures_grid.html — paginated screenshot grid|captures_game_expand.html — expanded game screenshots|heatmap_content.html — heatmap grid for year/rolling switch">
+  <rect x="740" y="700" width="200" height="44" rx="6" fill="#0a1820" stroke="#06b6d488" stroke-width="1.5"/>
+  <text x="840" y="717" text-anchor="middle" fill="#22d3ee" font-size="12" font-weight="600">8 htmx partials</text>
+  <text x="840" y="733" text-anchor="middle" fill="#155e75" font-size="9">{% from "macros.html" %}</text>
+</g>
+
+<!-- Template relationships — all routed below boxes -->
+<!-- extends: page templates → base.html -->
+<path d="M500,735 Q340,780 220,735" fill="none" stroke="#06b6d433" stroke-width="1.2" marker-end="url(#at)"/>
+<text x="350" y="775" fill="#06b6d455" font-size="9" font-weight="500">extends</text>
+<!-- imports macros: page templates → macros.html -->
+<path d="M520,744 Q470,768 460,735" fill="none" stroke="#06b6d433" stroke-width="1" marker-end="url(#at)"/>
+<!-- imports macros: htmx partials → macros.html -->
+<path d="M760,744 Q580,790 460,735" fill="none" stroke="#06b6d433" stroke-width="1" marker-end="url(#at)"/>
+<text x="620" y="787" fill="#06b6d444" font-size="8.5">imports macros</text>
+
+<!-- Routers → templates (render response) -->
+<path d="M107,230 Q20,455 40,700" fill="none" stroke="#06b6d433" stroke-width="1.2" marker-end="url(#at)"/>
+<text x="20" y="440" fill="#06b6d444" font-size="8" transform="rotate(-85,20,440)">TemplateResponse</text>
+
+<!-- Templates → browser (HTML response cycle) -->
+<path d="M600,700 Q700,680 840,680 Q945,680 945,47 L620,47" fill="none" stroke="#44444433" stroke-width="1" stroke-dasharray="6,4" marker-end="url(#a)"/>
+<text x="938" y="360" fill="#44444455" font-size="8.5" transform="rotate(90,938,360)">HTML / htmx swap</text>
+
+<!-- Static assets row — evenly spaced -->
+<g class="node" data-tip="static/js/app.js — built from src/ (17 modules, 3388L total)|src/: animations, blurhash, captures, charts, cmd-palette, heatmap, init, library, lightbox, nav, reveal, sync, theme, timeline, toast, tracking, utils|Theme system (light/dark/OLED), fluent reveal highlight, scroll animations (IntersectionObserver + DOM-order stagger), tab switch transitions (View Transitions API), Chart.js (donut + bar), MiniSearch command palette (Ctrl+K), SSE sync progress, lightbox, heatmap calendar picker, Lenis smooth scrolling">
+  <rect x="20" y="810" width="170" height="34" rx="5" fill="#111" stroke="#475569" stroke-width="1"/>
+  <text x="105" y="831" text-anchor="middle" fill="#94a3b8" font-size="10.5" font-weight="500">app.js · src/ · 17 modules</text>
+</g>
+
+<g class="node" data-tip="GPU glass rendering pipeline|glass-webgpu.js (1438L) — primary WebGPU renderer|glass.js (1217L) — WebGL2 fallback|Aurora: quarter-res mesh gradient, 5 blobs, Kawase blur|Glass panels: instanced quads, z-sorted, per-panel tier config|Shader: SDF → Snell's law → Fresnel → chromatic aberration → Beer's law → specular → caustics → IGN grain|Physical constants: IOR 1.52 (BK7), F0 0.04, real BK7 dispersion ratios">
+  <rect x="206" y="810" width="200" height="34" rx="5" fill="#111" stroke="#475569" stroke-width="1"/>
+  <text x="306" y="831" text-anchor="middle" fill="#94a3b8" font-size="10.5" font-weight="500">glass-webgpu.js + glass.js</text>
+</g>
+
+<g class="node" data-tip="CSS bundle — 16 domain files + 1 vendor|Built at startup by helpers.build_css_bundle(). Files concatenated in order: tokens → base → layout → animations → library → profile → game-detail → achievements → timeline → friends → captures → heatmap → toast → palette → responsive → overhaul → vendor/lenis.css. Output: bundle.css with mtime-based cache-busting (?v=timestamp). Auto-rebuilt in dev mode via CSS watcher.">
+  <rect x="422" y="810" width="200" height="34" rx="5" fill="#111" stroke="#475569" stroke-width="1"/>
+  <text x="522" y="831" text-anchor="middle" fill="#94a3b8" font-size="10.5" font-weight="500">CSS bundle · 17 source files</text>
+</g>
+
+<g class="node" data-tip="Vendor libraries (CDN-free, self-hosted)|htmx.min.js — SPA-like navigation, htmx swaps, OOB updates|chart.umd.min.js — Chart.js for donut + bar charts|minisearch.min.js — client-side fuzzy search for command palette|confetti.browser.min.js — celebration animation on 100% completion|hotkeys.min.js — keyboard shortcut handling|lenis.min.js + lenis.css — smooth scrolling">
+  <rect x="638" y="810" width="150" height="34" rx="5" fill="#111" stroke="#475569" stroke-width="1"/>
+  <text x="713" y="831" text-anchor="middle" fill="#94a3b8" font-size="10.5" font-weight="500">vendor/ · 6 libraries</text>
+</g>
+
+<g class="node" data-tip="icons.svg — SVG sprite sheet|Icon definitions referenced via macros.html icon() macro. Includes: trophy, lock, star, controller, clock, chart, friends, camera, filter, search, sync, settings, and more.">
+  <rect x="804" y="810" width="136" height="34" rx="5" fill="#111" stroke="#475569" stroke-width="1"/>
+  <text x="872" y="831" text-anchor="middle" fill="#94a3b8" font-size="10.5" font-weight="500">icons.svg sprite</text>
+</g>
+
+<!-- base.html loads all static assets -->
+<path d="M120,744 L120,795 Q120,802 127,806 L140,810" fill="none" stroke="#47556933" stroke-width="1" marker-end="url(#ay)"/>
+
+<!-- ===== ANNOTATIONS (key data flows) ===== -->
+<!-- Request lifecycle annotation -->
+<rect x="756" y="95" width="175" height="46" rx="6" fill="#0d0d12" stroke="#27272a" stroke-width="1"/>
+<text x="843" y="110" text-anchor="middle" fill="#71717a" font-size="9" font-weight="600">Request lifecycle</text>
+<text x="843" y="123" text-anchor="middle" fill="#52525b" font-size="8">Browser → main → router</text>
+<text x="843" y="134" text-anchor="middle" fill="#52525b" font-size="8">→ db/api → template → Browser</text>
+
+</svg>
+
+<script>
+const tooltip = document.getElementById('tooltip');
+document.querySelectorAll('.node').forEach(node => {
+  node.style.cursor = 'default';
+  node.addEventListener('mouseenter', e => {
+    const tip = node.dataset.tip;
+    if (!tip) return;
+    const [title, ...rest] = tip.split('|');
+    tooltip.innerHTML = `<div class="tt-title">${title}</div>` +
+      (rest.length ? `<div class="tt-detail">${rest.join('<br>')}</div>` : '');
+    tooltip.classList.add('show');
+  });
+  node.addEventListener('mousemove', e => {
+    const pad = 16;
+    let x = e.clientX + pad, y = e.clientY + pad;
+    const r = tooltip.getBoundingClientRect();
+    if (x + r.width > window.innerWidth) x = e.clientX - r.width - pad;
+    if (y + r.height > window.innerHeight) y = e.clientY - r.height - pad;
+    tooltip.style.left = x + 'px';
+    tooltip.style.top = y + 'px';
+  });
+  node.addEventListener('mouseleave', () => tooltip.classList.remove('show'));
+});
+</script>
+</body>
+</html>

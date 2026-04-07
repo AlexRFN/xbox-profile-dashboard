@@ -1,0 +1,411 @@
+/* Xbox Dashboard — animations */
+
+/* ========== Page Transitions ========== */
+/* No animation/transform/opacity on <main> — keeps it free of stacking contexts
+   so children's backdrop-filter (glass cards) can reach through to the aurora.
+   Two modes — same per-element stagger, different axis:
+     Fresh load  → vertical (rise/drop/pop as defined below)
+     Tab switch  → horizontal (swap Y for X via --dir-x on main) */
+
+/* Tab switch direction: per-element class applied by JS to above-fold leaders only.
+   Scroll-revealed elements never receive this, so they always animate vertically.
+   .scroll-ready prefix needed to beat the hidden-state rules (0,3,0 > 0,2,0). */
+.tab-enter-forward { --dir-x: var(--slide-distance); }
+.tab-enter-back    { --dir-x: calc(var(--slide-distance) * -1); }
+
+.scroll-ready .tab-enter-forward.anim-blur-rise,  .scroll-ready .tab-enter-back.anim-blur-rise,
+.scroll-ready .tab-enter-forward.anim-blur-scale, .scroll-ready .tab-enter-back.anim-blur-scale,
+.scroll-ready .tab-enter-forward.anim-slide-blur, .scroll-ready .tab-enter-back.anim-slide-blur,
+.scroll-ready .tab-enter-forward.anim-drop,       .scroll-ready .tab-enter-back.anim-drop,
+.scroll-ready .tab-enter-forward.anim-pop,        .scroll-ready .tab-enter-back.anim-pop {
+    transform: translateX(var(--dir-x)) scale(var(--scale-rise));
+}
+.scroll-ready .tab-enter-forward.anim-grow, .scroll-ready .tab-enter-back.anim-grow {
+    transform: translateX(var(--dir-x)) scale(var(--scale-rise));
+    clip-path: none;
+}
+
+/* Exit direction: opposite to entrance — elements slide OUT.
+   Going forward → exit left; going back → exit right. */
+main.tab-exit-forward { --exit-x: calc(var(--slide-distance) * -1); }
+main.tab-exit-back    { --exit-x: var(--slide-distance); }
+
+/* Override animate-in state — forces elements to exit position.
+   .scroll-ready needed for specificity parity with the animate-in rules. */
+.scroll-ready main[class*="tab-exit"] .anim-blur-rise.animate-in,
+.scroll-ready main[class*="tab-exit"] .anim-blur-scale.animate-in,
+.scroll-ready main[class*="tab-exit"] .anim-slide-blur.animate-in,
+.scroll-ready main[class*="tab-exit"] .anim-drop.animate-in,
+.scroll-ready main[class*="tab-exit"] .anim-pop.animate-in {
+    transform: translateX(var(--exit-x)) scale(var(--scale-rise));
+    opacity: 0;
+}
+.scroll-ready main[class*="tab-exit"] .anim-grow.animate-in {
+    transform: translateX(var(--exit-x)) scale(var(--scale-rise));
+    clip-path: none;
+    opacity: 0;
+}
+
+/* ========== Fluent Reveal Highlight — Size-Aware Physics ========== */
+/* Small elements (buttons): tight, intense → pop out */
+/* Medium elements (cards, rows): balanced */
+/* Large elements (friend cards, articles): wide, soft wash */
+
+.reveal-item {
+    position: relative;
+    overflow: hidden;
+    --reveal-r: 140px;
+    --reveal-intensity: 0.95;
+    --reveal-mid: 0.55;
+    --reveal-tail: 0.25;
+    --reveal-border-peak: 0.65;
+    transition: border-color var(--dur-normal) var(--ease-effect), box-shadow var(--dur-normal) var(--ease-effect);
+}
+
+/* Size presets */
+.reveal-item.reveal-sm   { --reveal-intensity: 1.0; --reveal-mid: 0.65; --reveal-tail: 0.30; --reveal-border-peak: 0.85; }
+.reveal-item.reveal-lg   { --reveal-intensity: 0.80; --reveal-mid: 0.45; --reveal-tail: 0.20; --reveal-border-peak: 0.50; }
+
+/* Auto-size by element type — cards */
+.stat-card.reveal-item           { --reveal-intensity: 0.95; --reveal-mid: 0.55; --reveal-tail: 0.25; --reveal-border-peak: 0.65; }
+.friend-card.reveal-item         { --reveal-intensity: 0.80; --reveal-mid: 0.45; --reveal-tail: 0.20; --reveal-border-peak: 0.50; }
+.timeline-event-card.reveal-item { --reveal-intensity: 0.90; --reveal-mid: 0.52; --reveal-tail: 0.22; --reveal-border-peak: 0.55; }
+.playing-game-card.reveal-item,
+.completed-game-card.reveal-item { --reveal-intensity: 0.90; --reveal-mid: 0.52; --reveal-tail: 0.24; --reveal-border-peak: 0.55; }
+.capture-card.reveal-item        { --reveal-intensity: 1.0;  --reveal-mid: 0.60; --reveal-tail: 0.28; --reveal-border-peak: 0.70; }
+.lib-grid-card.reveal-item       { --reveal-intensity: 0.95; --reveal-mid: 0.55; --reveal-tail: 0.25; --reveal-border-peak: 0.65; }
+
+/* Auto-size — interactive elements (auto-inited by JS) */
+.nav-link.reveal-item            { --reveal-intensity: 1.0;  --reveal-mid: 0.60; --reveal-tail: 0.28; }
+.nav-profile-chip.reveal-item   { --reveal-intensity: 0.95; --reveal-mid: 0.55; --reveal-tail: 0.25; }
+.view-btn.reveal-item            { --reveal-intensity: 1.0;  --reveal-mid: 0.60; --reveal-tail: 0.28; }
+button.outline.reveal-item,
+a.outline.reveal-item            { --reveal-intensity: 0.95; --reveal-mid: 0.55; --reveal-tail: 0.25; }
+.quick-nav-pill.reveal-item      { --reveal-intensity: 1.0;  --reveal-mid: 0.60; --reveal-tail: 0.28; --reveal-border-peak: 0.75; }
+.hm-tab.reveal-item              { --reveal-intensity: 0.95; --reveal-mid: 0.55; --reveal-tail: 0.25; --reveal-border-peak: 0.65; }
+.hm-year-btn.reveal-item         { --reveal-intensity: 1.0;  --reveal-mid: 0.60; --reveal-tail: 0.28; --reveal-border-peak: 0.75; }
+.theme-toggle.reveal-item        { --reveal-intensity: 1.0;  --reveal-mid: 0.65; --reveal-tail: 0.30; }
+.rate-limit-badge.reveal-item    { --reveal-intensity: 0.95; --reveal-mid: 0.55; --reveal-tail: 0.25; }
+.library-filter-input.reveal-item { --reveal-intensity: 0.85; --reveal-mid: 0.45; --reveal-tail: 0.20; --reveal-border-peak: 0.50; }
+.ach-card.reveal-item            { --reveal-intensity: 0.75; --reveal-mid: 0.40; --reveal-tail: 0.18; --reveal-border-peak: 0.45; }
+.rarity-strip-item.reveal-item  { --reveal-intensity: 0.80; --reveal-mid: 0.42; --reveal-tail: 0.18; --reveal-border-peak: 0.45; }
+.captures-game-header.reveal-item { --reveal-intensity: 0.80; --reveal-mid: 0.42; --reveal-tail: 0.18; --reveal-border-peak: 0.45; }
+
+.reveal-item::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(
+        circle farthest-corner at var(--reveal-x, -200px) var(--reveal-y, -200px),
+        rgba(150, 255, 200, var(--reveal-intensity)) 0%,
+        rgba(0, 255, 128, var(--reveal-mid)) 35%,
+        rgba(0, 210, 106, var(--reveal-tail)) 70%,
+        transparent 100%
+    );
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity var(--dur-slow) var(--ease-effect);
+    z-index: 1;
+    border-radius: inherit;
+}
+
+.reveal-item:hover::before {
+    opacity: 1;
+    transition: opacity var(--dur-fast) var(--ease-exit);
+}
+
+/* Directional inset rim — light spills from cursor direction */
+.reveal-item:hover {
+    box-shadow:
+        inset var(--rim-x, 0px) var(--rim-y, 0px) 28px rgba(0, 255, 128, 0.18),
+        inset 0 0 1px rgba(0, 255, 128, 0.25);
+}
+
+[data-theme="light"] .reveal-item:hover {
+    box-shadow:
+        inset var(--rim-x, 0px) var(--rim-y, 0px) 28px rgba(14, 158, 60, 0.12),
+        inset 0 0 1px rgba(14, 158, 60, 0.20);
+}
+
+/* Rim lighting — cursor-tracked border glow on all reveal-items */
+.reveal-item::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    border: 2px solid transparent;
+    background: radial-gradient(
+        circle farthest-corner at var(--reveal-x, -200px) var(--reveal-y, -200px),
+        rgba(200, 255, 230, var(--reveal-border-peak)) 0%,
+        rgba(0, 255, 128, 0.30) 40%,
+        rgba(0, 210, 106, 0.12) 70%,
+        transparent 100%
+    ) border-box;
+    -webkit-mask: linear-gradient(#fff 0 0) padding-box, linear-gradient(#fff 0 0);
+    mask: linear-gradient(#fff 0 0) padding-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity var(--dur-slow) var(--ease-effect);
+    z-index: 2;
+}
+
+.reveal-item:hover::after {
+    opacity: 1;
+    transition: opacity var(--dur-fast) var(--ease-exit);
+}
+
+/* ========== Scroll-triggered Animations ========== */
+/* All durations/easings use design tokens from tokens.css.
+   --dir-x (set via .enter-forward / .enter-back on main) adds a horizontal
+   sweep to the starting position without creating a stacking context. */
+
+/* Blur Rise: stat cards, chart cards */
+.scroll-ready .anim-blur-rise {
+    opacity: 0;
+    transform: translateY(var(--rise-distance)) scale(var(--scale-rise));
+    transition: opacity var(--dur-slow) var(--ease-out),
+                transform var(--dur-slow) var(--ease-spring-soft);
+}
+
+.scroll-ready .anim-blur-rise.animate-in {
+    opacity: 1;
+    transform: none;
+}
+/* Proximity scale: game rows shrink as they approach exit edges.
+   --edge-scale is set by JS scroll handler. Folded into transform so the
+   entrance animation lands directly at the edge-scaled size. */
+.scroll-ready .game-row.anim-blur-rise.animate-in {
+    transform: scale(var(--edge-scale, 1));
+}
+
+/* Scroll-reveal: flip direction for rows exiting/entering at the top.
+   :not(.animate-in) ensures this only sets the hidden state — animate-in's
+   transform:none still wins when both classes are present. */
+.scroll-ready .anim-blur-rise.reveal-top:not(.animate-in) {
+    transform: translateY(calc(var(--rise-distance) * -1)) scale(var(--scale-rise));
+}
+
+/* Blur Scale: hero sections */
+.scroll-ready .anim-blur-scale {
+    opacity: 0;
+    transform: scale(var(--scale-hero));
+    transition: opacity var(--dur-slow) var(--ease-out),
+                transform var(--dur-slow) var(--ease-spring-soft);
+}
+
+.scroll-ready .anim-blur-scale.animate-in {
+    opacity: 1;
+    transform: none;
+}
+
+/* Slide: timeline events */
+.scroll-ready .anim-slide-blur {
+    opacity: 0;
+    transform: translateY(var(--push-distance));
+    transition: opacity var(--dur-normal) var(--ease-out),
+                transform var(--dur-normal) var(--ease-spring-soft);
+}
+
+.scroll-ready .anim-slide-blur.animate-in {
+    opacity: 1;
+    transform: none;
+}
+
+/* Stagger timeline events within each month group */
+.timeline-month .timeline-event-card.anim-slide-blur { transition-delay: calc(var(--i, 0) * var(--stagger)); }
+/* Dots are paired with their event cards — match the same stagger so they land together */
+.timeline-month .timeline-dot.anim-pop { transition-delay: calc(var(--i, 0) * var(--stagger)); }
+
+/* Drop: filter bars, page headers */
+.scroll-ready .anim-drop {
+    opacity: 0;
+    transform: translateY(calc(var(--drop-distance) * -1));
+    transition: opacity var(--dur-normal) var(--ease-out),
+                transform var(--dur-normal) var(--ease-enter);
+}
+
+.scroll-ready .anim-drop.animate-in {
+    opacity: 1;
+    transform: none;
+}
+
+/* Page headers: visible immediately — no entrance animation wait.
+   LCP is typically the H1 inside hgroup; hiding it behind anim-drop adds ~1s of
+   render delay because deferred scripts block paint frames. */
+.scroll-ready hgroup.anim-drop {
+    opacity: 1;
+    transform: none;
+}
+
+/* Pop: friend cards, interactive cards */
+.scroll-ready .anim-pop {
+    opacity: 0;
+    transform: scale(var(--scale-pop));
+    transition: opacity var(--dur-normal) var(--ease-out),
+                transform var(--dur-normal) var(--ease-spring);
+}
+
+.scroll-ready .anim-pop.animate-in {
+    opacity: 1;
+    transform: none;
+}
+
+/* Grow: rarity strips */
+.scroll-ready .anim-grow {
+    opacity: 0;
+    clip-path: inset(0 100% 0 0);
+    transition: opacity var(--dur-slow) var(--ease-out),
+                clip-path var(--dur-slow) var(--ease-enter);
+}
+
+.scroll-ready .anim-grow.animate-in {
+    opacity: 1;
+    clip-path: inset(0 0 0 0);
+}
+
+/* Stagger cascade — per-element delay for cascading entrance */
+.anim-stagger > .anim-blur-rise,
+.anim-stagger > .anim-blur-scale,
+.anim-stagger > .anim-slide-blur,
+.anim-stagger > .anim-drop,
+.anim-stagger > .anim-pop {
+    --stagger-delay: calc(var(--i, 0) * var(--stagger));
+    transition-delay: calc(var(--i, 0) * var(--stagger));
+}
+
+/* Reduce motion */
+@media (prefers-reduced-motion: reduce) {
+    .scroll-ready .anim-blur-rise,
+    .scroll-ready .anim-blur-scale,
+    .scroll-ready .anim-slide-blur,
+    .scroll-ready .anim-drop,
+    .scroll-ready .anim-pop,
+    .scroll-ready .anim-grow {
+        opacity: 1;
+        transform: none;
+        clip-path: none;
+        transition: none;
+        animation: none;
+    }
+}
+
+/* ========== Loading States ========== */
+@keyframes skeleton-pulse {
+    0%   { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+}
+
+.htmx-settling:not(#heatmap-content),
+[hx-target].htmx-request:not(.hm-tab):not(.hm-year-btn):not(.cal-nav):not(.calendar-toggle-btn),
+.htmx-request > tbody {
+    position: relative;
+    pointer-events: none;
+}
+
+.htmx-settling:not(#heatmap-content)::after,
+[hx-target].htmx-request:not(.hm-tab):not(.hm-year-btn):not(.cal-nav):not(.calendar-toggle-btn)::after,
+.htmx-request > tbody::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+        90deg,
+        transparent 25%,
+        rgba(0, 210, 106, 0.03) 50%,
+        transparent 75%
+    );
+    background-size: 200% 100%;
+    animation: skeleton-pulse 1.5s ease-in-out infinite;
+    z-index: 10;
+    pointer-events: none;
+}
+
+/* Table loading fade — applied to tbody during htmx requests */
+.table-loading {
+    opacity: 0.3;
+    pointer-events: none;
+    transition: opacity 0.15s ease-out;
+}
+
+/* Skeleton rows — injected by JS during htmx table requests */
+@keyframes skeleton-shimmer {
+    0%   { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
+}
+
+.skeleton-row td {
+    padding: 0.75rem 0.5rem;
+}
+
+.skeleton-bone {
+    height: 0.85rem;
+    border-radius: var(--radius-sm);
+    background: linear-gradient(
+        90deg,
+        var(--surface-card) 25%,
+        var(--surface-elevated) 50%,
+        var(--surface-card) 75%
+    );
+    background-size: 200% 100%;
+    animation: skeleton-shimmer 1.5s ease-in-out infinite;
+}
+
+.skeleton-bone-thumb {
+    width: 40px;
+    height: 40px;
+    border-radius: var(--radius-sm);
+    background: linear-gradient(
+        90deg,
+        var(--surface-card) 25%,
+        var(--surface-elevated) 50%,
+        var(--surface-card) 75%
+    );
+    background-size: 200% 100%;
+    animation: skeleton-shimmer 1.5s ease-in-out infinite;
+}
+
+/* Timeline skeleton card */
+.skeleton-card {
+    padding: 1rem;
+    border-radius: var(--radius-md);
+    background: var(--surface-card);
+    border: 1px solid var(--border-subtle);
+}
+
+.skeleton-card .skeleton-bone { margin-bottom: 0.5rem; }
+.skeleton-card .skeleton-bone:last-child { width: 60%; margin-bottom: 0; }
+
+/* ========== Row Click Flash ========== */
+.game-row.row-click td {
+    animation: row-flash var(--dur-fast) var(--ease-effect);
+}
+
+@keyframes row-flash {
+    0%   { background: rgba(0, 210, 106, 0.2); }
+    100% { background: transparent; }
+}
+
+/* ========== Button Press Feedback ========== */
+.btn-press {
+    animation: btn-press var(--dur-fast) var(--ease-spring);
+}
+
+@keyframes btn-press {
+    0%   { transform: scale(1); }
+    28%  { transform: scale(0.82); }
+    62%  { transform: scale(1.07); }
+    100% { transform: scale(1); }
+}
+
+/* ========== Status Pill Bounce ========== */
+.status-pill.pill-bounce {
+    animation: pill-pop var(--dur-fast) var(--ease-spring);
+}
+
+@keyframes pill-pop {
+    0%   { transform: scale(0.60); opacity: 0.4; }
+    46%  { transform: scale(1.24); }
+    100% { transform: scale(1); opacity: 1; }
+}

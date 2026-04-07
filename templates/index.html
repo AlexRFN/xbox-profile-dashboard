@@ -1,0 +1,270 @@
+{% extends "base.html" %}
+{% from "macros.html" import progress_bar, stat_card, gamerscore_display %}
+{% block title %}Profile - Xbox{% endblock %}
+{% block head %}
+<script defer src="{{ static_url('js/vendor/chart.umd.min.js') }}"></script>
+{% endblock %}
+
+{% block content %}
+<hgroup class="page-header anim-drop">
+    <h1>Profile</h1>
+    <p>{{ gamertag | default('Xbox User') }}'s gaming stats</p>
+</hgroup>
+
+{% if stats.total_games == 0 %}
+<div class="empty-state anim-blur-rise" style="padding: 4rem 2rem;">
+    <svg viewBox="0 0 64 64" width="64" height="64" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.3">
+        <path d="M6 18h52l-4 36H10z"/><path d="M22 18l4-12h12l4 12"/>
+        <circle cx="24" cy="36" r="4" fill="currentColor" opacity="0.6"/>
+        <circle cx="40" cy="36" r="4" fill="currentColor" opacity="0.6"/>
+        <path d="M28 36h8" stroke-width="2"/>
+    </svg>
+    <p>Your library is empty.</p>
+    <small>Sync your games to get started.</small>
+    <button id="sync-btn" onclick="syncAll()" aria-busy="false" style="margin-top: 0.5rem">
+        Sync Library
+    </button>
+    <span id="sync-progress" class="bulk-progress"></span>
+</div>
+{% else %}
+
+<!-- Stat Cards -->
+<div class="stat-grid anim-stagger">
+    {% call stat_card(stats.total_games, "Total Games", "", 0) %}
+    <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <path d="M6 3h12l4 6-10 13L2 9z"/><path d="M2 9h20M7 3l-1 6m10-6l1 6m-5 0v13"/>
+    </svg>
+    {% endcall %}
+    {% call stat_card(stats.gamepass_count or 0, "On Game Pass", "var(--status-playing)", 1) %}
+    <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <path d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
+    </svg>
+    {% endcall %}
+    {% call stat_card("{:,}".format(stats.total_gamerscore or 0), "Gamerscore", "var(--rarity-legendary)", 2) %}
+    <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <path d="M12 2l3.09 6.26L22 9.27l-5 4.87L18.18 22 12 18.27 5.82 22 7 14.14l-5-4.87 6.91-1.01z"/>
+    </svg>
+    {% endcall %}
+    {% call stat_card(stats.completed_games, "100% Completed", "var(--color-teal)", 3) %}
+    <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <path d="M8.21 13.89L7 23l5-3 5 3-1.21-9.12"/><circle cx="12" cy="8" r="7"/>
+    </svg>
+    {% endcall %}
+    {% call stat_card((stats.total_minutes or 0) | playtime or "0m", "Total Playtime", "var(--color-sky)", 4) %}
+    <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>
+    </svg>
+    {% endcall %}
+    {% if stats.total_captures %}
+    {% call stat_card(stats.total_captures, "Captures", "var(--color-purple)", 5) %}
+    <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <rect x="2" y="3" width="20" height="18" rx="2"/><circle cx="12" cy="13" r="4"/><path d="M12 3v2"/>
+    </svg>
+    {% endcall %}
+    {% endif %}
+</div>
+
+{% if stats.backlog_count %}
+<div class="anim-blur-rise" style="margin-bottom: 1rem;">
+    <button class="outline secondary" onclick="randomBacklogGame()" style="font-size: 0.85rem">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align: -2px; margin-right: 4px">
+            <rect x="1" y="3" width="22" height="18" rx="2"/><circle cx="8" cy="8" r="1.5" fill="currentColor"/><circle cx="16" cy="8" r="1.5" fill="currentColor"/><circle cx="8" cy="16" r="1.5" fill="currentColor"/><circle cx="16" cy="16" r="1.5" fill="currentColor"/><circle cx="12" cy="12" r="1.5" fill="currentColor"/>
+        </svg>
+        Random Backlog Game ({{ stats.backlog_count }})
+    </button>
+</div>
+{% endif %}
+
+<!-- Heatmap -->
+{% if heatmap %}
+<article class="heatmap-card anim-blur-rise">
+    <div id="heatmap-content">
+        {% include "heatmap_content.html" %}
+    </div>
+</article>
+{% endif %}
+
+<!-- Charts -->
+<div class="grid">
+    <article class="chart-card anim-blur-rise">
+        <h4 class="section-title">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21.21 15.89A10 10 0 118 2.83"/><path d="M22 12A10 10 0 0012 2v10z"/>
+            </svg>
+            Completion Distribution
+        </h4>
+        <canvas id="completionChart"></canvas>
+    </article>
+    <article class="chart-card anim-blur-rise">
+        <h4 class="section-title">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="3" y="12" width="4" height="9" rx="1"/><rect x="10" y="7" width="4" height="14" rx="1"/><rect x="17" y="3" width="4" height="18" rx="1"/>
+            </svg>
+            Most Played
+        </h4>
+        <canvas id="mostPlayedChart"></canvas>
+    </article>
+</div>
+
+<!-- Monthly Stats Charts -->
+{% if stats.monthly_stats | length > 1 %}
+<div class="grid">
+    <article class="chart-card anim-blur-rise">
+        <h4 class="section-title">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 2l3.09 6.26L22 9.27l-5 4.87L18.18 22 12 18.27 5.82 22 7 14.14l-5-4.87 6.91-1.01z"/>
+            </svg>
+            Gamerscore Over Time
+        </h4>
+        <canvas id="gamerscoreTimeChart"></canvas>
+    </article>
+    <article class="chart-card anim-blur-rise">
+        <h4 class="section-title">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="8" r="7"/><path d="M8.21 13.89L7 23l5-3 5 3-1.21-9.12"/>
+            </svg>
+            Achievements Per Month
+        </h4>
+        <canvas id="achievementsTimeChart"></canvas>
+    </article>
+</div>
+{% endif %}
+
+<!-- Currently Playing -->
+{% if stats.playing_list %}
+<article class="anim-blur-rise">
+    <h4 class="section-title anim-drop">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+            <polygon points="5 3 19 12 5 21 5 3"/>
+        </svg>
+        Currently Playing <span class="ach-count">({{ stats.playing_list | length }})</span>
+    </h4>
+    <div class="playing-games-grid anim-stagger">
+        {% for game in stats.playing_list %}
+        <a href="/game/{{ game.title_id }}" class="playing-game-card reveal-item anim-pop" style="--i: {{ loop.index0 }}">
+            <img src="{{ game.display_image|thumb(240) }}" alt="{{ game.name }}" class="playing-game-img"
+                 {% if game.blurhash %}data-blurhash="{{ game.blurhash }}"{% endif %}
+                 loading="lazy" decoding="async" width="231" height="231">
+            <div class="playing-game-info">
+                <div class="playing-game-name">{{ game.name }}</div>
+                <div class="playing-game-meta">
+                    <div class="playing-progress">
+                        {% set pct = [game.progress_percentage, 100] | min %}
+                        {% set pct_class = 'complete' if pct == 100 else 'high' if pct > 50 else 'low' if pct > 0 else 'zero' %}
+                        <div class="progress-bar-track" style="width: 60px">
+                            <div class="progress-bar-fill progress-bar-{{ pct_class }}" style="width: {{ pct }}%"></div>
+                        </div>
+                        <span class="pct-{{ pct_class }}" style="font-size: 0.8rem">{{ game.progress_percentage }}%</span>
+                    </div>
+                    {% if game.minutes_played %}
+                    <span>{{ game.minutes_played | playtime }}</span>
+                    {% endif %}
+                </div>
+            </div>
+            <span class="playing-badge">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+            </span>
+        </a>
+        {% endfor %}
+    </div>
+</article>
+{% endif %}
+
+<!-- Recently Played -->
+<article class="anim-blur-rise">
+    <h4 class="section-title anim-drop">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>
+        </svg>
+        Recently Played
+    </h4>
+    <div class="recent-table-wrap grid-rows">
+        <table class="recent-table">
+            <thead>
+                <tr>
+                    <th></th>
+                    <th>Game</th>
+                    <th class="center">Progress</th>
+                    <th class="center">Gamerscore</th>
+                    <th class="center">Last Played</th>
+                </tr>
+            </thead>
+            <tbody class="anim-stagger">
+                {% for game in stats.recently_played %}
+                <tr class="recent-row anim-blur-rise" style="--i: {{ loop.index0 }}" data-href="/game/{{ game.title_id }}">
+                    <td>
+                        <img src="{{ game.display_image|thumb(48) }}" alt="{{ game.name }}" class="game-thumb-sm"
+                             {% if game.blurhash %}data-blurhash="{{ game.blurhash }}"{% endif %}
+                             loading="lazy" decoding="async" width="40" height="40">
+                    </td>
+                    <td>
+                        <a href="/game/{{ game.title_id }}" class="game-name">{{ game.name }}</a>
+                    </td>
+                    <td>{{ progress_bar(game.progress_percentage) }}</td>
+                    <td class="gs-cell">{{ gamerscore_display(game.current_gamerscore, game.total_gamerscore) }}</td>
+                    <td class="date-cell">{{ game.last_played | shortdate }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</article>
+
+<!-- Completed Games (100%) -->
+{% if stats.completed_list %}
+<article class="anim-blur-rise">
+    <h4 class="section-title anim-drop">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><path d="M22 4L12 14.01l-3-3"/>
+        </svg>
+        Completed Games <span class="ach-count">({{ stats.completed_list | length }})</span>
+    </h4>
+    <div class="completed-games-grid anim-stagger">
+        {% for game in stats.completed_list %}
+        <a href="/game/{{ game.title_id }}" class="completed-game-card reveal-item anim-pop" style="--i: {{ loop.index0 }}">
+            <img src="{{ game.display_image|thumb(240) }}" alt="{{ game.name }}" class="completed-game-img"
+                 {% if game.blurhash %}data-blurhash="{{ game.blurhash }}"{% endif %}
+                 loading="lazy" decoding="async">
+            <div class="completed-game-info">
+                <div class="completed-game-name">{{ game.name }}</div>
+                <div class="completed-game-meta">
+                    <span class="ach-gs">{{ "{:,}".format(game.current_gamerscore) }}G</span>
+                    {% if game.minutes_played %}
+                    <span>{{ game.minutes_played | playtime }}</span>
+                    {% endif %}
+                    {% if game.last_played %}
+                    <span>{{ game.last_played | shortdate }}</span>
+                    {% endif %}
+                </div>
+            </div>
+            <span class="completed-badge">✓</span>
+        </a>
+        {% endfor %}
+    </div>
+</article>
+{% endif %}
+
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% if stats.total_games > 0 %}
+<script>
+var _statsData = {{ stats | tojson }};
+function _runCharts() { initDashboardCharts(_statsData); }
+if (typeof Chart !== 'undefined') {
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', _runCharts);
+    } else {
+        _runCharts();
+    }
+} else {
+    // Chart.js not yet loaded — SPA navigation skips the head block, so inject it now
+    var _cs = document.createElement('script');
+    _cs.src = '{{ static_url("js/vendor/chart.umd.min.js") }}';
+    _cs.onload = _runCharts;
+    document.head.appendChild(_cs);
+}
+</script>
+{% endif %}
+{% endblock %}

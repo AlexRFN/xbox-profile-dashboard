@@ -1,0 +1,432 @@
+/* Xbox Dashboard — overhaul */
+
+/* ========== Design Overhaul — State of the Art Additions ========== */
+
+/* ---------- Stat Card — Bento overrides ---------- */
+.stat-card-gs {
+    background: linear-gradient(135deg, rgba(245,158,11,0.08) 0%, var(--glass-bg) 60%);
+    border-color: rgba(245,158,11,0.12) !important;
+}
+.stat-card-gs::before {
+    background: #f59e0b;
+    box-shadow: 0 0 12px rgba(245,158,11,0.5), 4px 0 20px rgba(245,158,11,0.3);
+}
+.stat-card-gs h3 {
+    font-size: clamp(1.6rem, 10cqi, 2.8rem);
+    color: #f59e0b;
+}
+.stat-card-gs .stat-icon {
+    color: #f59e0b;
+}
+
+/* ---------- Achievement Rarity Overhaul ---------- */
+.ach-icon-wrap {
+    position: relative;
+    flex-shrink: 0;
+}
+
+.ach-rarity-glow {
+    position: absolute;
+    inset: -4px;
+    border-radius: var(--radius-sm);
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity var(--dur-fast) var(--ease-effect);
+}
+
+.ach-card:hover .ach-rarity-glow,
+.ach-unlocked .ach-rarity-glow { opacity: 1; }
+
+.ach-rarity-glow-legendary {
+    background: radial-gradient(circle at 50% 50%, rgba(245,158,11,0.25) 0%, transparent 70%);
+    animation: legendary-glow 2.5s ease-in-out infinite;
+}
+
+.ach-rarity-glow-epic {
+    background: radial-gradient(circle at 50% 50%, rgba(139,92,246,0.20) 0%, transparent 70%);
+}
+
+@keyframes legendary-glow {
+    0%, 100% { opacity: 0.6; }
+    50% { opacity: 1; }
+}
+
+.rarity-legendary {
+    animation: legendary-badge-pulse 2.5s ease-in-out infinite;
+}
+
+@keyframes legendary-badge-pulse {
+    0%, 100% { box-shadow: 0 0 6px rgba(245,158,11,0.3); }
+    50%       { box-shadow: 0 0 14px rgba(245,158,11,0.6), 0 0 3px rgba(255,193,7,0.4); }
+}
+
+/* Locked achievements — frosted grayscale */
+.ach-locked {
+    opacity: 1 !important;
+    filter: grayscale(0.85);
+}
+
+.ach-locked .ach-icon {
+    filter: grayscale(0.9) brightness(0.7);
+}
+
+.ach-locked .ach-name,
+.ach-locked .ach-desc { opacity: 0.45; }
+.ach-locked .ach-meta { opacity: 0.35; }
+
+.ach-locked-overlay {
+    position: absolute;
+    top: 0.5rem;
+    right: 0.5rem;
+    pointer-events: none;
+}
+.ach-locked-overlay .icon { opacity: 0.5; }
+
+.ach-icon-placeholder {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--surface-elevated);
+    width: 48px;
+    height: 48px;
+    border-radius: var(--radius-sm);
+}
+
+/* ---------- Empty States ---------- */
+.empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    padding: 3rem 2rem;
+    text-align: center;
+    color: var(--text-tertiary);
+}
+
+.empty-state p {
+    color: var(--text-secondary);
+    font-size: 1rem;
+    margin: 0;
+}
+
+.empty-state small {
+    color: var(--text-tertiary);
+    font-size: 0.85rem;
+}
+
+/* ---------- Friends — Presence Card Redesign ---------- */
+.friends-section-label {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-family: var(--font-display);
+    font-size: var(--text-xs);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-tertiary);
+    margin-bottom: 0.75rem;
+}
+
+.friends-section-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--text-tertiary);
+}
+
+.friends-section-dot-online {
+    background: var(--xbox-green);
+    box-shadow: 0 0 6px var(--xbox-green-glow);
+}
+
+/* Online friend cards — cinematic with avatar art background */
+.friend-card-online {
+    position: relative;
+    overflow: hidden;
+    flex-direction: column;
+    align-items: flex-start;
+    padding: 0;
+    min-height: 120px;
+    border-color: rgba(0, 210, 106, 0.15) !important;
+}
+
+.friend-card-art {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    overflow: hidden;
+}
+
+.friend-art-bg {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: top center;
+    filter: blur(24px) brightness(0.3) saturate(1.4);
+    transform: scale(1.15);
+    transition: transform 6s var(--ease-spatial);
+}
+
+.friend-card-online:hover .friend-art-bg {
+    transform: scale(1.25);
+}
+
+.friend-art-overlay {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+        135deg,
+        rgba(0, 210, 106, 0.08) 0%,
+        transparent 50%,
+        rgba(0, 0, 0, 0.3) 100%
+    );
+}
+
+.friend-card-content {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    gap: 0.85rem;
+    align-items: center;
+    padding: 1rem;
+    width: 100%;
+}
+
+/* Bottom green glow line for online cards */
+.friend-card-online::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--xbox-green), transparent);
+    opacity: 0.6;
+    z-index: 2;
+}
+
+.friend-presence-active {
+    color: var(--xbox-green) !important;
+    font-size: 0.78rem;
+}
+
+/* ---------- Timeline — Completion Celebration Card ---------- */
+.timeline-event-card-celebration {
+    position: relative;
+    overflow: hidden;
+    padding: 0;
+    flex-direction: column;
+    min-height: 80px;
+    border-color: rgba(34, 211, 238, 0.25) !important;
+    border-left: 3px solid var(--cyan) !important;
+    box-shadow: 0 4px 20px rgba(34, 211, 238, 0.12), inset 0 0 20px -8px rgba(34, 211, 238, 0.08) !important;
+}
+
+.timeline-celebration-art {
+    position: absolute;
+    inset: 0;
+    background-size: cover;
+    background-position: center;
+    filter: blur(20px) brightness(0.25) saturate(1.5);
+    transform: scale(1.1);
+    z-index: 0;
+}
+
+.timeline-celebration-body {
+    position: relative;
+    z-index: 1;
+    padding: 0.85rem 1rem;
+    width: 100%;
+}
+
+.timeline-celebration-title {
+    font-size: 1rem !important;
+    font-weight: 700;
+    color: var(--text-primary) !important;
+}
+
+/* Confetti burst — CSS-only particles */
+.timeline-celebration-confetti {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    overflow: hidden;
+}
+
+.timeline-celebration-confetti span {
+    position: absolute;
+    width: 4px;
+    height: 4px;
+    border-radius: 1px;
+    animation: confetti-burst 2.5s ease-out both;
+}
+
+.timeline-event:hover .timeline-celebration-confetti span {
+    animation-play-state: running;
+}
+
+.timeline-celebration-confetti span:nth-child(1) { background: var(--cyan);       left: 15%; top: 20%; animation-delay: 0s;    transform-origin: center; }
+.timeline-celebration-confetti span:nth-child(2) { background: var(--gold);       left: 30%; top: 60%; animation-delay: 0.1s;  transform-origin: center; }
+.timeline-celebration-confetti span:nth-child(3) { background: var(--xbox-green); left: 50%; top: 30%; animation-delay: 0.2s;  transform-origin: center; }
+.timeline-celebration-confetti span:nth-child(4) { background: #a78bfa;           left: 70%; top: 55%; animation-delay: 0.05s; transform-origin: center; }
+.timeline-celebration-confetti span:nth-child(5) { background: var(--cyan);       left: 85%; top: 25%; animation-delay: 0.15s; transform-origin: center; }
+.timeline-celebration-confetti span:nth-child(6) { background: var(--gold);       left: 20%; top: 70%; animation-delay: 0.25s; transform-origin: center; }
+.timeline-celebration-confetti span:nth-child(7) { background: #f472b6;           left: 60%; top: 15%; animation-delay: 0.08s; transform-origin: center; }
+.timeline-celebration-confetti span:nth-child(8) { background: var(--xbox-green); left: 78%; top: 80%; animation-delay: 0.18s; transform-origin: center; }
+
+@keyframes confetti-burst {
+    0%   { transform: translate(0, 0) rotate(0deg) scale(0); opacity: 0; }
+    20%  { opacity: 1; }
+    100% { transform: translate(var(--cx, 20px), var(--cy, -30px)) rotate(360deg) scale(1); opacity: 0; }
+}
+
+.timeline-celebration-confetti span:nth-child(1) { --cx: -15px; --cy: -25px; }
+.timeline-celebration-confetti span:nth-child(2) { --cx: 20px;  --cy: -18px; }
+.timeline-celebration-confetti span:nth-child(3) { --cx: -8px;  --cy: -35px; }
+.timeline-celebration-confetti span:nth-child(4) { --cx: 18px;  --cy: -22px; }
+.timeline-celebration-confetti span:nth-child(5) { --cx: -20px; --cy: -15px; }
+.timeline-celebration-confetti span:nth-child(6) { --cx: 12px;  --cy: -28px; }
+.timeline-celebration-confetti span:nth-child(7) { --cx: -10px; --cy: -20px; }
+.timeline-celebration-confetti span:nth-child(8) { --cx: 22px;  --cy: -12px; }
+
+
+/* ---------- Mobile responsive for new components ---------- */
+@media (max-width: 600px) {
+    .friend-card-online { min-height: 100px; }
+}
+
+/* ========== Non-WebGL Fallback ==========
+   When WebGL glass is unavailable (.glass-refract NOT on <html>),
+   provide basic CSS glass as fallback. Domain CSS is transparent by default. */
+html:not(.glass-refract) article,
+html:not(.glass-refract) .friend-card,
+html:not(.glass-refract) .stat-card,
+html:not(.glass-refract) .timeline-event-card,
+html:not(.glass-refract) .ach-grid-card,
+html:not(.glass-refract) .ach-card,
+html:not(.glass-refract) .showcase-card,
+html:not(.glass-refract) .near-completion-row,
+html:not(.glass-refract) .grid-rows .game-row,
+html:not(.glass-refract) .grid-rows .recent-row,
+html:not(.glass-refract) .lib-grid-card,
+html:not(.glass-refract) .captures-game-header:hover,
+html:not(.glass-refract) .sidebar-widget {
+    background: var(--glass-bg);
+    backdrop-filter: blur(var(--glass-blur-radius)) saturate(var(--glass-sat-surface)) brightness(var(--glass-brightness));
+    -webkit-backdrop-filter: blur(var(--glass-blur-radius)) saturate(var(--glass-sat-surface)) brightness(var(--glass-brightness));
+}
+
+/* .cmd-panel uses CSS glass always — GPU glass can't penetrate the cmd-backdrop overlay */
+.cmd-panel {
+    background: var(--glass-bg);
+    backdrop-filter: blur(var(--glass-blur-overlay)) saturate(var(--glass-sat-overlay)) brightness(var(--glass-brightness));
+    -webkit-backdrop-filter: blur(var(--glass-blur-overlay)) saturate(var(--glass-sat-overlay)) brightness(var(--glass-brightness));
+}
+html:not(.glass-refract) .shortcuts-panel {
+    background: var(--glass-bg);
+    backdrop-filter: blur(var(--glass-blur-overlay)) saturate(var(--glass-sat-overlay)) brightness(var(--glass-brightness));
+    -webkit-backdrop-filter: blur(var(--glass-blur-overlay)) saturate(var(--glass-sat-overlay)) brightness(var(--glass-brightness));
+}
+
+html:not(.glass-refract) button.outline,
+html:not(.glass-refract) button.secondary,
+html:not(.glass-refract) [role="button"].outline,
+html:not(.glass-refract) [role="button"].secondary,
+html:not(.glass-refract) input[type="search"],
+html:not(.glass-refract) select,
+html:not(.glass-refract) .view-toggle,
+html:not(.glass-refract) .view-toggle-captures,
+html:not(.glass-refract) .hm-tab,
+html:not(.glass-refract) .hm-year-btn,
+html:not(.glass-refract) .calendar-toggle-btn,
+html:not(.glass-refract) .filters-inline button,
+html:not(.glass-refract) .filters-inline select,
+html:not(.glass-refract) .rarity-strip-item,
+html:not(.glass-refract) .captures-select-bar,
+html:not(.glass-refract) .cal-nav,
+html:not(.glass-refract) .quick-nav-pill:not(.active),
+html:not(.glass-refract) .calendar-dropdown {
+    background: var(--glass-bg);
+    backdrop-filter: blur(var(--glass-blur-button)) saturate(var(--glass-sat-button)) brightness(var(--glass-brightness));
+    -webkit-backdrop-filter: blur(var(--glass-blur-button)) saturate(var(--glass-sat-button)) brightness(var(--glass-brightness));
+}
+
+/* Control-tier glass — form inputs inside tracking panel */
+html:not(.glass-refract) .tracking-form select,
+html:not(.glass-refract) .tracking-form textarea,
+html:not(.glass-refract) .tracking-form input[type="date"] {
+    background: var(--glass-bg);
+    backdrop-filter: blur(var(--glass-blur-control)) saturate(var(--glass-sat-control)) brightness(var(--glass-brightness));
+    -webkit-backdrop-filter: blur(var(--glass-blur-control)) saturate(var(--glass-sat-control)) brightness(var(--glass-brightness));
+}
+
+/* Calendar dropdown readability — heavy frosted scrim so text is always legible */
+.calendar-dropdown {
+    backdrop-filter: blur(20px) saturate(1.2) brightness(0.55);
+    -webkit-backdrop-filter: blur(20px) saturate(1.2) brightness(0.55);
+    background: rgba(10, 10, 14, 0.72);
+}
+[data-theme="light"] .calendar-dropdown {
+    backdrop-filter: blur(20px) saturate(1.3) brightness(1.1);
+    -webkit-backdrop-filter: blur(20px) saturate(1.3) brightness(1.1);
+    background: rgba(255, 255, 255, 0.78);
+}
+[data-oled="true"] .calendar-dropdown {
+    backdrop-filter: blur(20px) saturate(1.1) brightness(0.35);
+    -webkit-backdrop-filter: blur(20px) saturate(1.1) brightness(0.35);
+    background: rgba(4, 4, 6, 0.82);
+}
+
+/* ========== WebGL Glass — Active Overrides ==========
+   When WebGL glass is active, strip pseudo-elements and hover backgrounds
+   that would conflict with WebGL-rendered glass material. */
+.glass-refract article::before,
+.glass-refract article::after,
+.glass-refract .stat-card::before,
+.glass-refract .stat-card::after {
+    display: none;
+}
+
+/* Pointer reveal glow handled by WebGL shader — disable CSS reveal pseudos */
+.glass-refract .reveal-item::before,
+.glass-refract .reveal-item::after {
+    display: none;
+}
+.glass-refract .reveal-item:hover {
+    box-shadow: none;
+}
+
+/* Neutralise CSS hover backgrounds on glass elements — WebGL reveal glow is the hover feedback.
+   Without this, opaque hover backgrounds paint over the transparent glass and hide the glow. */
+.glass-refract button.outline:hover,
+.glass-refract button.secondary:hover,
+.glass-refract [role="button"].outline:hover,
+.glass-refract [role="button"].secondary:hover,
+.glass-refract .near-completion-row:hover,
+.glass-refract .ach-grid-card:hover,
+.glass-refract .ach-card:hover,
+.glass-refract .showcase-card:hover,
+.glass-refract .friend-card:hover,
+.glass-refract .timeline-event-card:hover,
+.glass-refract .stat-card:hover,
+.glass-refract .lib-grid-card:hover,
+.glass-refract .grid-rows .game-row:hover,
+.glass-refract .grid-rows .recent-row:hover,
+.glass-refract .captures-game-header:hover,
+.glass-refract .hm-tab:hover,
+.glass-refract .hm-year-btn:hover,
+.glass-refract .rarity-strip-item:hover,
+.glass-refract .nav-profile-chip:hover,
+.glass-refract .calendar-toggle-btn:hover,
+.glass-refract .cal-nav:hover,
+.glass-refract .quick-nav-pill:not(.active):hover,
+.glass-refract .view-toggle:hover,
+.glass-refract .view-toggle-captures:hover,
+.glass-refract article:hover {
+    background: transparent;
+    background-image: none;
+}
+

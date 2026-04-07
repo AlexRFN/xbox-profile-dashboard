@@ -1,0 +1,34 @@
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-v"
+
+[tool.ruff]
+target-version = "py312"
+line-length = 120
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "UP",  # pyupgrade
+    "B",   # flake8-bugbear
+    "SIM", # flake8-simplify
+    "RUF", # ruff-specific
+]
+ignore = [
+    "E501",   # line too long (handled by formatter)
+    "B008",   # do not perform function calls in default args (FastAPI pattern)
+    "SIM102", # use single if (sometimes less readable)
+    "SIM117", # merge with-statements (sometimes less readable)
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["database", "sync", "routers", "helpers", "models", "xbox_api", "config"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"

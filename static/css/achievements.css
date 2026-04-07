@@ -1,0 +1,686 @@
+/* Xbox Dashboard — achievements (redesigned) */
+
+/* ========== Rarity Badges (shared) ========== */
+.ach-count {
+    font-size: 0.9rem;
+    font-weight: normal;
+    color: var(--text-tertiary);
+    margin-left: 0.5rem;
+}
+
+.rarity {
+    font-family: var(--font-display);
+    display: inline-flex;
+    align-items: center;
+    padding: 0.15rem 0.4rem;
+    border-radius: var(--radius-sm);
+    font-size: var(--text-xs);
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    line-height: 1;
+}
+
+.rarity-common { background: rgba(156,163,175,0.15); color: #9ca3af; }
+.rarity-rare { background: rgba(59,130,246,0.15); color: #60a5fa; }
+.rarity-epic { background: rgba(139,92,246,0.15); color: #a78bfa; }
+.rarity-legendary { background: rgba(245,158,11,0.15); color: #fbbf24; }
+.rarity-diamond { background: rgba(34,211,238,0.15); color: var(--cyan); }
+.rarity-unknown { background: rgba(156,163,175,0.10); color: var(--text-tertiary); }
+
+/* ========== Rarity Bar (stacked horizontal) ========== */
+.rarity-section {
+    margin-bottom: 1.5rem;
+}
+
+.rarity-bar {
+    display: flex;
+    height: 8px;
+    border-radius: 4px;
+    overflow: hidden;
+    background: var(--surface-card);
+    margin-bottom: 0.75rem;
+}
+
+.rarity-bar-seg {
+    min-width: 3px;
+    transition: flex-grow var(--dur-normal) var(--ease-effect);
+}
+
+.rarity-bar-common { background: var(--rarity-common); }
+.rarity-bar-rare { background: var(--rarity-rare); }
+.rarity-bar-epic { background: var(--rarity-epic); }
+.rarity-bar-legendary { background: var(--rarity-legendary); }
+.rarity-bar-unknown { background: var(--text-tertiary); }
+
+/* ========== Rarity Strip (chips below bar) ========== */
+.rarity-strip {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.rarity-strip-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.85rem;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--glass-border);
+    background: transparent;
+    flex: 1;
+    min-width: 120px;
+}
+
+.rarity-strip-count {
+    font-family: var(--font-mono);
+    font-size: var(--text-lg);
+    font-weight: 700;
+    line-height: 1;
+}
+
+.rarity-strip-label {
+    font-family: var(--font-display);
+    font-size: var(--text-xs);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-weight: 600;
+}
+
+.rarity-strip-gs {
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    color: var(--text-tertiary);
+    margin-left: auto;
+    white-space: nowrap;
+}
+
+.rarity-strip-common .rarity-strip-count,
+.rarity-strip-common .rarity-strip-label { color: var(--rarity-common); }
+.rarity-strip-rare .rarity-strip-count,
+.rarity-strip-rare .rarity-strip-label { color: var(--rarity-rare); }
+.rarity-strip-epic .rarity-strip-count,
+.rarity-strip-epic .rarity-strip-label { color: var(--rarity-epic); }
+.rarity-strip-legendary .rarity-strip-count,
+.rarity-strip-legendary .rarity-strip-label { color: var(--rarity-legendary); }
+.rarity-strip-unknown .rarity-strip-count,
+.rarity-strip-unknown .rarity-strip-label { color: var(--text-tertiary); }
+
+/* ========== Showcase / Trophy Case ========== */
+.showcase-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+.showcase-card {
+    position: relative;
+    overflow: hidden;
+    border-radius: var(--radius-lg);
+    background: transparent;
+    border: 1px solid var(--glass-border);
+    text-decoration: none;
+    color: inherit;
+    display: flex;
+    flex-direction: column;
+    min-height: 160px;
+    transition: transform var(--dur-fast) var(--ease-spatial),
+                box-shadow var(--dur-fast) var(--ease-effect);
+}
+
+.showcase-card:hover {
+    transform: translateY(-3px);
+    box-shadow: var(--shadow-8);
+}
+
+.showcase-card-art {
+    position: absolute;
+    inset: 0;
+    background-size: cover;
+    background-position: center;
+    filter: blur(24px) brightness(0.25) saturate(1.4);
+    opacity: 0.6;
+    z-index: 0;
+}
+
+.showcase-label {
+    position: absolute;
+    top: 0.75rem;
+    right: 0.75rem;
+    font-family: var(--font-display);
+    font-size: var(--text-2xs);
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    padding: 0.2rem 0.5rem;
+    border-radius: var(--radius-sm);
+    z-index: 2;
+    line-height: 1;
+}
+
+.showcase-label-rarity {
+    background: rgba(139, 92, 246, 0.25);
+    color: #a78bfa;
+}
+
+.showcase-label-gamerscore {
+    background: rgba(245, 158, 11, 0.25);
+    color: #fbbf24;
+}
+
+.showcase-label-recent {
+    background: rgba(0, 210, 106, 0.25);
+    color: var(--xbox-green);
+}
+
+.showcase-card-body {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    gap: 1rem;
+    padding: 1.25rem;
+    align-items: center;
+    flex: 1;
+}
+
+.showcase-icon {
+    width: 64px;
+    height: 64px;
+    border-radius: var(--radius-lg);
+    flex-shrink: 0;
+    box-shadow: var(--shadow-4);
+}
+
+.showcase-info {
+    min-width: 0;
+    flex: 1;
+}
+
+.showcase-name {
+    font-weight: 700;
+    font-size: var(--text-md);
+    margin-bottom: 0.2rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.showcase-game {
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
+    margin-bottom: 0.4rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.showcase-meta {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    align-items: center;
+    font-size: var(--text-sm);
+}
+
+/* Rarity-specific showcase card accents */
+.showcase-card-legendary {
+    border-color: rgba(245, 158, 11, 0.2);
+}
+
+.showcase-card-legendary .showcase-icon {
+    box-shadow: 0 0 16px rgba(245, 158, 11, 0.3);
+}
+
+.showcase-card-epic {
+    border-color: rgba(139, 92, 246, 0.2);
+}
+
+.showcase-card-epic .showcase-icon {
+    box-shadow: 0 0 12px rgba(139, 92, 246, 0.25);
+}
+
+.showcase-card-rare {
+    border-color: rgba(59, 130, 246, 0.15);
+}
+
+/* ========== Near Completion ========== */
+.near-completion-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-bottom: 1.5rem;
+}
+
+.near-completion-row {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 0.6rem 1rem;
+    border-radius: var(--radius-lg);
+    background: transparent;
+    text-decoration: none;
+    color: inherit;
+    transition: background var(--dur-fast) var(--ease-effect);
+    contain: layout style paint;
+}
+
+.near-completion-row:hover {
+    background: var(--surface-card-hover);
+}
+
+.near-completion-img {
+    width: 32px;
+    height: 32px;
+    border-radius: var(--radius-sm);
+    flex-shrink: 0;
+}
+
+.near-completion-name {
+    flex: 1;
+    min-width: 0;
+    font-weight: 600;
+    font-size: var(--text-sm);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.near-completion-progress {
+    flex-shrink: 0;
+    width: 120px;
+}
+
+.near-completion-remaining {
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    color: var(--text-tertiary);
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+/* ========== Achievement Browse Grid ========== */
+.ach-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 0.75rem;
+}
+
+.ach-grid-card {
+    position: relative;
+    border-radius: var(--radius-lg);
+    background: transparent;
+    overflow: hidden;
+    text-decoration: none;
+    color: inherit;
+    display: block;
+    transition: transform var(--dur-fast) var(--ease-spatial),
+                box-shadow var(--dur-fast) var(--ease-effect),
+                background var(--dur-fast) var(--ease-effect);
+    content-visibility: auto;
+    contain-intrinsic-block-size: auto 85px;
+    contain: layout style paint;
+}
+
+.ach-grid-card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-4);
+    background: var(--surface-card);
+}
+
+/* Dense grid — 25ms step keeps the cascade snappy even with many cards visible.
+   Specificity [0,3,0] beats the generic .anim-stagger > .anim-blur-rise rule. */
+.ach-grid.anim-stagger > .ach-grid-card { transition-delay: calc(var(--i, 0) * 25ms); }
+
+/* Top border accent by rarity */
+.ach-grid-border {
+    height: 2px;
+    width: 100%;
+}
+
+.ach-grid-border-common { background: var(--rarity-common); }
+.ach-grid-border-rare { background: var(--rarity-rare); }
+.ach-grid-border-epic { background: var(--rarity-epic); }
+.ach-grid-border-legendary { background: var(--rarity-legendary); }
+.ach-grid-border-locked { background: var(--text-tertiary); opacity: 0.3; }
+
+/* Card body */
+.ach-grid-body {
+    display: flex;
+    gap: 0.75rem;
+    padding: 0.75rem 1rem;
+    align-items: flex-start;
+}
+
+/* Icon */
+.ach-grid-icon-wrap {
+    position: relative;
+    flex-shrink: 0;
+}
+
+.ach-grid-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: var(--radius-sm);
+}
+
+.ach-grid-icon-locked {
+    filter: grayscale(0.8);
+    opacity: 0.5;
+}
+
+.ach-grid-icon-placeholder {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--surface-elevated);
+}
+
+.ach-grid-icon-glow {
+    position: absolute;
+    inset: -4px;
+    border-radius: var(--radius-lg);
+    z-index: -1;
+    pointer-events: none;
+}
+
+.ach-grid-icon-glow-legendary {
+    box-shadow: 0 0 14px rgba(245, 158, 11, 0.35);
+}
+
+.ach-grid-icon-glow-epic {
+    box-shadow: 0 0 12px rgba(139, 92, 246, 0.25);
+}
+
+/* Info */
+.ach-grid-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.ach-grid-name {
+    font-weight: 600;
+    font-size: 0.95rem;
+    margin-bottom: 0.1rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.ach-grid-desc {
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
+    margin-bottom: 0.15rem;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.ach-grid-game {
+    font-size: var(--text-xs);
+    color: var(--text-tertiary);
+    margin-bottom: 0.3rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.ach-grid-meta {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    align-items: center;
+    font-size: var(--text-sm);
+}
+
+.ach-gs {
+    font-family: var(--font-mono);
+    font-weight: 600;
+    color: var(--gold);
+}
+
+.ach-date {
+    color: var(--text-tertiary);
+    font-size: var(--text-xs);
+}
+
+/* Lock overlay */
+.ach-grid-lock {
+    position: absolute;
+    top: 0.6rem;
+    right: 0.6rem;
+    color: var(--text-tertiary);
+    opacity: 0.5;
+}
+
+/* Locked card state */
+.ach-grid-locked {
+    opacity: 0.45;
+}
+
+.ach-grid-locked:hover {
+    opacity: 0.65;
+}
+
+.ach-grid-locked .ach-grid-name {
+    color: var(--text-secondary);
+}
+
+/* Unlocked card state */
+.ach-grid-unlocked {
+    background: var(--xbox-green-subtle);
+}
+
+/* Legendary shimmer on unlocked cards */
+.ach-grid-rarity-legendary {
+    box-shadow: inset 0 0 20px -8px rgba(245, 158, 11, 0.08);
+}
+
+.ach-grid-rarity-legendary .ach-gs {
+    text-shadow: 0 0 10px rgba(240, 192, 64, 0.3);
+}
+
+/* Epic glow on unlocked cards */
+.ach-grid-rarity-epic {
+    box-shadow: inset 0 0 16px -8px rgba(139, 92, 246, 0.06);
+}
+
+/* ========== Group Headers ========== */
+.ach-game-group,
+.ach-rarity-group {
+    display: contents;
+}
+
+.ach-group-header {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.75rem 0.5rem 0.25rem;
+    text-decoration: none;
+    color: inherit;
+}
+
+.ach-group-img {
+    width: 32px;
+    height: 32px;
+    border-radius: var(--radius-sm);
+    flex-shrink: 0;
+}
+
+.ach-group-name {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: var(--text-md);
+}
+
+.ach-group-rarity-legendary .rarity { font-size: var(--text-sm); }
+.ach-group-rarity-epic .rarity { font-size: var(--text-sm); }
+.ach-group-rarity-rare .rarity { font-size: var(--text-sm); }
+.ach-group-rarity-common .rarity { font-size: var(--text-sm); }
+
+/* ========== Legacy achievement card (used by profile page showcase sections) ========== */
+.achievements-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.ach-card {
+    display: flex;
+    gap: 1rem;
+    padding: 0.75rem 1rem;
+    border-radius: var(--radius-lg);
+    align-items: center;
+    border: 1px solid transparent;
+    background: transparent;
+    transition: border-color var(--dur-fast) var(--ease-effect), background var(--dur-fast) var(--ease-effect);
+    content-visibility: auto;
+    contain-intrinsic-block-size: auto 74px;
+    position: relative;
+    z-index: 1;
+    text-decoration: none;
+    contain: layout style paint;
+    color: inherit;
+}
+
+.ach-card:hover {
+    background: var(--surface-card);
+}
+
+.ach-unlocked {
+    background: var(--xbox-green-subtle);
+}
+
+.ach-locked {
+    opacity: 0.4;
+}
+
+.ach-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: var(--radius-sm);
+    flex-shrink: 0;
+}
+
+.ach-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.ach-name {
+    font-weight: 600;
+    margin-bottom: 0.15rem;
+    font-size: 0.95rem;
+}
+
+.ach-desc {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    margin-bottom: 0.25rem;
+}
+
+.ach-meta {
+    display: flex;
+    gap: 0.75rem;
+    font-size: 0.8rem;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+/* Specificity [0,3,0] beats the generic .anim-stagger > .anim-pop rule [0,2,0] */
+.achievements-grid.anim-stagger > .ach-card { transition-delay: calc(var(--i, 0) * 25ms); }
+
+.ach-unlocked .ach-icon {
+    box-shadow: 0 0 10px rgba(0, 210, 106, 0.3);
+}
+
+.ach-unlocked .ach-name {
+    color: var(--text-primary);
+}
+
+.ach-unlocked .ach-gs {
+    text-shadow: 0 0 10px rgba(240, 192, 64, 0.3);
+}
+
+.ach-locked .ach-icon {
+    filter: grayscale(0.8);
+}
+
+/* ========== Game detail achievement card extras ========== */
+.ach-icon-wrap {
+    position: relative;
+    flex-shrink: 0;
+}
+
+.ach-icon-placeholder {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--surface-elevated);
+}
+
+.ach-rarity-glow {
+    position: absolute;
+    inset: -4px;
+    border-radius: var(--radius-lg);
+    z-index: -1;
+    pointer-events: none;
+}
+
+.ach-rarity-glow-legendary {
+    box-shadow: 0 0 14px rgba(245, 158, 11, 0.35);
+}
+
+.ach-rarity-glow-epic {
+    box-shadow: 0 0 12px rgba(139, 92, 246, 0.25);
+}
+
+.ach-locked-overlay {
+    color: var(--text-tertiary);
+    opacity: 0.5;
+    flex-shrink: 0;
+}
+
+/* ========== Responsive ========== */
+@media (max-width: 768px) {
+    .showcase-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .showcase-card {
+        min-height: 120px;
+    }
+
+    .rarity-strip {
+        flex-direction: column;
+    }
+
+    .rarity-strip-item {
+        min-width: 0;
+    }
+
+    .ach-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .near-completion-row {
+        flex-wrap: wrap;
+    }
+
+    .near-completion-progress {
+        width: 100%;
+        order: 10;
+    }
+}
+
+@media (min-width: 769px) and (max-width: 1024px) {
+    .showcase-grid {
+        grid-template-columns: repeat(3, 1fr);
+    }
+
+    .ach-grid {
+        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    }
+}
+

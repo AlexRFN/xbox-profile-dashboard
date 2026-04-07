@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Error — Xbox Profile</title>
+    <link rel="icon" href="/static/img/Xbox_one_logo.svg.png">
+    <link rel="stylesheet" href="/static/css/tokens.css">
+    <link rel="stylesheet" href="/static/css/base.css">
+</head>
+<body>
+    <main class="container" style="display:flex;align-items:center;justify-content:center;min-height:80vh">
+        <div style="text-align:center;max-width:480px">
+            <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="var(--xbox-green)" stroke-width="1.5" style="margin-bottom:1.5rem">
+                <circle cx="12" cy="12" r="10"/>
+                <path d="M12 8v4m0 4h.01"/>
+            </svg>
+            <h1 style="font-size:1.5rem;margin-bottom:0.75rem">Something went wrong</h1>
+            <p style="color:var(--text-tertiary);margin-bottom:2rem;font-family:var(--font-mono);font-size:0.85rem;word-break:break-all">{{ error }}</p>
+            <a href="/" role="button">Go back home</a>
+        </div>
+    </main>
+</body>
+</html>

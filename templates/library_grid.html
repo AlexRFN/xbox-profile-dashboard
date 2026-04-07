@@ -1,0 +1,42 @@
+{% for game in games %}
+<a href="/game/{{ game.title_id }}" class="lib-grid-card{% if loop.index0 < 12 %} reveal-item anim-pop{% endif %}"{% if loop.index0 < 12 %} style="--i: {{ loop.index0 }}; transition-delay: calc(var(--stagger, 60ms) * {{ loop.index0 }})"{% endif %}>
+    <div class="lib-grid-art">
+        <img src="{{ game.display_image|thumb(240) }}" alt=""
+             {% if game.blurhash %}data-blurhash="{{ game.blurhash }}"{% endif %}
+             {% if loop.index0 < 7 %}fetchpriority="high" decoding="async"{% else %}loading="lazy" decoding="async"{% endif %} width="240" height="240">
+        {% if game.progress_percentage == 100 %}
+        <span class="lib-grid-diamond" title="100% Complete">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none">
+                <path d="M12 2L2 9l10 13L22 9z" fill="url(#dgrad)" stroke="rgba(6,182,212,0.6)" stroke-width="1"/>
+                <path d="M2 9h20M7 2l-1 7M17 2l1 7M8 9l4 13M16 9l-4 13" stroke="rgba(255,255,255,0.3)" stroke-width="0.5"/>
+            </svg>
+        </span>
+        {% endif %}
+        {% if game.is_gamepass %}
+        <span class="lib-grid-gp">GP</span>
+        {% endif %}
+    </div>
+    <div class="lib-grid-info">
+        <div class="lib-grid-name">{{ game.name }}</div>
+        <div class="lib-grid-meta">
+            {% set pct_class = 'complete' if game.progress_percentage == 100 else 'high' if game.progress_percentage > 50 else 'low' if game.progress_percentage > 0 else 'zero' %}
+            <div class="lib-grid-progress">
+                <div class="progress-bar-track">
+                    <div class="progress-bar-fill progress-bar-{{ pct_class }}" style="width: {{ game.progress_percentage }}%"></div>
+                </div>
+                <span class="pct-{{ pct_class }}">{{ game.progress_percentage }}%</span>
+            </div>
+            {% if game.total_gamerscore %}
+            <span class="lib-grid-gs">{{ "{:,}".format(game.current_gamerscore) }}G</span>
+            {% endif %}
+        </div>
+    </div>
+</a>
+{% endfor %}
+
+{% if games | length == 0 %}
+<div class="lib-grid-empty">No games found matching your filters.</div>
+{% endif %}
+
+{% from "macros.html" import pagination %}
+{{ pagination(page, total, per_page, "/api/library/grid", "#library-grid-wrap", oob=true) }}

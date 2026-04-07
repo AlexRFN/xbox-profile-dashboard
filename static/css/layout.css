@@ -1,0 +1,417 @@
+/* Xbox Dashboard — layout */
+
+/* ========== Navigation — Three-Zone Command Bar ========== */
+
+.xbox-nav {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    padding: 0;
+    background: transparent;
+    transition: background var(--dur-fast) var(--ease-effect), box-shadow var(--dur-fast) var(--ease-effect);
+}
+
+/* Acrylic backdrop — fades in on scroll */
+.xbox-nav.scrolled {
+    background: var(--surface-acrylic);
+    backdrop-filter: blur(var(--glass-blur-chrome)) saturate(var(--glass-sat-chrome)) brightness(var(--glass-brightness));
+    -webkit-backdrop-filter: blur(var(--glass-blur-chrome)) saturate(var(--glass-sat-chrome)) brightness(var(--glass-brightness));
+    box-shadow: inset 0 0 30px -12px var(--liquid-inner-glow);
+    contain: layout style paint;
+}
+
+/* Liquid light sweep across nav */
+.xbox-nav::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+        90deg,
+        transparent 0%,
+        var(--liquid-sweep-color) 45%,
+        rgba(255, 255, 255, 0.03) 50%,
+        var(--liquid-sweep-color) 55%,
+        transparent 100%
+    );
+    background-size: 200% 100%;
+    animation: nav-liquid-sweep 12s ease-in-out infinite;
+    pointer-events: none;
+    z-index: 0;
+    opacity: 0;
+    transition: opacity var(--dur-normal) var(--ease-effect);
+}
+
+.xbox-nav.scrolled::before {
+    opacity: 1;
+}
+
+@keyframes nav-liquid-sweep {
+    0%   { background-position: 200% 0; }
+    40%  { background-position: -100% 0; }
+    100% { background-position: -100% 0; }
+}
+
+/* Edge light — glowing bottom line */
+.nav-edge-light {
+    position: absolute;
+    bottom: -1px;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: linear-gradient(
+        90deg,
+        transparent 5%,
+        var(--xbox-green-glow) 30%,
+        var(--xbox-green) 50%,
+        var(--xbox-green-glow) 70%,
+        transparent 95%
+    );
+    opacity: 0;
+    transition: opacity var(--dur-normal) var(--ease-effect);
+    z-index: 2;
+}
+
+.xbox-nav.scrolled .nav-edge-light {
+    opacity: 0.6;
+}
+
+/* Progressive blur below nav — tall multi-layer falloff like lightbox blur bar */
+.nav-blur-down {
+    position: absolute;
+    bottom: -48px;
+    left: 0;
+    right: 0;
+    height: 48px;
+    pointer-events: none;
+    z-index: -1;
+    opacity: 0;
+    transition: opacity var(--dur-normal) var(--ease-effect);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    mask: linear-gradient(to bottom, black, transparent);
+    -webkit-mask: linear-gradient(to bottom, black, transparent);
+}
+
+.xbox-nav.scrolled .nav-blur-down {
+    opacity: 1;
+}
+
+/* Progressive blur spans hidden — using single-layer blur */
+.nav-blur-down > span,
+.nav-blur-down > .nav-blur-gradient {
+    display: none;
+}
+
+/* Inner layout: three-zone */
+.nav-inner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    max-width: var(--container-max);
+    margin: 0 auto;
+    padding: 0 var(--container-padding);
+    height: 48px;
+    position: relative;
+    z-index: 1;
+}
+
+/* Left zone: Logo */
+.nav-brand {
+    display: flex;
+    align-items: center;
+    text-decoration: none;
+    flex-shrink: 0;
+    transition: transform var(--dur-fast) var(--ease-spring), filter var(--dur-fast) var(--ease-spatial);
+}
+
+.nav-brand:hover {
+    transform: scale(1.08);
+    filter: drop-shadow(0 0 8px var(--xbox-green-glow));
+}
+
+.nav-xbox-logo {
+    flex-shrink: 0;
+    border-radius: 50%;
+    width: 28px;
+    height: 28px;
+}
+
+/* Center zone: Segmented pill */
+.nav-pill {
+    display: flex;
+    align-items: center;
+    position: relative;
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius-btn);
+    padding: 3px;
+    gap: 0;
+}
+
+/* Sliding active indicator — positioned by inline script before first paint. */
+.nav-pill-track {
+    position: absolute;
+    top: 3px;
+    bottom: 3px;
+    left: 0;
+    width: 0;
+    border-radius: calc(var(--radius-btn) - 2px);
+    background: var(--xbox-green-subtle);
+    border: 1px solid rgba(0, 210, 106, 0.20);
+    box-shadow: 0 0 16px var(--xbox-green-glow), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    z-index: 0;
+    pointer-events: none;
+    overflow: hidden;
+}
+
+/* Green text overlay — clipped by track to reveal green text only under the pill.
+   Counter-slides the track movement so labels stay visually aligned with real links. */
+.nav-pill-glow {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    display: flex;
+    align-items: center;
+    gap: 0;
+    pointer-events: none;
+    white-space: nowrap;
+}
+
+.nav-pill-glow span {
+    padding: 0.4rem 0.85rem;
+    font-family: var(--font-display);
+    font-weight: 500;
+    font-size: 0.82rem;
+    letter-spacing: 0.03em;
+    color: var(--xbox-green);
+    text-shadow: 0 0 20px var(--xbox-green-glow);
+    line-height: 1.5;
+    flex-shrink: 0;
+    animation: nav-glow-pulse 2.5s var(--ease-effect) infinite;
+}
+
+.nav-link {
+    text-decoration: none;
+    padding: 0.4rem 0.85rem;
+    font-family: var(--font-display);
+    font-weight: 500;
+    font-size: 0.82rem;
+    letter-spacing: 0.03em;
+    color: var(--text-secondary);
+    border-radius: calc(var(--radius-btn) - 2px);
+    transition: color var(--dur-fast) var(--ease-effect), background var(--dur-fast) var(--ease-effect);
+    display: inline-block;
+    position: relative;
+    z-index: 1;
+    white-space: nowrap;
+    line-height: 1.5;
+}
+
+.nav-link:hover {
+    color: var(--text-primary);
+    background: rgba(255, 255, 255, 0.04);
+}
+
+.nav-link.active {
+    background: transparent;
+}
+
+/* Glow pulse on the overlay text inside the pill track */
+@keyframes nav-glow-pulse {
+    0%, 100% {
+        text-shadow: 0 0 20px var(--xbox-green-glow);
+    }
+    50% {
+        text-shadow: 0 0 28px rgba(0, 210, 106, 0.6), 0 0 8px rgba(0, 255, 128, 0.4);
+    }
+}
+
+/* Right zone: Utilities */
+.nav-right {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-shrink: 0;
+}
+
+.rate-limit-badge {
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    color: var(--text-tertiary);
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.2rem 0.55rem;
+    border-radius: var(--radius-btn);
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    font-variant-numeric: tabular-nums;
+    transition: color var(--dur-fast) var(--ease-effect), border-color var(--dur-fast) var(--ease-effect);
+}
+
+.rate-limit-badge svg {
+    opacity: 0.5;
+}
+
+.rate-limit-badge:hover {
+    color: var(--text-secondary);
+    border-color: var(--border-default);
+}
+
+.theme-toggle {
+    cursor: pointer;
+    background: none;
+    border: 1px solid transparent;
+    font-size: 1rem;
+    width: 30px;
+    height: 30px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    color: var(--text-secondary);
+    transition: color var(--dur-fast) var(--ease-effect), background var(--dur-fast) var(--ease-effect), border-color var(--dur-fast) var(--ease-effect);
+}
+
+.theme-toggle:hover {
+    color: var(--text-primary);
+    background: rgba(255, 255, 255, 0.04);
+    border-color: var(--glass-border);
+}
+
+/* Profile chip */
+.nav-profile-chip {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    text-decoration: none;
+    padding: 0.2rem 0.6rem 0.2rem 0.2rem;
+    border-radius: var(--radius-btn);
+    border: 1px solid var(--glass-border);
+    background: var(--glass-bg);
+    transition: background var(--dur-fast) var(--ease-effect), border-color var(--dur-fast) var(--ease-effect), box-shadow var(--dur-fast) var(--ease-effect);
+}
+
+.nav-profile-chip:hover {
+    background: var(--surface-card-hover);
+    border-color: var(--border-default);
+    box-shadow: 0 0 12px var(--xbox-green-glow);
+}
+
+.nav-avatar {
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 1.5px solid var(--xbox-green);
+    box-shadow: 0 0 6px var(--xbox-green-glow);
+}
+
+.nav-avatar-fallback {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--surface-elevated);
+    color: var(--text-tertiary);
+}
+
+.nav-gamertag {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 0.75rem;
+    letter-spacing: 0.03em;
+    color: var(--text-secondary);
+    transition: color var(--dur-fast) var(--ease-effect);
+}
+
+.nav-profile-chip:hover .nav-gamertag {
+    color: var(--text-primary);
+}
+
+/* ========== Footer ========== */
+footer {
+    border-top: 1px solid var(--border-subtle);
+    color: var(--text-tertiary);
+    padding: 1rem 0;
+    margin-top: 2rem;
+    font-size: 0.85rem;
+    position: relative;
+    z-index: 1;
+}
+
+/* ========== Progressive Blur — Reusable System ========== */
+/* Stacked layers with increasing backdrop-filter blur, masked to bands */
+/* Direction variants: down (nav, hero bottom), up (footer, hero top) */
+
+.prog-blur {
+    position: absolute;
+    left: 0;
+    right: 0;
+    pointer-events: none;
+    z-index: 2;
+}
+
+.prog-blur-down { bottom: -48px; height: 48px; }
+.prog-blur-up   { top: -48px; height: 48px; }
+
+.prog-blur > span {
+    position: absolute;
+    inset: 0;
+    display: block;
+}
+
+/* Down direction — blur increases toward bottom */
+.prog-blur-down > span:nth-child(1) {
+    backdrop-filter: blur(1px); -webkit-backdrop-filter: blur(1px);
+    mask: linear-gradient(to bottom, transparent, black 40%);
+    -webkit-mask: linear-gradient(to bottom, transparent, black 40%);
+}
+.prog-blur-down > span:nth-child(2) {
+    backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
+    mask: linear-gradient(to bottom, transparent 25%, black 60%);
+    -webkit-mask: linear-gradient(to bottom, transparent 25%, black 60%);
+}
+.prog-blur-down > span:nth-child(3) {
+    backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+    mask: linear-gradient(to bottom, transparent 50%, black 80%);
+    -webkit-mask: linear-gradient(to bottom, transparent 50%, black 80%);
+}
+.prog-blur-down > span:nth-child(4) {
+    backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+    mask: linear-gradient(to bottom, transparent 70%, black 95%);
+    -webkit-mask: linear-gradient(to bottom, transparent 70%, black 95%);
+}
+
+/* Up direction — blur increases toward top */
+.prog-blur-up > span:nth-child(1) {
+    backdrop-filter: blur(1px); -webkit-backdrop-filter: blur(1px);
+    mask: linear-gradient(to top, transparent, black 40%);
+    -webkit-mask: linear-gradient(to top, transparent, black 40%);
+}
+.prog-blur-up > span:nth-child(2) {
+    backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
+    mask: linear-gradient(to top, transparent 25%, black 60%);
+    -webkit-mask: linear-gradient(to top, transparent 25%, black 60%);
+}
+.prog-blur-up > span:nth-child(3) {
+    backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+    mask: linear-gradient(to top, transparent 50%, black 80%);
+    -webkit-mask: linear-gradient(to top, transparent 50%, black 80%);
+}
+.prog-blur-up > span:nth-child(4) {
+    backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+    mask: linear-gradient(to top, transparent 70%, black 95%);
+    -webkit-mask: linear-gradient(to top, transparent 70%, black 95%);
+}
+
+/* ========== Page Headers ========== */
+.page-header h1 {
+    font-weight: 700;
+    letter-spacing: 0.02em;
+}
+
+.page-header p {
+    color: var(--text-tertiary);
+}
+
+

@@ -1,0 +1,17 @@
+{
+  "name": "Xbox Profile Dashboard",
+  "short_name": "Xbox Profile",
+  "description": "Personal Xbox gaming profile dashboard",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0a0a0a",
+  "theme_color": "#107c10",
+  "icons": [
+    {
+      "src": "/static/img/Xbox_one_logo.svg.png",
+      "sizes": "any",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

@@ -1,0 +1,333 @@
+/* Xbox Dashboard — profile */
+
+/* ========== Chart Sizing ========== */
+#completionChart {
+    max-height: 280px;
+}
+
+/* ========== Stat Cards ========== */
+.stat-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 1rem;
+}
+
+
+.stat-card {
+    text-align: center;
+    padding: 1.25rem 1rem;
+    position: relative;
+    background: transparent;
+    border: 1px solid var(--glass-border);
+    transition: transform var(--dur-normal) var(--ease-spatial);
+    overflow: hidden;
+    container-type: inline-size;
+    contain: layout style paint;
+}
+
+/* Liquid light sweep — slow ambient highlight moving across surface */
+.stat-card::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 60%;
+    height: 100%;
+    background: linear-gradient(
+        90deg,
+        transparent 0%,
+        var(--liquid-sweep-color) 40%,
+        rgba(255, 255, 255, 0.04) 50%,
+        var(--liquid-sweep-color) 60%,
+        transparent 100%
+    );
+    animation: liquid-sweep 8s ease-in-out infinite;
+    pointer-events: none;
+    z-index: 1;
+}
+
+@keyframes liquid-sweep {
+    0%   { transform: translateX(-170%); }
+    40%  { transform: translateX(200%); }
+    100% { transform: translateX(200%); }
+}
+
+/* Glow pillar — left edge accent */
+.stat-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: 3px;
+    background: var(--xbox-green);
+    box-shadow: 0 0 12px var(--xbox-green-glow), 4px 0 20px var(--xbox-green-glow);
+}
+
+.stat-card:hover {
+    box-shadow: var(--shadow-8);
+    transform: translateY(-3px);
+}
+
+.stat-icon {
+    color: var(--xbox-green);
+    margin-bottom: 0.5rem;
+    opacity: 0.85;
+}
+
+.stat-card h3 {
+    margin: 0;
+    font-family: var(--font-mono);
+    font-size: clamp(1.1rem, 12cqi, 2rem);
+    color: var(--xbox-green);
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.stat-card p {
+    margin: 0.25rem 0 0;
+    font-family: var(--font-display);
+    color: var(--text-tertiary);
+    font-size: var(--text-xs);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-weight: 600;
+}
+
+
+/* ========== Currently Playing Grid ========== */
+.playing-games-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 0.75rem;
+}
+
+.playing-game-card {
+    display: flex;
+    gap: 0.75rem;
+    padding: 0.75rem;
+    border-radius: var(--radius-lg);
+    align-items: center;
+    border: 1px solid transparent;
+    background: rgba(16, 185, 129, 0.05);
+    backdrop-filter: blur(var(--glass-blur-radius)) saturate(var(--glass-sat-surface)) brightness(var(--glass-brightness));
+    -webkit-backdrop-filter: blur(var(--glass-blur-radius)) saturate(var(--glass-sat-surface)) brightness(var(--glass-brightness));
+    text-decoration: none;
+    color: inherit;
+    transition: background var(--dur-fast) var(--ease-effect), border-color var(--dur-fast) var(--ease-effect), box-shadow var(--dur-normal) var(--ease-effect);
+    box-shadow: var(--shadow-2);
+    content-visibility: auto;
+    contain-intrinsic-block-size: auto 72px;
+}
+
+.playing-game-card { transition-delay: calc(var(--i, 0) * 30ms); }
+
+.playing-game-card:hover {
+    background: rgba(16, 185, 129, 0.10);
+    box-shadow: var(--shadow-4);
+    text-decoration: none;
+}
+
+.playing-game-img {
+    width: 48px;
+    height: 48px;
+    object-fit: cover;
+    border-radius: var(--radius-sm);
+    flex-shrink: 0;
+    transition: transform var(--dur-fast) var(--ease-spatial);
+}
+
+.playing-game-card:hover .playing-game-img {
+    transform: scale(1.1);
+}
+
+.playing-game-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.playing-game-name {
+    font-weight: 600;
+    font-size: 0.9rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.playing-game-meta {
+    display: flex;
+    gap: 0.75rem;
+    align-items: center;
+    font-size: 0.8rem;
+    color: var(--text-tertiary);
+    margin-top: 0.25rem;
+}
+
+.playing-progress {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+
+.playing-badge {
+    color: var(--status-playing);
+    flex-shrink: 0;
+    opacity: 0.7;
+}
+
+/* ========== Completed Games Grid ========== */
+.completed-games-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 0.75rem;
+}
+
+.completed-game-card {
+    display: flex;
+    gap: 0.75rem;
+    padding: 0.75rem;
+    border-radius: var(--radius-lg);
+    align-items: center;
+    border: 1px solid transparent;
+    background: var(--xbox-green-subtle);
+    backdrop-filter: blur(var(--glass-blur-radius)) saturate(1.35) brightness(1.10);
+    -webkit-backdrop-filter: blur(var(--glass-blur-radius)) saturate(1.35) brightness(1.10);
+    text-decoration: none;
+    color: inherit;
+    transition: background var(--dur-fast) var(--ease-effect), border-color var(--dur-fast) var(--ease-effect), box-shadow var(--dur-normal) var(--ease-effect);
+    box-shadow: var(--shadow-2);
+    content-visibility: auto;
+    contain-intrinsic-block-size: auto 72px;
+}
+
+.completed-game-card:hover {
+    background: rgba(0, 210, 106, 0.12);
+    box-shadow: var(--shadow-4);
+    text-decoration: none;
+}
+
+.completed-game-img {
+    width: 48px;
+    height: 48px;
+    object-fit: cover;
+    border-radius: var(--radius-sm);
+    flex-shrink: 0;
+    transition: transform var(--dur-fast) var(--ease-spatial);
+}
+
+.completed-game-card:hover .completed-game-img {
+    transform: scale(1.1);
+}
+
+.completed-game-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.completed-game-name {
+    font-weight: 600;
+    font-size: 0.9rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.completed-game-meta {
+    display: flex;
+    gap: 0.5rem;
+    font-size: 0.8rem;
+    color: var(--text-tertiary);
+    margin-top: 0.15rem;
+}
+
+.completed-badge {
+    color: var(--xbox-green);
+    font-weight: 700;
+    font-size: 1.1rem;
+    flex-shrink: 0;
+}
+
+/* ========== Dashboard Recently Played Table ========== */
+.recent-table-wrap {
+    position: relative;
+    border-radius: var(--radius-md);
+    margin: 0 -2px;
+    padding: 0 2px;
+}
+
+
+.recent-table {
+    font-size: 0.9rem;
+    border-collapse: separate;
+    border-spacing: 0 2px;
+    border-radius: var(--radius-md);
+    overflow: hidden;
+}
+
+.recent-table thead th:first-child { border-radius: var(--radius-md) 0 0 0; }
+.recent-table thead th:last-child  { border-radius: 0 var(--radius-md) 0 0; }
+.recent-row:last-child td:first-child { border-radius: 0 0 0 var(--radius-md); }
+.recent-row:last-child td:last-child  { border-radius: 0 0 var(--radius-md) 0; }
+
+.recent-table thead th {
+    background: var(--surface-elevated);
+    color: var(--text-tertiary);
+    font-family: var(--font-display);
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    padding: 0.75rem 0.75rem;
+    border-bottom: 1px solid var(--border-subtle);
+}
+
+.grid-rows .recent-table thead th,
+.grid-rows .game-table thead th {
+    background: none;
+    border: none;
+    border-radius: 0;
+    padding: 0;
+}
+
+.recent-table td {
+    padding: 0.75rem 0.75rem;
+    vertical-align: middle;
+    border-bottom: 1px solid transparent;
+    background: transparent;
+    color: var(--text-primary);
+    transition: background var(--dur-micro) var(--ease-effect), box-shadow var(--dur-micro) var(--ease-effect);
+}
+
+.recent-row:last-child td {
+    border-bottom: none;
+}
+
+.recent-row:nth-child(even) td {
+    background: rgba(255, 255, 255, 0.025);
+}
+
+.recent-table .center { text-align: center; }
+
+.recent-row:hover td {
+    background: var(--xbox-green-subtle) !important;
+    border-bottom-color: rgba(0, 210, 106, 0.1);
+}
+
+.recent-row:hover td:first-child {
+    box-shadow: inset 3px 0 0 var(--xbox-green);
+}
+
+.recent-row:hover .game-name {
+    color: var(--xbox-green);
+    text-shadow: 0 0 15px var(--xbox-green-glow);
+}
+
+.recent-row:hover .game-thumb-sm {
+    transform: scale(1.15);
+    box-shadow: var(--shadow-4);
+}
+
+.recent-row.row-click td {
+    animation: row-flash 0.3s var(--ease-effect);
+}
+

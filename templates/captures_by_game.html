@@ -1,0 +1,33 @@
+{% from "macros.html" import capture_card %}
+{% if by_game %}
+{% for group in by_game %}
+<div class="captures-game-group">
+    <a href="/game/{{ group.title_id }}" class="captures-game-header anim-blur-rise">
+        {% if group.game_image %}
+        <img src="{{ group.game_image|thumb(48) }}" alt="{{ group.title_name }}" class="captures-game-icon" loading="lazy" decoding="async">
+        {% endif %}
+        <div class="captures-game-info">
+            <span class="captures-game-name">{{ group.title_name }}</span>
+            <span class="captures-game-count">{{ group.count }} capture{{ 's' if group.count != 1 }}</span>
+        </div>
+    </a>
+    <div class="captures-preview-grid reveal-container anim-stagger" id="game-captures-{{ group.title_id }}">
+        {% for s in group.previews %}
+            {{ capture_card(s, i=loop.index0, eager_count=0) }}
+        {% endfor %}
+    </div>
+    {% if group.count > 6 %}
+    <button class="outline captures-show-all anim-pop"
+            data-total="{{ group.count }}"
+            data-title-id="{{ group.title_id }}"
+            onclick="expandCaptureGame('{{ group.title_id }}', this)">
+        Show all {{ group.count }}
+    </button>
+    {% endif %}
+</div>
+{% endfor %}
+{% else %}
+<div class="empty-state">
+    <p>No captures yet. Click "Sync Captures" to fetch your Xbox screenshots.</p>
+</div>
+{% endif %}

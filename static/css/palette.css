@@ -1,0 +1,313 @@
+/* Xbox Dashboard — palette */
+
+/* ---------- Command Palette (Ctrl+K) ---------- */
+.cmd-palette {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding-top: clamp(60px, 12vh, 140px);
+}
+
+.cmd-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    animation: cmd-fade-in var(--dur-fast) var(--ease-effect);
+}
+
+.cmd-panel {
+    position: relative;
+    z-index: 1;
+    width: min(640px, calc(100vw - 2rem));
+    background: transparent;
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-16),
+                0 0 60px rgba(0, 210, 106, 0.06);
+    overflow: hidden;
+    animation: cmd-slide-in var(--dur-fast) var(--ease-enter);
+    contain: layout style paint;
+    isolation: isolate;
+}
+
+
+@keyframes cmd-fade-in {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+}
+
+@keyframes cmd-slide-in {
+    from { opacity: 0; transform: translateY(-12px) scale(0.97); }
+    to   { opacity: 1; transform: none; }
+}
+
+.cmd-search-wrap {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0 1rem;
+    border-bottom: 1px solid var(--border-subtle);
+}
+
+.cmd-search-icon {
+    flex-shrink: 0;
+    color: var(--text-tertiary);
+}
+
+.cmd-input {
+    flex: 1;
+    background: none;
+    border: none;
+    outline: none;
+    padding: 1rem 0;
+    font-size: 1rem;
+    color: var(--text-primary);
+    font-family: var(--font-body);
+}
+
+.cmd-input::placeholder { color: var(--text-tertiary); }
+
+.cmd-esc-hint {
+    flex-shrink: 0;
+    font-size: 0.7rem;
+    padding: 0.2rem 0.4rem;
+    background: var(--surface-elevated);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    color: var(--text-tertiary);
+    font-family: var(--font-mono);
+}
+
+.cmd-results {
+    max-height: 400px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+
+.cmd-section-label {
+    font-family: var(--font-display);
+    font-size: var(--text-2xs);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-tertiary);
+    padding: 0.6rem 1rem 0.3rem;
+}
+
+.cmd-item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.6rem 1rem;
+    cursor: pointer;
+    text-decoration: none;
+    color: var(--text-secondary);
+    transition: background var(--dur-micro) var(--ease-effect), color var(--dur-micro) var(--ease-effect);
+    border-radius: 0;
+}
+
+.cmd-item:hover,
+.cmd-item.active {
+    background: var(--xbox-green-subtle);
+    color: var(--text-primary);
+}
+
+.cmd-item.active .cmd-item-icon { color: var(--xbox-green); }
+
+.cmd-item-icon {
+    width: 28px;
+    height: 28px;
+    border-radius: var(--radius-sm);
+    background: var(--surface-elevated);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    color: var(--text-tertiary);
+    font-size: 0.75rem;
+}
+
+.cmd-item-img {
+    width: 28px;
+    height: 28px;
+    border-radius: var(--radius-sm);
+    object-fit: cover;
+    flex-shrink: 0;
+}
+
+.cmd-item-thumb {
+    width: 32px;
+    height: 32px;
+    background: none;
+    overflow: hidden;
+    padding: 0;
+}
+
+.cmd-item-thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.cmd-item-text {
+    flex: 1;
+    min-width: 0;
+}
+
+.cmd-item-name {
+    font-size: 0.9rem;
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.cmd-item-sub {
+    font-size: 0.75rem;
+    color: var(--text-tertiary);
+}
+
+.cmd-item-arrow {
+    font-size: 0.75rem;
+    color: var(--text-tertiary);
+    opacity: 0;
+    transition: opacity var(--dur-micro);
+}
+
+.cmd-item:hover .cmd-item-arrow,
+.cmd-item.active .cmd-item-arrow { opacity: 1; }
+
+.cmd-footer {
+    display: flex;
+    gap: 1rem;
+    padding: 0.5rem 1rem;
+    border-top: 1px solid var(--border-subtle);
+    font-size: 0.7rem;
+    color: var(--text-tertiary);
+}
+
+.cmd-footer kbd {
+    padding: 0.15rem 0.35rem;
+    background: var(--surface-elevated);
+    border: 1px solid var(--border-subtle);
+    border-radius: 3px;
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    margin-right: 0.2rem;
+}
+
+.cmd-empty {
+    padding: 2rem 1rem;
+    text-align: center;
+    color: var(--text-tertiary);
+    font-size: 0.9rem;
+}
+
+/* Nav search button */
+.nav-search-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.25rem 0.55rem;
+    background: transparent;
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius-btn);
+    color: var(--text-tertiary);
+    cursor: pointer;
+    font-size: 0.75rem;
+    contain: layout style paint;
+    transition: color var(--dur-micro) var(--ease-effect), background var(--dur-micro) var(--ease-effect), border-color var(--dur-micro) var(--ease-effect);
+}
+
+.nav-search-btn:hover {
+    color: var(--text-secondary);
+    background: var(--surface-elevated);
+    border-color: var(--border-default);
+}
+
+.nav-search-hint {
+    font-family: var(--font-mono);
+    font-size: 0.62rem;
+    color: var(--text-tertiary);
+    background: none;
+    border: none;
+    padding: 0;
+    letter-spacing: 0;
+}
+
+/* Light theme command palette */
+[data-theme="light"] .cmd-backdrop {
+    background: rgba(200, 205, 215, 0.5);
+}
+
+[data-theme="light"] .cmd-panel {
+    box-shadow: var(--shadow-16), 0 0 40px rgba(0,0,0,0.08);
+}
+
+/* ---------- Keyboard Shortcuts Overlay ---------- */
+.shortcuts-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.shortcuts-panel {
+    position: relative;
+    z-index: 1;
+    width: min(420px, calc(100vw - 2rem));
+    background: transparent;
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-16);
+    padding: 1.5rem;
+    animation: cmd-slide-in var(--dur-fast) var(--ease-enter);
+    contain: layout style paint;
+    isolation: isolate;
+    overflow: hidden;
+}
+
+.shortcuts-panel h3 {
+    margin: 0 0 1rem;
+    font-size: 1rem;
+    font-weight: 600;
+}
+
+.shortcuts-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.shortcut-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+
+.shortcut-row span {
+    margin-left: auto;
+    color: var(--text-tertiary);
+    font-size: 0.8rem;
+}
+
+.shortcut-row kbd {
+    padding: 0.2rem 0.45rem;
+    background: var(--surface-elevated);
+    border: 1px solid var(--border-subtle);
+    border-radius: 4px;
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    color: var(--text-secondary);
+    min-width: 1.4em;
+    text-align: center;
+}

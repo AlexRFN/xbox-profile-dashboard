@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+{% block title %}Friends - Xbox{% endblock %}
+
+{% block content %}
+<div class="page-header-actions">
+    <hgroup class="anim-drop">
+        <h1>Friends</h1>
+        <p>{{ friends | length }} friends{% if online_count %} &middot; {{ online_count }} online{% endif %}</p>
+    </hgroup>
+    <button id="sync-friends-btn" class="outline anim-drop" style="--i: 1"
+            onclick="fetchFriends()" aria-busy="false">
+        Refresh
+    </button>
+</div>
+
+{% if friends | length == 0 %}
+<div class="empty-state anim-blur-rise">
+    <svg viewBox="0 0 64 64" width="56" height="56" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.3">
+        <circle cx="22" cy="20" r="8"/><circle cx="42" cy="20" r="8"/>
+        <path d="M4 56c0-9.9 8.1-18 18-18M42 38c9.9 0 18 8.1 18 18M28 56c0-7.7 6.3-14 14-14"/>
+    </svg>
+    <p>No friends data loaded.</p>
+    <small>Click Refresh to fetch your friends list.</small>
+</div>
+{% else %}
+
+<!-- Online friends -->
+{% set online_friends = friends | selectattr('presenceState', 'equalto', 'Online') | list %}
+{% set offline_friends = friends | rejectattr('presenceState', 'equalto', 'Online') | list %}
+
+{% if online_friends %}
+<div class="friends-section-label anim-drop">
+    <span class="friends-section-dot friends-section-dot-online"></span>
+    Online ({{ online_friends | length }})
+</div>
+<div class="friends-grid friends-grid-online anim-stagger">
+    {% for friend in online_friends %}
+    <article class="friend-card friend-card-online reveal-item reveal-border anim-slide-blur" style="--i: {{ loop.index0 }}">
+        <div class="friend-card-art">
+            <img src="{{ friend.displayPicRaw }}" alt="" class="friend-art-bg"
+                 loading="lazy" decoding="async">
+            <div class="friend-art-overlay"></div>
+        </div>
+        <div class="friend-card-content">
+            <div class="friend-avatar-wrap">
+                <img src="{{ friend.displayPicRaw }}" alt="" class="friend-avatar"
+                     loading="lazy" decoding="async">
+                <span class="friend-status-ring online"></span>
+            </div>
+            <div class="friend-info">
+                <div class="friend-name">
+                    {{ friend.gamertag }}
+                    {% if friend.isFavorite %}<span class="friend-fav" title="Favorite">&#9733;</span>{% endif %}
+                </div>
+                <div class="friend-gs">{{ "{:,}".format(friend.gamerScore | int) }} G</div>
+                {% if friend.presenceGame %}
+                <div class="friend-presence friend-presence-active">Playing {{ friend.presenceGame }}</div>
+                {% if friend.richPresenceText %}
+                <div class="friend-rich-presence">{{ friend.richPresenceText }}</div>
+                {% endif %}
+                {% else %}
+                <div class="friend-presence friend-presence-active">{{ friend.presenceText or 'Online' }}</div>
+                {% endif %}
+                {% if friend.presenceDevice %}
+                <div class="friend-device-tag">{{ friend.presenceDevice }}</div>
+                {% endif %}
+            </div>
+        </div>
+    </article>
+    {% endfor %}
+</div>
+{% endif %}
+
+{% if offline_friends %}
+{% if online_friends %}
+<div class="friends-section-label anim-drop" style="margin-top: 1.5rem;">
+    <span class="friends-section-dot"></span>
+    Offline ({{ offline_friends | length }})
+</div>
+{% endif %}
+<div class="friends-grid anim-stagger">
+    {% for friend in offline_friends %}
+    <article class="friend-card reveal-item reveal-border anim-slide-blur status-offline" style="--i: {{ loop.index0 }}">
+        <div class="friend-avatar-wrap">
+            <img src="{{ friend.displayPicRaw }}" alt="" class="friend-avatar"
+                 loading="lazy" decoding="async">
+            <span class="friend-status-ring offline"></span>
+        </div>
+        <div class="friend-info">
+            <div class="friend-name">
+                {{ friend.gamertag }}
+                {% if friend.isFavorite %}<span class="friend-fav" title="Favorite">&#9733;</span>{% endif %}
+            </div>
+            <div class="friend-gs">{{ "{:,}".format(friend.gamerScore | int) }} G</div>
+            <div class="friend-presence">{{ friend.presenceText or 'Offline' }}</div>
+        </div>
+    </article>
+    {% endfor %}
+</div>
+{% endif %}
+
+{% endif %}
+{% endblock %}
+
+{% block body_class %}{% if auto_fetch %}auto-fetch-friends{% endif %}{% endblock %}
