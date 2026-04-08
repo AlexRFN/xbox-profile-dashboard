@@ -14,10 +14,10 @@ from sentry_sdk.integrations.logging import LoggingIntegration
 from starlette.responses import Response
 
 import database as db
+import xbox_api
 from helpers import build_css_bundle, build_js_bundle, register_filters, templates
 from logging_config import configure_logging
 from models import ApiError
-import xbox_api
 from xbox_api import API_KEY, close_client, init_client
 
 configure_logging()
@@ -100,7 +100,7 @@ def _start_asset_watcher():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    from scheduler import scheduler, register_jobs
+    from scheduler import register_jobs, scheduler
 
     log.info("Starting Xbox Profile Dashboard")
     _startup_check()
@@ -189,7 +189,8 @@ async def service_worker():
 
 
 # Routers imported after app creation to avoid circular import (routers → helpers → app)
-from routers import pages, library, game, sync_routes, stats, captures, friends  # noqa: E402
+from routers import captures, friends, game, library, pages, stats, sync_routes  # noqa: E402
+
 app.include_router(pages.router)
 app.include_router(library.router)
 app.include_router(game.router)

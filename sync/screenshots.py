@@ -1,9 +1,15 @@
 import logging
-from xbox_api import get_screenshots, RateLimitExceeded
+
 from database import (
-    create_sync_log, update_sync_log, can_make_requests,
-    get_existing_screenshot_ids, upsert_screenshots, get_api_calls_last_hour
+    can_make_requests,
+    create_sync_log,
+    get_api_calls_last_hour,
+    get_existing_screenshot_ids,
+    update_sync_log,
+    upsert_screenshots,
 )
+from xbox_api import RateLimitExceeded, get_screenshots
+
 from .core import _guarded_sync, _json
 
 log = logging.getLogger("xbox.sync")

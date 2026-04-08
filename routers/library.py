@@ -6,7 +6,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 
 import database as db
 from config import LIBRARY_EXPORT_LIMIT
-from helpers import templates, LibraryFilters, get_filters, format_date
+from helpers import LibraryFilters, format_date, get_filters, templates
 
 router = APIRouter()
 
@@ -21,8 +21,7 @@ async def library_table(
     games, total = await db.get_all_games(
         f.q, f.status, f.completion, f.platform,
         f.gamepass, f.sort_by, f.sort_dir, page, per_page)
-    return templates.TemplateResponse("library_table.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "library_table.html", {
         "games": games,
         "total": total,
         "page": page,
@@ -50,8 +49,7 @@ async def library_grid(
     games, total = await db.get_all_games(
         f.q, f.status, f.completion, f.platform,
         f.gamepass, f.sort_by, f.sort_dir, page, per_page)
-    return templates.TemplateResponse("library_grid.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "library_grid.html", {
         "games": games,
         "total": total,
         "page": page,

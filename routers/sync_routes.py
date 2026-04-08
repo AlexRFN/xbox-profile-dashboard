@@ -7,8 +7,14 @@ import database as db
 from helpers import sse_response
 from models import SyncResult
 from sync import (
-    full_library_sync, sync_game_details, unified_sync, sync_screenshots,
-    is_sync_running, fire_and_forget, backfill_blurhashes, sync_guard,
+    backfill_blurhashes,
+    fire_and_forget,
+    full_library_sync,
+    is_sync_running,
+    sync_game_details,
+    sync_guard,
+    sync_screenshots,
+    unified_sync,
 )
 
 log = logging.getLogger("xbox.sync_routes")

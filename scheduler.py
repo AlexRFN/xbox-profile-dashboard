@@ -14,9 +14,12 @@ import logging
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
+
 from config import (
-    SCHEDULED_SYNC_CONCURRENCY, SCHEDULED_GAME_BUDGET_PCT,
-    SCHEDULED_GAME_BUDGET_CAP, MIN_SYNC_BUDGET,
+    MIN_SYNC_BUDGET,
+    SCHEDULED_GAME_BUDGET_CAP,
+    SCHEDULED_GAME_BUDGET_PCT,
+    SCHEDULED_SYNC_CONCURRENCY,
 )
 
 log = logging.getLogger("xbox.scheduler")
@@ -26,8 +29,8 @@ scheduler = AsyncIOScheduler(timezone="UTC")
 
 async def scheduled_library_sync():
     """Full library scan — cheap (2 API calls), runs every 4 hours."""
-    from sync import full_library_sync, backfill_blurhashes, fire_and_forget, sync_guard
     from database import can_make_requests
+    from sync import backfill_blurhashes, fire_and_forget, full_library_sync, sync_guard
 
     async with sync_guard("scheduled_library") as acquired:
         if not acquired:
@@ -49,13 +52,17 @@ async def scheduled_detail_sync():
 
     Budget: min(30, 50% of remaining) API calls per run.
     """
-    from sync import (
-        detect_changed_games, sync_game_selective, fit_changes_to_budget, sync_guard,
-    )
     from database import (
-        get_api_calls_last_hour, get_games_for_change_detection,
-        upsert_games_bulk,
         RATE_LIMIT_BUDGET,
+        get_api_calls_last_hour,
+        get_games_for_change_detection,
+        upsert_games_bulk,
+    )
+    from sync import (
+        detect_changed_games,
+        fit_changes_to_budget,
+        sync_game_selective,
+        sync_guard,
     )
     from xbox_api import get_all_games
 
@@ -121,8 +128,8 @@ async def scheduled_detail_sync():
 
 async def scheduled_friends_sync():
     """Friends refresh — cheap (1 API call), runs every 30 minutes."""
-    from sync import sync_friends, sync_guard
     from database import can_make_requests
+    from sync import sync_friends, sync_guard
 
     async with sync_guard("scheduled_friends") as acquired:
         if not acquired:

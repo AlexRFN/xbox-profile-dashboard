@@ -1,7 +1,7 @@
 import pytest
-from database.games import (
-    upsert_games_bulk, get_all_games, get_game, update_game_stats
-)
+
+from database.games import get_all_games, get_game, update_game_stats, upsert_games_bulk
+
 
 @pytest.mark.asyncio
 async def test_upsert_and_get_games():
@@ -70,7 +70,7 @@ async def test_get_all_games():
 async def test_update_game_stats():
     await upsert_games_bulk([{"title_id": "3", "name": "Stat Game"}])
     await update_game_stats("3", 120)
-    
+
     game = await get_game("3")
     assert game["minutes_played"] == 120
     assert game["stats_last_fetched"] is not None

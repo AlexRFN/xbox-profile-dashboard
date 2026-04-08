@@ -2,7 +2,34 @@
 asyncio_mode = "auto"
 testpaths = ["tests"]
 python_files = ["test_*.py"]
-addopts = "-v"
+addopts = "-v --cov=. --cov-report=term-missing --cov-fail-under=40 --cov-config=pyproject.toml"
+
+[tool.coverage.run]
+omit = [
+    "tests/*",
+    "static/*",
+    "data/*",
+    ".venv/*",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+]
+
+[tool.pyright]
+pythonVersion = "3.12"
+typeCheckingMode = "basic"
+reportMissingImports = true
+reportUndefinedVariable = true
+exclude = ["static", "data", ".venv"]
+# aiosqlite.Row and Pillow stubs generate false positives for these rules
+reportArgumentType = "none"
+reportOptionalSubscript = "none"
+reportIndexIssue = "none"
+reportCallIssue = "none"
 
 [tool.ruff]
 target-version = "py312"

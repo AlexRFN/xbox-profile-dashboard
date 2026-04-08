@@ -1,9 +1,11 @@
 import logging
 import os
 from urllib.parse import urlencode
+
 import httpx
 from dotenv import load_dotenv
-from database import sync_rate_limit_from_headers, can_make_requests
+
+from database import can_make_requests, sync_rate_limit_from_headers
 
 load_dotenv()
 
@@ -92,7 +94,7 @@ async def resolve_identity() -> tuple[str, str]:
     XUID = xuid
     GAMERTAG = gamertag or GAMERTAG
     log.info("Identity resolved: gamertag=%s xuid=%s", GAMERTAG, XUID)
-    return XUID, GAMERTAG
+    return XUID, GAMERTAG  # type: ignore[return-value]
 
 
 async def get_all_games() -> list[dict]:

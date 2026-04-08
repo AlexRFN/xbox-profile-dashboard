@@ -1,10 +1,13 @@
 import logging
-import orjson
 from datetime import date
-from .connection import get_connection
-from .cache import _cache_invalidate
-from .stats import get_dashboard_stats, get_achievement_stats
+
+import orjson
+
 from config import CacheKey
+
+from .cache import _cache_invalidate
+from .connection import get_connection
+from .stats import get_achievement_stats, get_dashboard_stats
 
 log = logging.getLogger("xbox.db")
 
@@ -157,7 +160,7 @@ async def get_achievements_page(page: int = 1, per_page: int = 60, q: str = "",
         WHERE {where_sql}
         ORDER BY {full_order}
         LIMIT ? OFFSET ?
-    """, params + [per_page, offset])
+    """, [*params, per_page, offset])
     rows = await cursor.fetchall()
 
     return [dict(r) for r in rows], total

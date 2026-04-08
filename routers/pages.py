@@ -4,10 +4,14 @@ from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse
 
 import database as db
-from config import TIMELINE_PAGE_SIZE, ACHIEVEMENTS_PAGE_SIZE, LIBRARY_PAGE_SIZE, CAPTURES_PAGE_SIZE
+from config import ACHIEVEMENTS_PAGE_SIZE, CAPTURES_PAGE_SIZE, LIBRARY_PAGE_SIZE, TIMELINE_PAGE_SIZE
 from helpers import (
-    page_ctx, templates, group_events_by_month, build_heatmap_grid,
-    LibraryFilters, get_filters,
+    LibraryFilters,
+    build_heatmap_grid,
+    get_filters,
+    group_events_by_month,
+    page_ctx,
+    templates,
 )
 
 router = APIRouter()
@@ -35,7 +39,7 @@ async def dashboard(request: Request):
     )
     ctx["stats"] = stats
     _apply_heatmap(ctx, heatmap_rows, year_range)
-    return templates.TemplateResponse("index.html", ctx)
+    return templates.TemplateResponse(request, "index.html", ctx)
 
 
 @router.get("/library", response_class=HTMLResponse)
@@ -62,7 +66,7 @@ async def library(request: Request, f: LibraryFilters = Depends(get_filters)):
         "sort_dir": f.sort_dir,
         "status_counts": status_counts,
     })
-    return templates.TemplateResponse("library.html", ctx)
+    return templates.TemplateResponse(request, "library.html", ctx)
 
 
 @router.get("/game/{title_id}", response_class=HTMLResponse)
@@ -71,7 +75,7 @@ async def game_detail(request: Request, title_id: str):
     if not game:
         ctx = await page_ctx(request)
         ctx["message"] = f"No game found with title ID: {title_id}"
-        return templates.TemplateResponse("404.html", ctx, status_code=404)
+        return templates.TemplateResponse(request, "404.html", ctx, status_code=404)
     ctx, screenshots, achievements, screenshot_count = await asyncio.gather(
         page_ctx(request),
         db.get_screenshots_for_game(title_id, 8),
@@ -84,7 +88,7 @@ async def game_detail(request: Request, title_id: str):
         "screenshots": screenshots,
         "screenshot_count": screenshot_count,
     })
-    return templates.TemplateResponse("game_detail.html", ctx)
+    return templates.TemplateResponse(request, "game_detail.html", ctx)
 
 
 @router.get("/timeline", response_class=HTMLResponse)
@@ -117,7 +121,7 @@ async def timeline_page(request: Request, event_type: str = "", game_search: str
         "near_completion": near_completion,
     })
     _apply_heatmap(ctx, heatmap_rows, year_range)
-    return templates.TemplateResponse("timeline.html", ctx)
+    return templates.TemplateResponse(request, "timeline.html", ctx)
 
 
 @router.get("/achievements", response_class=HTMLResponse)
@@ -143,7 +147,7 @@ async def achievements_page(request: Request,
         "q": q, "rarity": rarity, "game_filter": game,
         "status_filter": status, "sort": sort, "group": group,
     })
-    return templates.TemplateResponse("achievements.html", ctx)
+    return templates.TemplateResponse(request, "achievements.html", ctx)
 
 
 @router.get("/api/achievements/grid", response_class=HTMLResponse)
@@ -152,8 +156,7 @@ async def achievements_grid(request: Request,
                             status: str = "", sort: str = "date_desc",
                             group: str = "", page: int = 1):
     achievements, total = await db.get_achievements_page(page, ACHIEVEMENTS_PAGE_SIZE, q, rarity, game, status, sort, group)
-    return templates.TemplateResponse("achievements_grid.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "achievements_grid.html", {
         "achievements": achievements,
         "ach_total": total,
         "ach_page": page,
@@ -175,7 +178,7 @@ async def captures_page(request: Request):
         "has_more": has_more,
         "view": "all",
     })
-    return templates.TemplateResponse("captures.html", ctx)
+    return templates.TemplateResponse(request, "captures.html", ctx)
 
 
 @router.get("/friends", response_class=HTMLResponse)
@@ -191,4 +194,4 @@ async def friends_page(request: Request):
         # (e.g. first run) so the page isn't blank.
         "auto_fetch": len(friends) == 0,
     })
-    return templates.TemplateResponse("friends.html", ctx)
+    return templates.TemplateResponse(request, "friends.html", ctx)

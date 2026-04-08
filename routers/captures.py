@@ -16,9 +16,8 @@ router = APIRouter()
 
 @router.get("/api/captures/grid", response_class=HTMLResponse)
 async def captures_grid(request: Request, page: int = 1):
-    screenshots, total, has_more = await db.get_all_screenshots(page, CAPTURES_PAGE_SIZE)
-    return templates.TemplateResponse("captures_grid.html", {
-        "request": request,
+    screenshots, _, has_more = await db.get_all_screenshots(page, CAPTURES_PAGE_SIZE)
+    return templates.TemplateResponse(request, "captures_grid.html", {
         "screenshots": screenshots,
         "has_more": has_more,
         "page": page,
@@ -28,8 +27,7 @@ async def captures_grid(request: Request, page: int = 1):
 @router.get("/api/captures/by-game", response_class=HTMLResponse)
 async def captures_by_game(request: Request):
     by_game = await db.get_screenshots_by_game()
-    return templates.TemplateResponse("captures_by_game.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "captures_by_game.html", {
         "by_game": by_game,
     })
 
@@ -37,8 +35,7 @@ async def captures_by_game(request: Request):
 @router.get("/api/captures/game/{title_id}", response_class=HTMLResponse)
 async def captures_game_expand(request: Request, title_id: str):
     screenshots = await db.get_screenshots_for_game(title_id)
-    return templates.TemplateResponse("captures_game_expand.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "captures_game_expand.html", {
         "screenshots": screenshots,
     })
 

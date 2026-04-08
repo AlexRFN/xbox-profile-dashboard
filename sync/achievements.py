@@ -1,7 +1,14 @@
 import logging
+
 import orjson
-from xbox_api import get_title_achievements, get_player_achievements, get_x360_achievements
-from database import update_achievement_progress, upsert_achievements, recalc_game_from_achievements, get_achievement_ids
+
+from database import (
+    get_achievement_ids,
+    recalc_game_from_achievements,
+    update_achievement_progress,
+    upsert_achievements,
+)
+from xbox_api import get_player_achievements, get_title_achievements, get_x360_achievements
 
 log = logging.getLogger("xbox.sync")
 

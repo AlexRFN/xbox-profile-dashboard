@@ -1,14 +1,17 @@
 import asyncio
 import logging
-from xbox_api import get_profile, get_friends as api_get_friends
-from database import set_setting, upsert_friends, get_games_missing_blurhash, update_game_blurhash
-from helpers import normalize_image_url
+
 from config import SCHEDULED_SYNC_CONCURRENCY
+from database import get_games_missing_blurhash, set_setting, update_game_blurhash, upsert_friends
+from helpers import normalize_image_url
+from xbox_api import get_friends as api_get_friends
+from xbox_api import get_profile
 
 log = logging.getLogger("xbox.sync")
 
 async def backfill_blurhashes(max_count: int = 50):
     import httpx
+
     from blurhash_utils import encode_from_bytes
 
     games = await get_games_missing_blurhash(max_count)

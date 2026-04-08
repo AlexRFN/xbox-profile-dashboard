@@ -4,7 +4,8 @@ from fastapi import APIRouter
 from fastapi.responses import ORJSONResponse
 
 import database as db
-from xbox_api import get_friends as api_get_friends, RateLimitExceeded
+from xbox_api import RateLimitExceeded
+from xbox_api import get_friends as api_get_friends
 
 log = logging.getLogger("xbox.friends")
 router = APIRouter()

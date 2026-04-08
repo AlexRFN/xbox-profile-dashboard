@@ -1,8 +1,11 @@
 import logging
+
 import orjson
-from .connection import get_connection
-from .cache import _cache_invalidate, _UNSET
+
 from config import CacheKey
+
+from .cache import _UNSET, _cache_invalidate
+from .connection import get_connection
 
 log = logging.getLogger("xbox.db")
 
@@ -137,7 +140,7 @@ async def get_all_games(
             FROM games {where_sql}
             ORDER BY {null_handling}, {sort_col} {direction}
             LIMIT ? OFFSET ?""",
-        params + [per_page, offset],
+        [*params, per_page, offset],
     )
     rows = await cursor.fetchall()
 

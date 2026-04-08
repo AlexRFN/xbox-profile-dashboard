@@ -1,9 +1,13 @@
 import pytest
-from database.games import upsert_games_bulk
+
 from database.achievements import (
-    upsert_achievements, get_achievements, update_achievement_progress,
-    get_achievements_page
+    get_achievements,
+    get_achievements_page,
+    update_achievement_progress,
+    upsert_achievements,
 )
+from database.games import upsert_games_bulk
+
 
 @pytest.mark.asyncio
 async def test_upsert_and_get_achievements():

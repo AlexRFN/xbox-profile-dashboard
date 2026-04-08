@@ -13,6 +13,7 @@ Xbox's sentinel value '0001-01-01T...' for unearned achievements.
 from .connection import get_connection
 from .validators import valid_ts_sql
 
+
 def _build_timeline_where(event_type: str, game_search: str,
                           date_from: str, date_to: str) -> tuple[str, list]:
     conditions = ["event_date IS NOT NULL"]
@@ -118,7 +119,7 @@ async def get_timeline_events(page: int = 1, per_page: int = 50,
                  -- so the milestone card isn't buried mid-achievement-streak.
                  CASE event_type WHEN 'completion' THEN 0 WHEN 'achievement' THEN 1 ELSE 2 END ASC
         LIMIT ? OFFSET ?
-    """, params + [per_page + 1, offset])  # fetch +1 to detect whether another page exists
+    """, [*params, per_page + 1, offset])  # fetch +1 to detect whether another page exists
     rows = await cursor.fetchall()
 
     events = [dict(r) for r in rows[:per_page]]

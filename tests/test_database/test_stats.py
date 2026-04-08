@@ -1,13 +1,15 @@
 import pytest
-from database.games import upsert_games_bulk
+
 from database.achievements import upsert_achievements
-from database.stats import get_dashboard_stats, get_achievement_stats
 from database.cache import _cache_invalidate
+from database.games import upsert_games_bulk
+from database.stats import get_achievement_stats, get_dashboard_stats
+
 
 @pytest.mark.asyncio
 async def test_dashboard_stats():
     # Setup state
-    from database.games import update_tracking, update_game_stats
+    from database.games import update_game_stats, update_tracking
     await upsert_games_bulk([
         {"title_id": "1", "name": "Completed Game", "progress_percentage": 100, "current_gamerscore": 1000},
         {"title_id": "2", "name": "Playing Game", "is_gamepass": True}
@@ -17,7 +19,7 @@ async def test_dashboard_stats():
 
     _cache_invalidate("dashboard_stats")
     stats = await get_dashboard_stats()
-    
+
     assert stats["total_games"] == 2
     assert stats["completed_games"] == 1
     assert stats["playing_count"] == 1
@@ -44,6 +46,6 @@ async def test_achievement_stats():
     assert stats["total_gamerscore"] == 80
 
     assert len(stats["rarity_breakdown"]) == 2 # Only Common and Rare (for achieved ones)
-    
+
     assert len(stats["rarest_unlocked"]) > 0
     assert stats["rarest_unlocked"][0]["name"] == "B" # 5% vs 50%

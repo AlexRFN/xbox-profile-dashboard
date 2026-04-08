@@ -7,8 +7,8 @@ from fastapi.responses import HTMLResponse, JSONResponse
 
 import database as db
 from config import TIMELINE_PAGE_SIZE
-from helpers import templates, group_events_by_month, build_heatmap_grid
-from models import TrackingUpdate, ApiError
+from helpers import build_heatmap_grid, group_events_by_month, templates
+from models import ApiError, TrackingUpdate
 
 log = logging.getLogger("xbox.game")
 router = APIRouter()
@@ -30,8 +30,7 @@ async def timeline_events(request: Request, page: int = 2, event_type: str = "",
             db.get_timeline_events(page, 50, event_type, game_search, date_from, date_to),
             db.get_timeline_stats_and_months(event_type, game_search, date_from, date_to),
         )
-    return templates.TemplateResponse("timeline_events.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "timeline_events.html", {
         "grouped_events": group_events_by_month(events, month_counts),
         "has_more": has_more,
         "page": page,
@@ -60,8 +59,7 @@ async def heatmap_partial(request: Request, year: str = "rolling"):
         heatmap_year = y
         heatmap_mode = "year"
     year_range = await db.get_heatmap_year_range()
-    return templates.TemplateResponse("heatmap_content.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "heatmap_content.html", {
         "heatmap": heatmap,
         "heatmap_mode": heatmap_mode,
         "heatmap_year": heatmap_year,

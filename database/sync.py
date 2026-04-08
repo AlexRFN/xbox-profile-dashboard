@@ -1,7 +1,9 @@
 import logging
-from .connection import get_connection
-from .cache import _cache_invalidate
+
 from config import CacheKey
+
+from .cache import _cache_invalidate
+from .connection import get_connection
 
 log = logging.getLogger("xbox.db")
 
@@ -13,7 +15,7 @@ async def create_sync_log(sync_type: str, title_id: str | None = None) -> int:
     )
     sync_id = cursor.lastrowid
     await conn.commit()
-    return sync_id
+    return sync_id or 0
 
 async def update_sync_log(sync_id: int, status: str, games_updated: int = 0,
                     api_calls_used: int = 0, error_message: str | None = None):

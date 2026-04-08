@@ -1,13 +1,25 @@
 import asyncio
 import logging
-from xbox_api import get_all_games, get_game_stats, RateLimitExceeded
+
 from database import (
-    upsert_games_bulk, update_game_stats, create_sync_log, update_sync_log,
-    can_make_requests, get_game, mark_game_fetched
+    can_make_requests,
+    create_sync_log,
+    get_game,
+    mark_game_fetched,
+    update_game_stats,
+    update_sync_log,
+    upsert_games_bulk,
 )
 from models import SyncResult
+from xbox_api import RateLimitExceeded, get_all_games, get_game_stats
+
+from .achievements import (
+    _check_x360,
+    _merge_modern_achievements,
+    _merge_player_achievements_only,
+    _merge_x360_achievements,
+)
 from .profile import sync_profile
-from .achievements import _check_x360, _merge_modern_achievements, _merge_x360_achievements, _merge_player_achievements_only
 
 log = logging.getLogger("xbox.sync")
 
@@ -81,7 +93,7 @@ async def sync_game_details(title_id: str, devices=None) -> SyncResult:
             log.error("%s: %s fetch failed: %s", title_id, label.lower(), result, exc_info=result)
             errors.append(f"{label}: {result}")
         else:
-            api_calls += result
+            api_calls += result  # type: ignore[operator]
 
     status = "success" if not errors else "partial"
     msg = f"Fetched details ({api_calls} API calls)."

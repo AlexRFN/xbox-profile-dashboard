@@ -197,6 +197,21 @@ To add a column: add an `ALTER TABLE` entry to the `MIGRATIONS` list in `databas
 - **Themes:** light / dark / OLED — toggled via `data-theme` + `data-oled` attributes, persisted in `localStorage`
 - **Glass renderer:** WebGPU primary (`glass-webgpu.js`), WebGL2 fallback (`glass.js`) — physically-based with IOR 1.52, Fresnel, chromatic aberration, aurora background
 
+## Testing
+
+```bash
+pip install pytest pytest-cov pytest-asyncio
+python -m pytest
+```
+
+211 tests covering the sync orchestrator, change-detection logic, database layer, Jinja2 filters, and page routes. Coverage is intentionally concentrated at the orchestration layer (`sync/orchestrator.py` 98%) rather than spread uniformly across I/O boundary modules — thin API wrappers are tested via the smoke script instead.
+
+```bash
+# Smoke test against a running server
+python scripts/smoke_test.py                  # defaults to http://localhost:8000
+python scripts/smoke_test.py https://myhost   # against a remote host
+```
+
 ## Development
 
 ```bash

@@ -1,8 +1,10 @@
-from .connection import get_connection
+from config import CacheKey
+
 from .cache import _cache_get, _cache_set
+from .connection import get_connection
 from .rate_limit import get_api_calls_last_hour
 from .validators import valid_ts_sql
-from config import CacheKey
+
 
 async def get_dashboard_stats() -> dict:
     cached = _cache_get(CacheKey.DASHBOARD_STATS, ttl=60)

@@ -1,7 +1,8 @@
 import asyncio
 import logging
-import orjson
 from contextlib import asynccontextmanager
+
+import orjson
 
 log = logging.getLogger("xbox.sync")
 

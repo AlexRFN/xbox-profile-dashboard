@@ -1,5 +1,6 @@
 import logging
-from .connection import get_connection, DB_PATH
+
+from .connection import DB_PATH, get_connection
 from .rate_limit import _init_rate_limit_from_db
 
 log = logging.getLogger("xbox.db")

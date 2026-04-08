@@ -1,6 +1,8 @@
 import logging
-from .connection import get_connection
+
 from config import RATE_LIMIT_MAX as _DEFAULT_RATE_LIMIT_MAX
+
+from .connection import get_connection
 
 log = logging.getLogger("xbox.db")
 

@@ -7,9 +7,10 @@ Strategy:
 - Patch can_make_requests() → True and sync_rate_limit_from_headers() → no-op
   so tests never touch the real database.
 """
-import pytest
-import httpx
 from unittest.mock import AsyncMock, patch
+
+import httpx
+import pytest
 
 import xbox_api
 from xbox_api import RateLimitExceeded

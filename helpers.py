@@ -1,17 +1,17 @@
 import logging
-import orjson
+from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
+import orjson
 from fastapi import Request
 from fastapi.responses import StreamingResponse
 from fastapi.templating import Jinja2Templates
+from jinja2 import FileSystemBytecodeCache
 
 import database as db
 import xbox_api
-
-from jinja2 import FileSystemBytecodeCache
 
 log = logging.getLogger("xbox.helpers")
 BASE_DIR = Path(__file__).parent
@@ -96,7 +96,7 @@ def static_url(path: str) -> str:
 # --- Jinja2 filters ---
 
 # Captured once at startup — local timezone is stable for the lifetime of the process
-_LOCAL_TZ = datetime.now(timezone.utc).astimezone().tzinfo
+_LOCAL_TZ = datetime.now(UTC).astimezone().tzinfo
 
 
 def _parse_iso(iso_str: str) -> datetime | None:
@@ -106,7 +106,7 @@ def _parse_iso(iso_str: str) -> datetime | None:
     try:
         dt = datetime.fromisoformat(iso_str.replace("Z", "+00:00"))
         if not dt.tzinfo:
-            dt = dt.replace(tzinfo=timezone.utc)
+            dt = dt.replace(tzinfo=UTC)
         return dt.astimezone(_LOCAL_TZ)
     except (ValueError, TypeError):
         return None
@@ -137,7 +137,7 @@ def format_timeago(iso_str):
     dt = _parse_iso(iso_str)
     if not dt:
         return iso_str
-    diff = datetime.now(timezone.utc) - dt
+    diff = datetime.now(UTC) - dt
     seconds = int(diff.total_seconds())
     if seconds < 60:
         return "just now"
@@ -196,7 +196,6 @@ def normalize_image_url(url: str) -> str:
 async def page_ctx(request: Request) -> dict:
     """Common template context for all full-page routes."""
     ctx = await db.get_page_context_data()
-    ctx["request"] = request
     ctx["gamertag"] = xbox_api.GAMERTAG
     # True when htmx is doing a tab switch (targets <main>) — templates skip full re-renders
     ctx["is_spa_nav"] = (
@@ -353,8 +352,8 @@ def _heatmap_date_range(year: int | None, today: "date") -> tuple["date", "date"
     return start, end, start, today
 
 
-def _quartile_level_fn(counts: dict) -> "Callable[[int], int]":
-    """Return a function mapping an achievement count to intensity level 0–4."""
+def _quartile_level_fn(counts: dict) -> Callable[[int], int]:
+    """Return a function mapping an achievement count to intensity level 0-4."""
     nonzero = sorted(c for c in counts.values() if c > 0)
     if nonzero:
         n = len(nonzero)
@@ -403,9 +402,9 @@ def _compute_streaks(all_counts: list[int]) -> tuple[int, int]:
 
 
 def build_heatmap_grid(heatmap_rows: list[dict], year: int | None = None) -> dict:
-    """Build a week×7-day grid from daily achievement counts.
-    year=None → rolling 53 weeks ending at current week.
-    year=int  → calendar year Jan 1–Dec 31."""
+    """Build a week x 7-day grid from daily achievement counts.
+    year=None: rolling 53 weeks ending at current week.
+    year=int: calendar year Jan 1 - Dec 31."""
     today_date = date.today()
     start, end, range_start, range_end = _heatmap_date_range(year, today_date)
     num_weeks = (end - start).days // 7 + 1

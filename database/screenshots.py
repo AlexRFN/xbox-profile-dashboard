@@ -1,7 +1,9 @@
 import logging
-from .connection import get_connection
-from .cache import _cache_invalidate
+
 from config import CacheKey
+
+from .cache import _cache_invalidate
+from .connection import get_connection
 
 log = logging.getLogger("xbox.db")
 

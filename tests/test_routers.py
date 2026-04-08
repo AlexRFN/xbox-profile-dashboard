@@ -4,9 +4,9 @@ These test HTTP behaviour: status codes, response shapes, and concurrency guards
 They run against the real in-memory test database (shared with test_database/).
 """
 import pytest
+
 import database as db
 from sync.core import _sync_gate
-
 
 # ---------------------------------------------------------------------------
 # /api/stats

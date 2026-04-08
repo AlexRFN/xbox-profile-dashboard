@@ -1,8 +1,11 @@
 import logging
+
 import orjson
-from .connection import get_connection
-from .cache import _cache_get, _cache_set, _cache_invalidate
+
 from config import CacheKey
+
+from .cache import _cache_get, _cache_invalidate, _cache_set
+from .connection import get_connection
 
 log = logging.getLogger("xbox.db")
 

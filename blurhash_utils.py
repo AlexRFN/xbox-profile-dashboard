@@ -10,7 +10,7 @@ log = logging.getLogger("xbox.blurhash")
 def encode_from_bytes(image_bytes: bytes, x_components: int = 4, y_components: int = 3) -> str | None:
     """Encode image bytes to a blurhash string."""
     try:
-        img = Image.open(io.BytesIO(image_bytes)).convert("RGB").resize((32, 32), Image.LANCZOS)
+        img = Image.open(io.BytesIO(image_bytes)).convert("RGB").resize((32, 32), Image.Resampling.LANCZOS)  # type: ignore[attr-defined]
         # blurhash.encode accepts any row-major 2D sequence of (R, G, B) values.
         # Reshape the flat pixel list into 32 rows — no numpy required.
         flat = list(img.getdata())

@@ -1,17 +1,25 @@
 import asyncio
 import logging
+
 import orjson
-from xbox_api import get_all_games, RateLimitExceeded
+
+from config import MIN_SYNC_BUDGET, UNIFIED_GAME_BUDGET_PCT, UNIFIED_SYNC_CONCURRENCY
 from database import (
-    create_sync_log, update_sync_log, get_api_calls_last_hour,
-    get_games_for_change_detection, upsert_games_bulk, log_sync_failure,
-    warm_stats_cache, RATE_LIMIT_BUDGET
+    RATE_LIMIT_BUDGET,
+    create_sync_log,
+    get_api_calls_last_hour,
+    get_games_for_change_detection,
+    log_sync_failure,
+    update_sync_log,
+    upsert_games_bulk,
+    warm_stats_cache,
 )
 from models import SyncResult
-from config import UNIFIED_SYNC_CONCURRENCY, UNIFIED_GAME_BUDGET_PCT, MIN_SYNC_BUDGET
-from .core import _guarded_sync, _json, fit_changes_to_budget, fire_and_forget
-from .profile import sync_profile, sync_friends, backfill_blurhashes
+from xbox_api import RateLimitExceeded, get_all_games
+
+from .core import _guarded_sync, _json, fire_and_forget, fit_changes_to_budget
 from .games import detect_changed_games, sync_game_selective
+from .profile import backfill_blurhashes, sync_friends, sync_profile
 from .screenshots import _sync_screenshots_inner
 
 log = logging.getLogger("xbox.sync")

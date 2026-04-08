@@ -1,6 +1,7 @@
 import logging
-import aiosqlite
 from pathlib import Path
+
+import aiosqlite
 
 log = logging.getLogger("xbox.db")
 
