@@ -1,8 +1,9 @@
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "session"
 testpaths = ["tests"]
 python_files = ["test_*.py"]
-addopts = "-v --cov=. --cov-report=term-missing --cov-fail-under=40 --cov-config=pyproject.toml"
+addopts = "-v --cov=. --cov-report=term-missing --cov-fail-under=40 --cov-config=pyproject.toml --timeout=30"
 
 [tool.coverage.run]
 omit = [
