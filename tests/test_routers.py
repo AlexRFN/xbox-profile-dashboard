@@ -124,6 +124,7 @@ async def test_tracking_update_persists(client):
 # Error shape: API endpoints always return {success, error} on failure
 # ---------------------------------------------------------------------------
 
+@pytest.mark.timeout(60)
 def test_error_shape_does_not_leak_internals(client):
     """The global exception handler must not expose raw exception messages."""
     # Trigger a 500 by hitting a route that will fail (nonexistent title sync)
