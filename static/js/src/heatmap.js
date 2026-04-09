@@ -78,7 +78,7 @@ function initHeatmapTooltip() {
         const hasAct = Array.from(card.querySelectorAll('.hm-cell[data-count]')).some(c =>
             c.dataset.date >= from && c.dataset.date <= to && parseInt(c.dataset.count) > 0);
         if (hasAct) {
-            window.location.href = '/timeline?date_from=' + from + '&date_to=' + to;
+            startFullNav('/timeline?date_from=' + from + '&date_to=' + to);
         }
     }
 

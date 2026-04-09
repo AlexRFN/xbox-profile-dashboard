@@ -168,7 +168,7 @@ function renderCmdResults(query) {
 function _cmdNavigate() {
     if (_cmdActive >= 0 && _cmdItems[_cmdActive]) {
         closeCmdPalette();
-        window.location.href = _cmdItems[_cmdActive].href;
+        startFullNav(_cmdItems[_cmdActive].href);
     }
 }
 
@@ -209,7 +209,7 @@ function initCmdPalette() {
                 _cmdNavigate();
             } else if (input.value.trim()) {
                 closeCmdPalette();
-                window.location.href = `/library?q=${encodeURIComponent(input.value.trim())}`;
+                startFullNav(`/library?q=${encodeURIComponent(input.value.trim())}`);
             }
         }
     });

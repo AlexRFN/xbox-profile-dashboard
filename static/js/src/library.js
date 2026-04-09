@@ -173,7 +173,7 @@ function initClickableRows() {
         if (!row) return;
         if (e.target.closest('select') || e.target.closest('a') || e.target.closest('button')) return;
         row.classList.add('row-click');
-        setTimeout(() => { window.location.href = row.dataset.href; }, 150);
+        setTimeout(() => { startFullNav(row.dataset.href); }, 150);
     });
     document.body.addEventListener('keydown', (e) => {
         if (e.key !== 'Enter' && e.key !== ' ') return;
@@ -181,7 +181,7 @@ function initClickableRows() {
         if (!row) return;
         e.preventDefault();
         row.classList.add('row-click');
-        setTimeout(() => { window.location.href = row.dataset.href; }, 150);
+        setTimeout(() => { startFullNav(row.dataset.href); }, 150);
     });
 }
 

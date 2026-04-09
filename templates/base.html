@@ -64,14 +64,15 @@
                 ('/captures', 'Captures'),
                 ('/friends', 'Friends'),
             ] %}
-            <div class="nav-pill">
+            {% set nav_active_path = '/library' if request.url.path.startswith('/game/') else request.url.path %}
+            <div class="nav-pill" data-active-path="{{ nav_active_path }}">
                 <div class="nav-pill-track" id="nav-pill-track">
                     <div class="nav-pill-glow" aria-hidden="true">
                         {% for href, label in nav_links %}<span>{{ label }}</span>{% endfor %}
                     </div>
                 </div>
                 {% for href, label in nav_links %}
-                <a href="{{ href }}" class="nav-link {% if request.url.path == href or (href == '/library' and request.url.path.startswith('/game/')) %}active{% endif %}" data-nav-idx="{{ loop.index0 }}"{% if request.url.path == href or (href == '/library' and request.url.path.startswith('/game/')) %} aria-current="page"{% endif %}
+                <a href="{{ href }}" class="nav-link {% if nav_active_path == href %}active{% endif %}" data-nav-idx="{{ loop.index0 }}"{% if nav_active_path == href %} aria-current="page"{% endif %}
                    hx-get="{{ href }}" hx-target="#main" hx-swap="innerHTML show:window:top"
                    hx-push-url="true" hx-headers='{"X-SPA-Nav":"true"}'>{{ label }}</a>
                 {% endfor %}
@@ -108,8 +109,38 @@
         <div class="nav-blur-down"><span></span><span></span><span></span><span></span><span class="nav-blur-gradient"></span></div>
     </nav>
     <script>
-    // Position nav pill track + glow overlay before first paint
-    (function(){var p=document.querySelector('.nav-pill'),t=document.getElementById('nav-pill-track'),a=p&&p.querySelector('.nav-link.active'),g=t&&t.querySelector('.nav-pill-glow'),f=p&&p.querySelector('.nav-link');if(p&&t&&a&&g&&f){var pr=p.getBoundingClientRect(),ar=a.getBoundingClientRect(),fr=f.getBoundingClientRect(),l=ar.left-pr.left;t.style.left=l+'px';t.style.width=ar.width+'px';g.style.left=(fr.left-pr.left-l-t.clientLeft)+'px';}})();
+    // First-paint pill positioning — snap to active link before app.js loads.
+    // No transition — just set left/width directly.
+    (function() {
+        var pill = document.querySelector('.nav-pill');
+        var track = document.getElementById('nav-pill-track');
+        if (!pill || !track) return;
+
+        var glow = track.querySelector('.nav-pill-glow');
+        var firstLink = pill.querySelector('.nav-link');
+        var currentPath = pill.dataset.activePath || window.location.pathname;
+        var activeLink = pill.querySelector('.nav-link[href="' + currentPath + '"]');
+        if (!activeLink) return;
+
+        pill.querySelectorAll('.nav-link').forEach(function(link) {
+            var isActive = link === activeLink;
+            link.classList.toggle('active', isActive);
+            if (isActive) link.setAttribute('aria-current', 'page');
+            else link.removeAttribute('aria-current');
+        });
+
+        var pillRect = pill.getBoundingClientRect();
+        var activeRect = activeLink.getBoundingClientRect();
+        var trackLeft = activeRect.left - pillRect.left;
+
+        track.style.left = trackLeft + 'px';
+        track.style.width = activeRect.width + 'px';
+
+        if (glow && firstLink) {
+            var firstRect = firstLink.getBoundingClientRect();
+            glow.style.left = (firstRect.left - pillRect.left - trackLeft - track.clientLeft) + 'px';
+        }
+    })();
     </script>
 
     <main class="container" id="main">

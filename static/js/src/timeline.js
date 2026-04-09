@@ -280,7 +280,7 @@ function initTimelineCalendar() {
 }
 
 function calGo(from, to) {
-    window.location.href = '/timeline?date_from=' + from + '&date_to=' + to;
+    startFullNav('/timeline?date_from=' + from + '&date_to=' + to);
 }
 
 let _calDayCache = null;

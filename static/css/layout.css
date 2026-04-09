@@ -159,7 +159,7 @@
     background: var(--xbox-green-subtle);
     border: 1px solid rgba(0, 210, 106, 0.20);
     box-shadow: 0 0 16px var(--xbox-green-glow), inset 0 1px 0 rgba(255, 255, 255, 0.05);
-    z-index: 0;
+    z-index: 2;
     pointer-events: none;
     overflow: hidden;
 }

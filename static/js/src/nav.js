@@ -6,6 +6,23 @@
 
 const NAV_ORDER = { '/': 0, '/library': 1, '/achievements': 2, '/timeline': 3, '/captures': 4, '/friends': 5 };
 
+function _navPathname(urlish) {
+    if (!urlish) return window.location.pathname;
+    try {
+        return new URL(urlish, window.location.origin).pathname || window.location.pathname;
+    } catch {
+        const clean = String(urlish).split('#')[0].split('?')[0];
+        return clean.startsWith('/') ? clean : window.location.pathname;
+    }
+}
+
+function _navActivePath(urlish) {
+    const path = _navPathname(urlish);
+    if (path.startsWith('/game/')) return '/library';
+    if (path.startsWith('/timeline')) return '/timeline';
+    return path;
+}
+
 // Page entrance — two modes, same per-element stagger, different axis:
 //   Fresh load  → vertical (rise/drop/pop as defined in CSS)
 //   Tab switch  → horizontal (per-element .tab-enter-forward / .tab-enter-back)
@@ -19,8 +36,8 @@ function initPageEntrance() {
 }
 
 function _navDirection(fromPath, toPath) {
-    const fromIdx = NAV_ORDER[fromPath] ?? -1;
-    const toIdx = NAV_ORDER[toPath] ?? -1;
+    const fromIdx = NAV_ORDER[_navActivePath(fromPath)] ?? -1;
+    const toIdx = NAV_ORDER[_navActivePath(toPath)] ?? -1;
     if (fromIdx >= 0 && toIdx >= 0 && fromIdx !== toIdx) {
         return toIdx > fromIdx ? 'forward' : 'back';
     }
@@ -32,8 +49,9 @@ function _getMain() { return _mainEl || (_mainEl = document.querySelector('main'
 
 let _pendingSpaNavTimer = null;
 let _spaNavGen = 0;
+let _spaNavInFlight = false;
 
-function _slidePillTo(el) {
+function _slidePillTo(el, animate) {
     const pill = document.querySelector('.nav-pill');
     const track = document.getElementById('nav-pill-track');
     if (!pill || !track || !el) return;
@@ -42,7 +60,9 @@ function _slidePillTo(el) {
     const linkRect = el.getBoundingClientRect();
     const trackLeft = linkRect.left - pillRect.left;
 
-    track.style.transition = 'left var(--dur-pill) var(--ease-pill), width var(--dur-pill) var(--ease-pill)';
+    track.style.transition = animate
+        ? 'left var(--dur-pill) var(--ease-pill), width var(--dur-pill) var(--ease-pill)'
+        : '';
     track.style.left = trackLeft + 'px';
     track.style.width = linkRect.width + 'px';
 
@@ -50,9 +70,59 @@ function _slidePillTo(el) {
     const firstLink = pill.querySelector('.nav-link');
     if (glow && firstLink) {
         const contentStart = firstLink.getBoundingClientRect().left - pillRect.left;
-        glow.style.transition = 'left var(--dur-pill) var(--ease-pill)';
+        glow.style.transition = animate
+            ? 'left var(--dur-pill) var(--ease-pill)'
+            : '';
         glow.style.left = (contentStart - trackLeft - track.clientLeft) + 'px';
     }
+}
+
+function _setNavClasses(path) {
+    const pill = document.querySelector('.nav-pill');
+    if (!pill) return;
+    const activePath = _navActivePath(path);
+    pill.querySelectorAll('.nav-link').forEach(link => {
+        const href = link.getAttribute('href');
+        const isActive = href === activePath;
+        link.classList.toggle('active', isActive);
+        if (isActive) link.setAttribute('aria-current', 'page');
+        else link.removeAttribute('aria-current');
+    });
+}
+
+function startFullNav(urlish) {
+    const href = String(urlish);
+    const dir = _navDirection(window.location.href, href);
+    if (dir) sessionStorage.setItem('nav-dir', dir);
+    else sessionStorage.removeItem('nav-dir');
+
+    const main = _getMain();
+    if (main) {
+        main.style.transition = 'opacity var(--dur-micro) var(--ease-exit)';
+        main.style.opacity = '0';
+    }
+    setTimeout(() => { window.location.href = href; }, _cssDur('--dur-micro'));
+}
+
+function _bindHistoryNavSync() {
+    if (window.__navHistorySyncBound) return;
+    window.__navHistorySyncBound = true;
+
+    // pushState/replaceState: only update .active classes — pill was already
+    // positioned by the htmx:confirm handler, re-sliding would restart the transition.
+    const wrap = (methodName) => {
+        const original = history[methodName];
+        history[methodName] = function(...args) {
+            const result = original.apply(this, args);
+            _setNavClasses(window.location.href);
+            return result;
+        };
+    };
+
+    wrap('pushState');
+    wrap('replaceState');
+    // popstate (back/forward): full update with animation — no confirm handler fired.
+    window.addEventListener('popstate', () => _updateNavActive(window.location.href, true));
 }
 
 document.body.addEventListener('htmx:confirm', (evt) => {
@@ -69,7 +139,7 @@ document.body.addEventListener('htmx:confirm', (evt) => {
 
     const main = _getMain();
 
-    if (el.closest('.nav-pill')) _slidePillTo(el);
+    if (el.closest('.nav-pill')) _slidePillTo(el, true);
 
     const toPath = el.getAttribute('hx-get');
 
@@ -108,6 +178,7 @@ document.body.addEventListener('htmx:confirm', (evt) => {
 
     if (window.pauseGlass) window.pauseGlass();
 
+    _spaNavInFlight = true;
     const exitDelay = dir ? _cssDur('--dur-fast') : _cssDur('--dur-micro');
     _pendingSpaNavTimer = setTimeout(() => {
         _pendingSpaNavTimer = null;
@@ -125,7 +196,7 @@ function _processSPAMeta(main) {
     PAGE_BODY_CLASSES.forEach(cls => document.body.classList.remove(cls));
     (meta.dataset.bodyClass || '').split(' ').filter(Boolean).forEach(cls => document.body.classList.add(cls));
     updateRateBadge(meta.dataset.rateUsed || '0');
-    _updateNavActive(meta.dataset.pagePath);
+    _setNavClasses(meta.dataset.pagePath);
     meta.remove();
 }
 
@@ -157,18 +228,10 @@ function _executeSPAScripts(main) {
     scriptTpl.remove();
 }
 
-function _updateNavActive(path) {
-    const pill = document.querySelector('.nav-pill');
-    if (!pill) return;
-    pill.querySelectorAll('.nav-link').forEach(link => {
-        const href = link.getAttribute('href');
-        const isActive = href === path || (href === '/library' && path.startsWith('/game/'));
-        link.classList.toggle('active', isActive);
-        if (isActive) link.setAttribute('aria-current', 'page');
-        else link.removeAttribute('aria-current');
-    });
-    const active = pill.querySelector('.nav-link.active');
-    if (active) _slidePillTo(active);
+function _updateNavActive(path, animate) {
+    _setNavClasses(path);
+    const active = document.querySelector('.nav-pill .nav-link.active');
+    if (active) _slidePillTo(active, animate);
 }
 
 document.body.addEventListener('htmx:afterSwap', (evt) => {
@@ -176,6 +239,8 @@ document.body.addEventListener('htmx:afterSwap', (evt) => {
     if (evt.detail.target.id !== 'main') return;
 
     const main = evt.detail.target;
+
+    _spaNavInFlight = false;
 
     _processSPAMeta(main);
     _processSPAOverlay(main);
@@ -228,6 +293,11 @@ document.body.addEventListener('htmx:afterSwap', (evt) => {
     });
 });
 
+document.body.addEventListener('htmx:afterSettle', (evt) => {
+    if (evt.detail.target.id !== 'main') return;
+    _setNavClasses(location.pathname);
+});
+
 // --- Non-SPA link exit animation (game detail, etc.) ---
 document.addEventListener('click', (e) => {
     const link = e.target.closest('a[href]');
@@ -238,43 +308,32 @@ document.addEventListener('click', (e) => {
     const href = link.getAttribute('href');
     if (!href.startsWith('/')) return;
     e.preventDefault();
-
-    const destPath = href.split('?')[0];
-    const dir = _navDirection(location.pathname, destPath);
-    if (dir) sessionStorage.setItem('nav-dir', dir);
-    const main = _getMain();
-    if (main) {
-        main.style.transition = 'opacity var(--dur-micro) var(--ease-exit)';
-        main.style.opacity = '0';
-    }
-    setTimeout(() => { window.location.href = href; }, _cssDur('--dur-micro'));
+    startFullNav(href);
 });
 
 // --- Nav pill track: position the sliding indicator behind the active link ---
 function initNavPillTrack() {
     const pill = document.querySelector('.nav-pill');
     const track = document.getElementById('nav-pill-track');
-    const active = pill?.querySelector('.nav-link.active');
-    if (!pill || !track || !active) return;
+    if (!pill || !track) return;
 
-    function position() {
-        const pillRect   = pill.getBoundingClientRect();
-        const activeRect = active.getBoundingClientRect();
-        const glow       = track.querySelector('.nav-pill-glow');
-        const firstLink  = pill.querySelector('.nav-link');
-        const firstLeft  = firstLink ? firstLink.getBoundingClientRect().left : pillRect.left;
-        const clientLeft = glow ? track.clientLeft : 0;
+    _bindHistoryNavSync();
+    // Snap to correct position (no animation) — inline script may have approximate values.
+    _updateNavActive(window.location.href, false);
 
-        const trackLeft = activeRect.left - pillRect.left;
-        track.style.left  = trackLeft + 'px';
-        track.style.width = activeRect.width + 'px';
-        if (glow) glow.style.left = (firstLeft - pillRect.left - trackLeft - clientLeft) + 'px';
-    }
-
-    position();
+    let resizeRaf = 0;
     if (document.fonts?.ready) {
-        document.fonts.ready.then(position).catch(() => {});
+        document.fonts.ready.then(() => {
+            if (!_spaNavInFlight) _updateNavActive(window.location.href, false);
+        }).catch(() => {});
     }
+    window.addEventListener('resize', () => {
+        if (_spaNavInFlight || resizeRaf) return;
+        resizeRaf = requestAnimationFrame(() => {
+            resizeRaf = 0;
+            _updateNavActive(window.location.href, false);
+        });
+    }, { passive: true });
 }
 
 // --- Scroll-aware nav: add/remove .scrolled class ---
