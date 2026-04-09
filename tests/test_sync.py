@@ -5,8 +5,8 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from sync.core import (
-    _json,
     _get_sync_gate,
+    _json,
     fit_changes_to_budget,
     is_sync_running,
     sync_guard,

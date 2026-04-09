@@ -49,6 +49,7 @@ async def clear_db():
 
 import sync.core  # noqa: E402
 
+
 @pytest.fixture(autouse=True)
 def reset_sync_gate():
     """Reset the lazy sync gate so each test gets a lock on its own event loop."""
