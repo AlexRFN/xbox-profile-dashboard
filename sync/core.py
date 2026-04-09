@@ -24,6 +24,11 @@ def _get_sync_gate() -> asyncio.Lock:
         _sync_gate = asyncio.Lock()
     return _sync_gate
 
+def reset_sync_gate() -> None:
+    """Reset the sync gate (for test isolation)."""
+    global _sync_gate
+    _sync_gate = None
+
 def log_task_err(fut: asyncio.Future) -> None:
     """Done-callback that logs exceptions from fire-and-forget tasks."""
     if not fut.cancelled() and (exc := fut.exception()):

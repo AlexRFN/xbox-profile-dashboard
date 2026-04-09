@@ -3,6 +3,8 @@ Router-level tests using FastAPI TestClient.
 These test HTTP behaviour: status codes, response shapes, and concurrency guards.
 They run against the real in-memory test database (shared with test_database/).
 """
+from unittest.mock import AsyncMock, patch
+
 import pytest
 
 import database as db
@@ -124,14 +126,19 @@ async def test_tracking_update_persists(client):
 # Error shape: API endpoints always return {success, error} on failure
 # ---------------------------------------------------------------------------
 
-@pytest.mark.timeout(60)
-def test_error_shape_does_not_leak_internals(client):
+def test_error_shape_does_not_leak_internals():
     """The global exception handler must not expose raw exception messages."""
-    # Trigger a 500 by hitting a route that will fail (nonexistent title sync)
-    # without holding the lock, which would return 409 instead.
-    resp = client.post("/api/sync/game/DEFINITELY_NOT_REAL_12345")
-    # Could be 200 (empty result), 409, 500, or 502 — just verify no raw traceback in body
-    if resp.status_code == 500:
-        body = resp.json()
-        assert "Traceback" not in body.get("error", "")
-        assert "File " not in body.get("error", "")
+    from starlette.testclient import TestClient as _TC
+
+    from main import app as _app
+
+    # raise_server_exceptions=False lets the 500 response reach us instead of re-raising
+    with _TC(_app, raise_server_exceptions=False) as c, \
+         patch("routers.sync_routes.sync_game_details",
+               new_callable=AsyncMock,
+               side_effect=RuntimeError("something broke")):
+        resp = c.post("/api/sync/game/DEFINITELY_NOT_REAL_12345")
+    assert resp.status_code == 500
+    body = resp.json()
+    assert "Traceback" not in body.get("error", "")
+    assert "File " not in body.get("error", "")
