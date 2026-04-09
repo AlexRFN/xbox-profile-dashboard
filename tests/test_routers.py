@@ -6,7 +6,7 @@ They run against the real in-memory test database (shared with test_database/).
 import pytest
 
 import database as db
-from sync.core import _sync_gate
+from sync.core import _get_sync_gate
 
 # ---------------------------------------------------------------------------
 # /api/stats
@@ -47,14 +47,15 @@ def test_sync_status_idle(client):
 @pytest.mark.asyncio
 async def test_sync_full_returns_409_when_busy(client):
     """Acquiring the sync lock externally forces the endpoint to return 409."""
-    await _sync_gate.acquire()
+    gate = _get_sync_gate()
+    await gate.acquire()
     try:
         resp = client.post("/api/sync/full")
         assert resp.status_code == 409
         body = resp.json()
         assert body["success"] is False
     finally:
-        _sync_gate.release()
+        gate.release()
 
 
 # ---------------------------------------------------------------------------
@@ -63,14 +64,15 @@ async def test_sync_full_returns_409_when_busy(client):
 
 @pytest.mark.asyncio
 async def test_sync_game_returns_409_when_busy(client):
-    await _sync_gate.acquire()
+    gate = _get_sync_gate()
+    await gate.acquire()
     try:
         resp = client.post("/api/sync/game/FAKE_TITLE_ID")
         assert resp.status_code == 409
         body = resp.json()
         assert body["success"] is False
     finally:
-        _sync_gate.release()
+        gate.release()
 
 
 # ---------------------------------------------------------------------------

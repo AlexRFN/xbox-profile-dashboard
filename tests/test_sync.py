@@ -6,7 +6,7 @@ import pytest
 
 from sync.core import (
     _json,
-    _sync_gate,
+    _get_sync_gate,
     fit_changes_to_budget,
     is_sync_running,
     sync_guard,
@@ -90,12 +90,13 @@ async def test_sync_guard_acquired_yields_true():
 
 @pytest.mark.asyncio
 async def test_sync_guard_busy_yields_false():
-    await _sync_gate.acquire()
+    gate = _get_sync_gate()
+    await gate.acquire()
     try:
         async with sync_guard("test") as acquired:
             assert acquired is False
     finally:
-        _sync_gate.release()
+        gate.release()
 
 
 @pytest.mark.asyncio

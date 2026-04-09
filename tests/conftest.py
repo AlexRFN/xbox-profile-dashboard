@@ -47,6 +47,15 @@ async def clear_db():
     await conn.execute("DELETE FROM games")
     await conn.commit()
 
+import sync.core  # noqa: E402
+
+@pytest.fixture(autouse=True)
+def reset_sync_gate():
+    """Reset the lazy sync gate so each test gets a lock on its own event loop."""
+    sync.core._sync_gate = None
+    yield
+    sync.core._sync_gate = None
+
 from fastapi.testclient import TestClient  # noqa: E402
 
 from main import app  # noqa: E402

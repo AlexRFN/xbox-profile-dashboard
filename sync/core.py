@@ -13,8 +13,16 @@ def _json(obj) -> str:
 # Shared async gate for every foreground and scheduled sync entrypoint.
 # A single lock prevents concurrent syncs from racing on API budget and DB state.
 # Both user-triggered SSE streams and APScheduler jobs acquire this before any work.
-_sync_gate = asyncio.Lock()
+# Lazily created so the lock always belongs to the running event loop (pytest-asyncio
+# creates a fresh loop per test, so a module-level Lock() would hang).
+_sync_gate: asyncio.Lock | None = None
 _active_sync_name: str | None = None
+
+def _get_sync_gate() -> asyncio.Lock:
+    global _sync_gate
+    if _sync_gate is None:
+        _sync_gate = asyncio.Lock()
+    return _sync_gate
 
 def log_task_err(fut: asyncio.Future) -> None:
     """Done-callback that logs exceptions from fire-and-forget tasks."""
@@ -28,7 +36,7 @@ def fire_and_forget(coro) -> asyncio.Task:
     return task
 
 def is_sync_running() -> bool:
-    return _sync_gate.locked()
+    return _sync_gate is not None and _sync_gate.locked()
 
 @asynccontextmanager
 async def sync_guard(sync_name: str = ""):
@@ -39,17 +47,18 @@ async def sync_guard(sync_name: str = ""):
     "Sync" simultaneously — only one proceeds, the rest get a 409 / skip message.
     """
     global _active_sync_name
-    if _sync_gate.locked():
+    gate = _get_sync_gate()
+    if gate.locked():
         yield False
         return
 
-    await _sync_gate.acquire()
+    await gate.acquire()
     _active_sync_name = sync_name or None
     try:
         yield True
     finally:
         _active_sync_name = None
-        _sync_gate.release()
+        gate.release()
 
 def fit_changes_to_budget(changes: list[dict], budget: int) -> tuple[list[dict], int]:
     """Select as many changes as fit within an API call budget.
