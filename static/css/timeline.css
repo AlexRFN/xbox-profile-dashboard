@@ -507,77 +507,6 @@
     display: inline-block;
 }
 
-/* ========== Light theme ========== */
-[data-theme="light"] .badge-achievement {
-    background: rgba(14, 158, 60, 0.08);
-    color: #0a7a34;
-}
-
-[data-theme="light"] .badge-completion {
-    background: rgba(8, 145, 178, 0.08);
-    color: #0e7490;
-}
-
-[data-theme="light"] .badge-first-played {
-    background: rgba(59, 130, 246, 0.08);
-    color: #1e40af;
-}
-
-[data-theme="light"] .timeline-event-completion .timeline-event-card {
-    border-left-color: #0891b2;
-}
-
-[data-theme="light"] .timeline::before {
-    opacity: 0.25;
-}
-
-[data-theme="light"] .timeline-month-header {
-    background: rgba(255, 255, 255, 0.85);
-    border-color: var(--border-subtle);
-}
-
-[data-theme="light"] .quick-nav-pill.active {
-    background: #0e6b0e;
-    border-color: #0e6b0e;
-}
-
-[data-theme="light"] .month-stat-ach {
-    background: rgba(14, 107, 14, 0.08);
-    color: #0a7a34;
-}
-
-/* ========== OLED theme ========== */
-[data-oled="true"] .timeline::before {
-    opacity: 0.25;
-}
-
-[data-oled="true"] .timeline-dot-completion {
-    box-shadow: 0 0 4px rgba(34, 211, 238, 0.3);
-}
-
-[data-oled="true"] .timeline-event-card {
-    background: rgba(8, 8, 8, 0.7);
-    border-color: rgba(255, 255, 255, 0.04);
-}
-
-[data-oled="true"] .timeline-event:hover .timeline-event-card {
-    background: rgba(15, 15, 15, 0.8);
-    border-color: rgba(255, 255, 255, 0.06);
-}
-
-[data-oled="true"] .timeline-month-header {
-    background: rgba(8, 8, 8, 0.85);
-    border-color: rgba(255, 255, 255, 0.04);
-}
-
-[data-oled="true"] .timeline-batch-list {
-    background: rgba(4, 4, 4, 0.9);
-}
-
-[data-oled="true"] .quick-nav-pill {
-    border-color: rgba(255, 255, 255, 0.06);
-}
-
 /* ========== Two-column layout ========== */
 .timeline-layout {
     display: grid;
@@ -831,17 +760,6 @@
 
 .timeline-sidebar .hm-month {
     font-size: 0.55rem;
-}
-
-/* ========== Sidebar theme overrides ========== */
-[data-oled="true"] .sidebar-widget {
-    background: rgba(8, 8, 8, 0.7);
-    border-color: rgba(255, 255, 255, 0.04);
-}
-
-[data-theme="light"] .sidebar-widget {
-    background: rgba(255, 255, 255, 0.85);
-    border-color: var(--border-subtle);
 }
 
 /* ========== Responsive: sidebar collapse ========== */

@@ -216,14 +216,18 @@ function _executeSPAScripts(main) {
         : scriptTpl.querySelectorAll('script');
     scripts.forEach(oldScript => {
         const s = document.createElement('script');
+        const cleanup = () => s.remove();
         if (oldScript.src) {
             s.src = oldScript.src;
             if (oldScript.defer) s.defer = true;
+            s.onload = cleanup;
+            s.onerror = cleanup;
         } else {
             s.textContent = oldScript.textContent;
         }
         document.body.appendChild(s);
-        setTimeout(() => s.remove(), 100);
+        // Inline scripts execute synchronously — safe to remove immediately
+        if (!oldScript.src) cleanup();
     });
     scriptTpl.remove();
 }

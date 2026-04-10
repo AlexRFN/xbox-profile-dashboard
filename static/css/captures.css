@@ -599,59 +599,6 @@ body.select-mode main {
     font-size: 0.75rem;
 }
 
-/* Light theme overrides */
-[data-theme="light"] .capture-card {
-    background: var(--surface-card);
-}
-
-[data-theme="light"] .capture-overlay {
-    background: linear-gradient(transparent, rgba(0, 0, 0, 0.5));
-}
-
-[data-theme="light"] .lightbox {
-    background: rgba(255, 255, 255, 0.75);
-    backdrop-filter: blur(24px) saturate(1.2);
-    -webkit-backdrop-filter: blur(24px) saturate(1.2);
-}
-
-[data-theme="light"] .lightbox-close,
-[data-theme="light"] .lightbox-tool-btn,
-[data-theme="light"] .lightbox-prev,
-[data-theme="light"] .lightbox-next {
-    background: rgba(255, 255, 255, 0.5);
-    color: #1a1b2e;
-}
-
-[data-theme="light"] .lightbox-close:hover,
-[data-theme="light"] .lightbox-tool-btn:hover,
-[data-theme="light"] .lightbox-prev:hover,
-[data-theme="light"] .lightbox-next:hover {
-    background: rgba(0, 0, 0, 0.08);
-}
-
-[data-theme="light"] .lightbox-info {
-    color: #5a5d72;
-}
-
-[data-theme="light"] #lightbox-game {
-    color: #1a1b2e;
-}
-
-[data-theme="light"] .lightbox-info-sep {
-    color: rgba(0, 0, 0, 0.15);
-}
-
-/* OLED overrides */
-[data-oled="true"] .capture-card {
-    background: #0a0a0a;
-}
-
-[data-oled="true"] .lightbox {
-    background: rgba(0, 0, 0, 0.85);
-    backdrop-filter: blur(24px) saturate(1.4);
-    -webkit-backdrop-filter: blur(24px) saturate(1.4);
-}
-
 /* Lightbox button inner cursor glow — ::after with opacity transition */
 /* Lightbox buttons — overexposed reveal for small circular buttons */
 .lightbox .reveal-item {
@@ -675,30 +622,7 @@ body.select-mode main {
     z-index: 2;
 }
 
-[data-theme="light"] .lightbox .reveal-item::before {
-    background: radial-gradient(
-        circle farthest-corner at var(--reveal-x, 50%) var(--reveal-y, 50%),
-        rgba(200, 245, 225, 0.90) 0%,
-        rgba(80, 220, 150, 0.62) 35%,
-        rgba(14, 180, 80, 0.32) 70%,
-        rgba(14, 158, 60, 0.12) 100%
-    );
-}
 
-/* OLED lightbox buttons */
-[data-oled="true"] .lightbox-close,
-[data-oled="true"] .lightbox-tool-btn,
-[data-oled="true"] .lightbox-prev,
-[data-oled="true"] .lightbox-next {
-    background: rgba(255, 255, 255, 0.06);
-}
-
-[data-oled="true"] .lightbox-close:hover,
-[data-oled="true"] .lightbox-tool-btn:hover,
-[data-oled="true"] .lightbox-prev:hover,
-[data-oled="true"] .lightbox-next:hover {
-    background: rgba(255, 255, 255, 0.12);
-}
 
 /* Load more */
 .load-more-wrap {

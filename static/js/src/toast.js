@@ -3,9 +3,18 @@
 // globals: showToast, updateRateBadge
 
 function updateRateBadge(rateUsed) {
-    if (rateUsed == null) return;
+    if (rateUsed == null) return; // intentional loose equality — catches both null and undefined
     const badge = document.querySelector('.rate-limit-badge');
-    if (badge) badge.innerHTML = '<svg class="icon" width="12" height="12"><use href="/static/img/icons.svg#icon-clock"></use></svg> ' + rateUsed + '/150';
+    if (!badge) return;
+    const val = parseInt(rateUsed, 10);
+    if (isNaN(val)) return;
+    // Build safely: SVG via innerHTML (static), text via textContent
+    const svg = document.createElement('span');
+    svg.innerHTML = '<svg class="icon" width="12" height="12"><use href="/static/img/icons.svg#icon-clock"></use></svg>';
+    const text = document.createTextNode(' ' + val + '/150');
+    badge.textContent = '';
+    badge.appendChild(svg);
+    badge.appendChild(text);
 }
 
 function showToast(message, isError = false) {

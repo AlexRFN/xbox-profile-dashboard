@@ -141,12 +141,4 @@
     to   { transform: scaleX(0); }
 }
 
-/* Theme overrides */
-[data-theme="light"] .toast {
-    background: rgba(255, 255, 255, 0.62);
-}
-
-[data-oled="true"] .toast {
-    background: rgba(4, 4, 6, 0.68);
-}
 

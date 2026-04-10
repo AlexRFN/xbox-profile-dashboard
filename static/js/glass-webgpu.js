@@ -792,22 +792,6 @@ fn surfaceHeight(t: f32) -> f32 {
             chrome:  {sat:2.00, bright:0.92, tint:0.06},  // persistent UI, always readable
             overlay: {sat:2.40, bright:0.96, tint:0.08},  // floating — draws the eye
             button:  {sat:2.60, bright:1.00, tint:0.07}   // interactive — highest prominence
-        },
-        light: {
-            surface: {sat:1.45, bright:1.08, tint:0.06},
-            nested:  {sat:1.90, bright:1.18, tint:0.16},
-            control: {sat:1.55, bright:1.10, tint:0.08},
-            chrome:  {sat:1.70, bright:1.10, tint:0.08},
-            overlay: {sat:1.90, bright:1.12, tint:0.10},
-            button:  {sat:2.15, bright:1.14, tint:0.08}
-        },
-        oled: {
-            surface: {sat:1.90, bright:0.44, tint:0.03},  // near-black panels, maximum contrast
-            nested:  {sat:2.40, bright:0.52, tint:0.05},
-            control: {sat:2.00, bright:0.48, tint:0.04},
-            chrome:  {sat:2.10, bright:0.50, tint:0.04},
-            overlay: {sat:2.50, bright:0.55, tint:0.06},
-            button:  {sat:2.80, bright:0.58, tint:0.05}
         }
     };
 
@@ -817,10 +801,7 @@ fn surfaceHeight(t: f32) -> f32 {
     var _currentTheme = 'dark';
 
     function detectTheme() {
-        var html = document.documentElement;
-        var theme = html.getAttribute('data-theme') || 'dark';
-        var oled = html.getAttribute('data-oled') === 'true';
-        _currentTheme = oled ? 'oled' : theme;
+        _currentTheme = document.documentElement.getAttribute('data-theme') || 'dark';
     }
 
     function getTierValues(tierName) {
@@ -848,7 +829,7 @@ fn surfaceHeight(t: f32) -> f32 {
         _layoutDirty = true;
     });
     _themeObserver.observe(document.documentElement, {
-        attributes: true, attributeFilter: ['data-theme', 'data-oled']
+        attributes: true, attributeFilter: ['data-theme']
     });
 
     // ====================================================================

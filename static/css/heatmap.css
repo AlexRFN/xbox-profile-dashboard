@@ -205,18 +205,6 @@
 .hm-cell[data-level="3"] { background: #26a641; }
 .hm-cell[data-level="4"] { background: #39d353; }
 
-/* Light theme */
-[data-theme="light"] .hm-cell[data-level="0"] { background: #ebedf0; }
-[data-theme="light"] .hm-cell[data-level="1"] { background: #9be9a8; }
-[data-theme="light"] .hm-cell[data-level="2"] { background: #40c463; }
-[data-theme="light"] .hm-cell[data-level="3"] { background: #30a14e; }
-[data-theme="light"] .hm-cell[data-level="4"] { background: #216e39; }
-[data-theme="light"] .hm-cell {
-    box-shadow: inset 0 0 0 0.5px rgba(0, 0, 0, 0.08);
-}
-
-/* OLED theme */
-[data-oled="true"] .hm-cell[data-level="0"] { background: #111; }
 
 .heatmap-legend {
     display: flex;

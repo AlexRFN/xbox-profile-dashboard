@@ -24,7 +24,10 @@ function _reapplyEntranceDir(root) {
 // On DOMContentLoaded (or htmx swap), we trigger animate-in via a single rAF to
 // guarantee the hidden state has been composited before transitioning.
 // On initial page load, above-the-fold elements are staggered for a cascade entrance.
+let _scrollAnimObs = null;
 function initScrollAnimations(root, forceStagger = false) {
+    // Disconnect previous observer to prevent memory leaks across SPA navigations
+    if (_scrollAnimObs) { _scrollAnimObs.disconnect(); _scrollAnimObs = null; }
     const scope = root || document;
     const isInitialLoad = !root || forceStagger;
     const els = scope.querySelectorAll('.anim-blur-rise, .anim-blur-scale, .anim-slide-blur, .anim-drop, .anim-pop, .anim-grow');
@@ -46,19 +49,20 @@ function initScrollAnimations(root, forceStagger = false) {
         const stagger = _cssDur('--stagger') || 50;
         const unit = Math.round(stagger * 0.8); // ~48ms per element — above 50ms visual-perception threshold
 
-        const observer = new IntersectionObserver((entries) => {
+        _scrollAnimObs = new IntersectionObserver((entries) => {
             // Batch and sort by vertical position so elements cascade top-to-bottom.
             const visible = entries
                 .filter(e => e.isIntersecting)
                 .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
             visible.forEach((entry, idx) => {
-                observer.unobserve(entry.target);
+                _scrollAnimObs.unobserve(entry.target);
                 setTimeout(() => {
                     entry.target.style.transitionDelay = '0ms';
                     entry.target.classList.add('animate-in');
                 }, idx * unit);
             });
         }, { threshold: 0, rootMargin: '0px 0px -40px 0px' });
+        const observer = _scrollAnimObs;
 
         const aboveFold = [];
 
@@ -349,7 +353,9 @@ function _fireGroupElements(group, baseDelay, itemUnit) {
     });
 }
 
+let _captureGroupObs = null;
 function initCaptureGroupAnimations(scope) {
+    if (_captureGroupObs) { _captureGroupObs.disconnect(); _captureGroupObs = null; }
     const groups = Array.from((scope || document).querySelectorAll('.captures-game-group'));
     if (!groups.length) return;
     requestAnimationFrame(() => {
@@ -368,13 +374,13 @@ function initCaptureGroupAnimations(scope) {
         aboveGroups.forEach((group, gIdx) => {
             _fireGroupElements(group, gIdx * groupUnit, itemUnit);
         });
-        const observer = new IntersectionObserver((entries) => {
+        _captureGroupObs = new IntersectionObserver((entries) => {
             entries.filter(e => e.isIntersecting).forEach(entry => {
-                observer.unobserve(entry.target);
+                _captureGroupObs.unobserve(entry.target);
                 _fireGroupElements(entry.target, 0, itemUnit);
             });
         }, { threshold: 0, rootMargin: '0px 0px -40px 0px' });
-        belowGroups.forEach(group => observer.observe(group));
+        belowGroups.forEach(group => _captureGroupObs.observe(group));
     });
 }
 

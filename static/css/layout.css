@@ -258,27 +258,6 @@
     border-color: var(--border-default);
 }
 
-.theme-toggle {
-    cursor: pointer;
-    background: none;
-    border: 1px solid transparent;
-    font-size: 1rem;
-    width: 30px;
-    height: 30px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 50%;
-    color: var(--text-secondary);
-    transition: color var(--dur-fast) var(--ease-effect), background var(--dur-fast) var(--ease-effect), border-color var(--dur-fast) var(--ease-effect);
-}
-
-.theme-toggle:hover {
-    color: var(--text-primary);
-    background: rgba(255, 255, 255, 0.04);
-    border-color: var(--glass-border);
-}
-
 /* Profile chip */
 .nav-profile-chip {
     display: flex;

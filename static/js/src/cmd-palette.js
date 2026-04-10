@@ -33,8 +33,8 @@ async function _ensureGameIndex() {
             searchOptions: { fuzzy: 0.2, prefix: true },
         });
         _miniSearch.addAll(games.map((g, i) => ({ id: i, ...g })));
-    } catch (e) {
-        console.warn('Failed to load game index:', e);
+    } catch (_) {
+        // silently skip — game search will fall back to server-side
     } finally {
         _miniSearchLoading = false;
     }

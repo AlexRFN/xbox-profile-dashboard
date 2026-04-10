@@ -171,7 +171,7 @@ function lightboxFullscreen() {
     const lb = document.getElementById('lightbox');
     if (!lb) return;
     if (document.fullscreenElement) {
-        document.exitFullscreen();
+        document.exitFullscreen().catch(() => {});
     } else {
         lb.requestFullscreen().catch(() => {});
     }

@@ -84,7 +84,6 @@ a.outline.reveal-item            { --reveal-intensity: 0.95; --reveal-mid: 0.55;
 .quick-nav-pill.reveal-item      { --reveal-intensity: 1.0;  --reveal-mid: 0.60; --reveal-tail: 0.28; --reveal-border-peak: 0.75; }
 .hm-tab.reveal-item              { --reveal-intensity: 0.95; --reveal-mid: 0.55; --reveal-tail: 0.25; --reveal-border-peak: 0.65; }
 .hm-year-btn.reveal-item         { --reveal-intensity: 1.0;  --reveal-mid: 0.60; --reveal-tail: 0.28; --reveal-border-peak: 0.75; }
-.theme-toggle.reveal-item        { --reveal-intensity: 1.0;  --reveal-mid: 0.65; --reveal-tail: 0.30; }
 .rate-limit-badge.reveal-item    { --reveal-intensity: 0.95; --reveal-mid: 0.55; --reveal-tail: 0.25; }
 .library-filter-input.reveal-item { --reveal-intensity: 0.85; --reveal-mid: 0.45; --reveal-tail: 0.20; --reveal-border-peak: 0.50; }
 .ach-card.reveal-item            { --reveal-intensity: 0.75; --reveal-mid: 0.40; --reveal-tail: 0.18; --reveal-border-peak: 0.45; }
@@ -119,12 +118,6 @@ a.outline.reveal-item            { --reveal-intensity: 0.95; --reveal-mid: 0.55;
     box-shadow:
         inset var(--rim-x, 0px) var(--rim-y, 0px) 28px rgba(0, 255, 128, 0.18),
         inset 0 0 1px rgba(0, 255, 128, 0.25);
-}
-
-[data-theme="light"] .reveal-item:hover {
-    box-shadow:
-        inset var(--rim-x, 0px) var(--rim-y, 0px) 28px rgba(14, 158, 60, 0.12),
-        inset 0 0 1px rgba(14, 158, 60, 0.20);
 }
 
 /* Rim lighting — cursor-tracked border glow on all reveal-items */

@@ -240,15 +240,6 @@
     letter-spacing: 0;
 }
 
-/* Light theme command palette */
-[data-theme="light"] .cmd-backdrop {
-    background: rgba(200, 205, 215, 0.5);
-}
-
-[data-theme="light"] .cmd-panel {
-    box-shadow: var(--shadow-16), 0 0 40px rgba(0,0,0,0.08);
-}
-
 /* ---------- Keyboard Shortcuts Overlay ---------- */
 .shortcuts-overlay {
     position: fixed;

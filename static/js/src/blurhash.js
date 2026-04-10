@@ -8,7 +8,11 @@ for (let i = 0; i < _bhDigits.length; i++) _bhLookup[_bhDigits.charCodeAt(i)] = 
 
 function _bhDecode83(str, from, to) {
     let v = 0;
-    for (let i = from; i < to; i++) v = v * 83 + _bhLookup[str.charCodeAt(i)];
+    for (let i = from; i < to; i++) {
+        const code = str.charCodeAt(i);
+        if (code >= 128) return 0; // non-ASCII guard — prevents NaN propagation
+        v = v * 83 + _bhLookup[code];
+    }
     return v;
 }
 

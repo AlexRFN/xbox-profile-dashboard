@@ -357,15 +357,6 @@ select:focus {
     transition: opacity var(--dur-fast) var(--ease-exit);
 }
 
-[data-theme="light"] .reveal-focus::before {
-    background: radial-gradient(
-        circle farthest-corner at var(--reveal-x, -200px) var(--reveal-y, -200px),
-        rgba(14, 158, 60, 0.10) 0%,
-        rgba(14, 158, 60, 0.04) 40%,
-        transparent 80%
-    );
-}
-
 select {
     appearance: none;
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b6b6b' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
@@ -433,17 +424,6 @@ th {
 :root {
     scrollbar-width: thin;
     scrollbar-color: rgba(255,255,255,0.1) transparent;
-}
-
-/* Light theme scrollbar */
-[data-theme="light"] ::-webkit-scrollbar-thumb {
-    background: rgba(0,0,0,0.15);
-}
-[data-theme="light"] ::-webkit-scrollbar-thumb:hover {
-    background: rgba(0,0,0,0.25);
-}
-[data-theme="light"] {
-    scrollbar-color: rgba(0,0,0,0.15) transparent;
 }
 
 /* ========== Export Buttons ========== */

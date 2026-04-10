@@ -305,7 +305,15 @@ function updateCalStatus() {
             bar.className = 'cal-status';
             _cal.dropdown.appendChild(bar);
         }
-        bar.innerHTML = 'From <strong>' + label + '</strong> — click end date <button class="cal-cancel-range" onclick="calCancelRange()">Cancel</button>';
+        bar.textContent = '';
+        const fromEl = document.createElement('span');
+        fromEl.innerHTML = 'From <strong>' + label + '</strong> — click end date ';
+        const cancelBtn = document.createElement('button');
+        cancelBtn.className = 'cal-cancel-range';
+        cancelBtn.textContent = 'Cancel';
+        cancelBtn.addEventListener('click', calCancelRange);
+        bar.appendChild(fromEl);
+        bar.appendChild(cancelBtn);
     } else if (bar) {
         bar.remove();
     }
@@ -349,6 +357,7 @@ async function renderCal() {
     if (!_cal.cache[key]) {
         try {
             const r = await fetch('/api/activity/month?year=' + year + '&month=' + (month + 1));
+            if (!r.ok) throw new Error(`HTTP ${r.status}`);
             _cal.cache[key] = await r.json();
         } catch { _cal.cache[key] = {}; }
     }
@@ -368,7 +377,7 @@ async function renderCal() {
 
     for (let d = 1; d <= daysInMonth; d++) {
         const ds = year + '-' + mm + '-' + String(d).padStart(2, '0');
-        const count = activity[d] || 0;
+        const count = parseInt(activity[d], 10) || 0;
         const future = ds > todayStr;
         const today = ds === todayStr;
         let cls = 'cal-day';

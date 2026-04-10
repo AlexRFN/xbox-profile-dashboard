@@ -392,16 +392,6 @@
     );
 }
 
-[data-theme="light"] .game-row:hover,
-[data-theme="light"] .recent-row:hover {
-    background: radial-gradient(
-        circle farthest-corner at var(--reveal-x, -200px) var(--reveal-y, -200px),
-        rgba(14, 158, 60, 0.95) 0%,
-        rgba(14, 158, 60, 0.55) 35%,
-        rgba(14, 158, 60, 0.25) 70%,
-        transparent 100%
-    );
-}
 
 .game-row td {
     transition: background var(--dur-micro) var(--ease-effect), box-shadow var(--dur-micro) var(--ease-effect);
@@ -713,21 +703,6 @@
 .grid-rows .game-row:nth-child(even),
 .grid-rows .recent-row:nth-child(even) {
     background-color: rgba(255, 255, 255, 0.02);
-}
-
-[data-theme="light"] .grid-rows thead tr {
-    background: rgba(255, 255, 255, 0.85);
-    border-color: var(--border-subtle);
-}
-
-[data-oled="true"] .grid-rows thead tr {
-    background: rgba(8, 8, 8, 0.85);
-    border-color: rgba(255, 255, 255, 0.04);
-}
-
-[data-theme="light"] .grid-rows .game-row:nth-child(even),
-[data-theme="light"] .grid-rows .recent-row:nth-child(even) {
-    background-color: rgba(0, 0, 0, 0.02);
 }
 
 /* Header row — glass material matching timeline month headers */

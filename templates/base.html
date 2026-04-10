@@ -88,7 +88,6 @@
                     {{ icon('search', 15) }}
                     <kbd class="nav-search-hint">⌘K</kbd>
                 </button>
-                <button class="theme-toggle" onclick="toggleTheme()" title="Toggle theme" aria-label="Theme: Dark (click to switch)">&#9681;</button>
                 <a href="/" class="nav-profile-chip" title="{{ gamertag | default('Xbox User') }}"
                    hx-get="/" hx-target="#main" hx-swap="innerHTML show:window:top"
                    hx-push-url="true" hx-headers='{"X-SPA-Nav":"true"}'>

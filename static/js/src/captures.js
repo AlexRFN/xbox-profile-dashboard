@@ -47,8 +47,8 @@ function expandCaptureGame(titleId, btn) {
     const fromTop = btn ? btn.getBoundingClientRect().top : null;
     const prevCount = grid.querySelectorAll('.capture-card').length;
 
-    fetch(`/api/captures/game/${titleId}`)
-        .then(r => r.text())
+    fetch(`/api/captures/game/${encodeURIComponent(titleId)}`)
+        .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.text(); })
         .then(html => {
             grid.innerHTML = html;
             const allCards = Array.from(grid.querySelectorAll('.capture-card'));
@@ -89,7 +89,8 @@ function expandCaptureGame(titleId, btn) {
                 requestGlassPanelsUpdate();
             }
             delete grid.dataset.expanding;
-        });
+        })
+        .catch(() => { delete grid.dataset.expanding; });
 }
 
 function collapseCaptureGame(titleId, btn) {
@@ -166,7 +167,9 @@ function setCapturesView(view) {
 
     // Lazy-load by-game content on first toggle
     if (view === 'by-game' && !byGameWrap.children.length) {
-        fetch('/api/captures/by-game').then(r => r.text()).then(html => {
+        fetch('/api/captures/by-game')
+            .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.text(); })
+            .then(html => {
             byGameWrap.innerHTML = html;
             _lightboxDirty = true;
             initRevealHighlight(byGameWrap);
@@ -174,7 +177,8 @@ function setCapturesView(view) {
                 initCaptureGroupAnimations(byGameWrap);
                 requestGlassPanelsUpdate();
             });
-        });
+        })
+            .catch(() => {});
         return;
     }
 
@@ -198,6 +202,7 @@ function setCapturesView(view) {
 // --- Capture Select Mode ---
 let _selectMode = false;
 let _selectedCaptures = new Set();
+let _downloadStaggerCancel = null;
 
 function toggleSelectMode() {
     _selectMode = !_selectMode;
@@ -288,14 +293,17 @@ function downloadSelectedCaptures() {
     });
     if (toDownload.length === 0) return;
     let i = 0;
+    let timer = null;
+    _downloadStaggerCancel = () => { clearTimeout(timer); _downloadStaggerCancel = null; };
     const tick = () => {
         if (i >= toDownload.length) {
+            _downloadStaggerCancel = null;
             showToast('Downloaded ' + toDownload.length + ' capture' + (toDownload.length > 1 ? 's' : ''));
             return;
         }
         _downloadCapture(toDownload[i].url, toDownload[i].filename);
         i++;
-        setTimeout(tick, 300);
+        timer = setTimeout(tick, 300);
     };
     tick();
 }
