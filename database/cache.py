@@ -29,3 +29,10 @@ def _cache_set(key: str, value):
 def _cache_invalidate(*keys: str):
     for key in keys:
         _cache.pop(key, None)
+
+def _cache_clear_all() -> None:
+    # Unified sync touches games, achievements, screenshots, and friends, plus
+    # derived heatmap/activity/year-range slices. Per-op invalidation misses
+    # dynamic keys like activity_{year}_{month} and heatmap_year_range, so a
+    # full flush is the simplest correct post-sync reset.
+    _cache.clear()

@@ -6,6 +6,7 @@ import orjson
 from config import MIN_SYNC_BUDGET, UNIFIED_GAME_BUDGET_PCT, UNIFIED_SYNC_CONCURRENCY
 from database import (
     RATE_LIMIT_BUDGET,
+    _cache_clear_all,
     create_sync_log,
     get_api_calls_last_hour,
     get_games_for_change_detection,
@@ -200,6 +201,10 @@ async def _unified_sync_inner():
                             games_updated=total_games_updated, api_calls_used=total_api_calls)
     log.info("Unified sync complete: %s — %d games, %d screenshots, %d API calls",
              status, total_games_updated, total_screenshots, total_api_calls)
+    # Per-op invalidation misses dynamic keys (activity_{y}_{m}, heatmap_year_range,
+    # past-year heatmaps). Flush everything so navigation to other pages sees fresh data
+    # without requiring a manual refresh.
+    _cache_clear_all()
     # Fire-and-forget so the SSE "finished" event isn't delayed by these follow-up tasks.
     fire_and_forget(warm_stats_cache())
     fire_and_forget(backfill_blurhashes(50))

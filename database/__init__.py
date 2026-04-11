@@ -8,7 +8,7 @@ from .achievements import (
     upsert_achievements,
     warm_stats_cache,
 )
-from .cache import _cache_get, _cache_invalidate, _cache_set
+from .cache import _cache_clear_all, _cache_get, _cache_invalidate, _cache_set
 from .connection import close_connection, get_connection, run_optimize
 from .friends import get_friends, upsert_friends
 from .games import (
@@ -53,6 +53,7 @@ __all__ = [
     "RATE_LIMIT_BUDGET",
     "RATE_LIMIT_MAX",
     # cache
+    "_cache_clear_all",
     "_cache_get",
     "_cache_invalidate",
     "_cache_set",
