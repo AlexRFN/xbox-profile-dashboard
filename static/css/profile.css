@@ -1,6 +1,18 @@
 /* Xbox Dashboard — profile */
 
-/* ========== Chart Sizing ========== */
+/* ========== Chart Cards ========== */
+.chart-card {
+    padding: 1.5rem;
+}
+
+.chart-card .section-title {
+    margin-bottom: 1rem;
+}
+
+.chart-card canvas {
+    filter: drop-shadow(0 0 20px rgba(0, 210, 106, 0.04));
+}
+
 #completionChart {
     max-height: 280px;
 }

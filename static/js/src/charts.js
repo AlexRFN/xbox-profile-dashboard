@@ -39,6 +39,45 @@ function _buildMonthLabels(monthlyStats) {
     });
 }
 
+function _glassGradient(ctx, colorStart, colorEnd) {
+    const g = ctx.createLinearGradient(0, 0, 0, ctx.canvas.height);
+    g.addColorStop(0, colorStart);
+    g.addColorStop(1, colorEnd);
+    return g;
+}
+
+function _glassTooltip() {
+    return {
+        backgroundColor: 'rgba(10, 10, 16, 0.75)',
+        borderColor: 'rgba(255, 255, 255, 0.10)',
+        borderWidth: 1,
+        titleFont: { family: "'Rajdhani', system-ui, sans-serif", weight: '600', size: 13 },
+        bodyFont: { family: "'Inter', system-ui, sans-serif", size: 12 },
+        titleColor: '#e8eaed',
+        bodyColor: '#8b8fa3',
+        padding: { top: 8, bottom: 8, left: 12, right: 12 },
+        cornerRadius: 10,
+        displayColors: true,
+        boxPadding: 4,
+    };
+}
+
+function _glassScales(textColor, gridColor) {
+    return {
+        x: {
+            ticks: { color: textColor, font: { family: "'Inter', system-ui, sans-serif", size: 11 } },
+            grid: { color: gridColor, lineWidth: 0.5 },
+            border: { display: false },
+        },
+        y: {
+            ticks: { color: textColor, font: { family: "'Inter', system-ui, sans-serif", size: 11 } },
+            grid: { color: gridColor, lineWidth: 0.5 },
+            border: { display: false },
+            beginAtZero: true,
+        },
+    };
+}
+
 function _initCompletionChart(ctx, stats, textColor, xboxGreen, style) {
     if (!ctx || stats.zero_progress === undefined) return;
     const zeroColor = style.getPropertyValue('--text-tertiary').trim() || '#505366';
@@ -48,18 +87,53 @@ function _initCompletionChart(ctx, stats, textColor, xboxGreen, style) {
             labels: ['0%', '1-50%', '51-99%', '100%'],
             datasets: [{
                 data: [stats.zero_progress, stats.low_progress, stats.high_progress, stats.completed_games],
-                backgroundColor: [zeroColor, '#f59e0b', '#3b82f6', xboxGreen],
+                backgroundColor: [
+                    'rgba(80, 83, 102, 0.6)',
+                    'rgba(245, 158, 11, 0.55)',
+                    'rgba(59, 130, 246, 0.55)',
+                    'rgba(0, 210, 106, 0.6)',
+                ],
+                borderColor: [
+                    'rgba(80, 83, 102, 0.25)',
+                    'rgba(245, 158, 11, 0.30)',
+                    'rgba(59, 130, 246, 0.30)',
+                    'rgba(0, 210, 106, 0.30)',
+                ],
+                borderWidth: 1,
+                hoverBackgroundColor: [
+                    'rgba(80, 83, 102, 0.85)',
+                    'rgba(245, 158, 11, 0.80)',
+                    'rgba(59, 130, 246, 0.80)',
+                    'rgba(0, 210, 106, 0.85)',
+                ],
+                spacing: 3,
+                borderRadius: 4,
             }]
         },
         options: {
             responsive: true,
-            plugins: { legend: { position: 'bottom', labels: { color: textColor } } },
+            cutout: '62%',
+            plugins: {
+                legend: {
+                    position: 'bottom',
+                    labels: {
+                        color: textColor,
+                        font: { family: "'Rajdhani', system-ui, sans-serif", size: 12, weight: '600' },
+                        padding: 16,
+                        usePointStyle: true,
+                        pointStyleWidth: 10,
+                    },
+                },
+                tooltip: _glassTooltip(),
+            },
         },
     });
 }
 
 function _initGamerscoreChart(ctx, monthLabels, stats, textColor, gridColor) {
     if (!ctx) return;
+    const canvas = ctx.getContext('2d');
+    const fillGrad = _glassGradient(canvas, 'rgba(245, 158, 11, 0.25)', 'rgba(245, 158, 11, 0.02)');
     new Chart(ctx, {
         type: 'line',
         data: {
@@ -67,28 +141,32 @@ function _initGamerscoreChart(ctx, monthLabels, stats, textColor, gridColor) {
             datasets: [{
                 label: 'Gamerscore',
                 data: stats.monthly_stats.map(m => m.gamerscore_earned || 0),
-                borderColor: '#f59e0b',
-                backgroundColor: 'rgba(245, 158, 11, 0.1)',
+                borderColor: 'rgba(245, 158, 11, 0.8)',
+                backgroundColor: fillGrad,
                 fill: true,
-                tension: 0.3,
-                pointRadius: 4,
+                tension: 0.4,
+                pointRadius: 3,
                 pointHoverRadius: 6,
-                pointBackgroundColor: '#f59e0b',
+                pointBackgroundColor: 'rgba(245, 158, 11, 0.9)',
+                pointBorderColor: 'rgba(245, 158, 11, 0.3)',
+                pointBorderWidth: 4,
+                pointHoverBorderColor: 'rgba(245, 158, 11, 0.5)',
+                pointHoverBorderWidth: 6,
+                borderWidth: 2,
             }]
         },
         options: {
             responsive: true,
-            plugins: { legend: { display: false } },
-            scales: {
-                x: { ticks: { color: textColor }, grid: { color: gridColor } },
-                y: { ticks: { color: textColor }, grid: { color: gridColor }, beginAtZero: true },
-            },
+            plugins: { legend: { display: false }, tooltip: _glassTooltip() },
+            scales: _glassScales(textColor, gridColor),
         },
     });
 }
 
 function _initAchievementsChart(ctx, monthLabels, stats, textColor, gridColor, xboxGreen) {
     if (!ctx) return;
+    const canvas = ctx.getContext('2d');
+    const barGrad = _glassGradient(canvas, 'rgba(0, 210, 106, 0.6)', 'rgba(0, 210, 106, 0.20)');
     new Chart(ctx, {
         type: 'bar',
         data: {
@@ -96,16 +174,20 @@ function _initAchievementsChart(ctx, monthLabels, stats, textColor, gridColor, x
             datasets: [{
                 label: 'Achievements',
                 data: stats.monthly_stats.map(m => m.achievement_count || 0),
-                backgroundColor: xboxGreen,
-                borderRadius: 4,
+                backgroundColor: barGrad,
+                hoverBackgroundColor: 'rgba(0, 210, 106, 0.75)',
+                borderColor: 'rgba(0, 210, 106, 0.30)',
+                borderWidth: 1,
+                borderRadius: 6,
+                borderSkipped: false,
             }]
         },
         options: {
             responsive: true,
-            plugins: { legend: { display: false } },
+            plugins: { legend: { display: false }, tooltip: _glassTooltip() },
             scales: {
-                x: { ticks: { color: textColor }, grid: { color: gridColor } },
-                y: { ticks: { color: textColor, stepSize: 1 }, grid: { color: gridColor }, beginAtZero: true },
+                ..._glassScales(textColor, gridColor),
+                y: { ..._glassScales(textColor, gridColor).y, ticks: { ..._glassScales(textColor, gridColor).y.ticks, stepSize: 1 } },
             },
         },
     });
@@ -116,11 +198,24 @@ function _initMostPlayedChart(ctx, stats, textColor, gridColor, xboxGreen) {
     const top10 = stats.most_played.slice(0, 10);
     const labels = top10.map(g => g.name.length > 25 ? g.name.substring(0, 23) + '...' : g.name);
     const hours = top10.map(g => Math.round((g.minutes_played || 0) / 60 * 10) / 10);
+    const canvas = ctx.getContext('2d');
+    const barGrad = canvas.createLinearGradient(0, 0, canvas.canvas.width, 0);
+    barGrad.addColorStop(0, 'rgba(0, 210, 106, 0.15)');
+    barGrad.addColorStop(1, 'rgba(0, 210, 106, 0.55)');
     new Chart(ctx, {
         type: 'bar',
         data: {
             labels,
-            datasets: [{ label: 'Hours', data: hours, backgroundColor: xboxGreen, borderRadius: 6 }]
+            datasets: [{
+                label: 'Hours',
+                data: hours,
+                backgroundColor: barGrad,
+                hoverBackgroundColor: 'rgba(0, 210, 106, 0.70)',
+                borderColor: 'rgba(0, 210, 106, 0.25)',
+                borderWidth: 1,
+                borderRadius: 6,
+                borderSkipped: false,
+            }]
         },
         options: {
             indexAxis: 'y',
@@ -128,18 +223,27 @@ function _initMostPlayedChart(ctx, stats, textColor, gridColor, xboxGreen) {
             plugins: {
                 legend: { display: false },
                 tooltip: {
+                    ..._glassTooltip(),
                     callbacks: {
-                        label: (ctx) => {
-                            const hours = Math.floor(ctx.raw);
-                            const mins = Math.round((ctx.raw - hours) * 60);
-                            return hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
+                        label: (c) => {
+                            const h = Math.floor(c.raw);
+                            const m = Math.round((c.raw - h) * 60);
+                            return h > 0 ? ` ${h}h ${m}m` : ` ${m}m`;
                         }
                     }
                 }
             },
             scales: {
-                x: { ticks: { color: textColor, callback: (v) => v + 'h' }, grid: { color: gridColor } },
-                y: { ticks: { color: textColor, font: { size: 11 } }, grid: { display: false } },
+                x: {
+                    ticks: { color: textColor, font: { family: "'Inter', system-ui, sans-serif", size: 11 }, callback: (v) => v + 'h' },
+                    grid: { color: gridColor, lineWidth: 0.5 },
+                    border: { display: false },
+                },
+                y: {
+                    ticks: { color: textColor, font: { family: "'Rajdhani', system-ui, sans-serif", size: 12, weight: '600' } },
+                    grid: { display: false },
+                    border: { display: false },
+                },
             },
         },
     });
