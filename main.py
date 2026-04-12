@@ -166,9 +166,12 @@ async def security_and_cache_headers(request: Request, call_next):
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
     response.headers["Content-Security-Policy"] = _CSP
-    # Tell caches that HTML responses vary by htmx headers (full page vs SPA partial)
+    # Tell caches that HTML responses vary by htmx headers (full page vs SPA partial).
+    # no-store prevents the browser HTTP cache from serving stale HTML on htmx hx-get
+    # cross-page nav after a sync — pages re-render from DB on every request.
     if "text/html" in response.headers.get("content-type", ""):
         response.headers.setdefault("Vary", "HX-Request, HX-Target")
+        response.headers.setdefault("Cache-Control", "no-store")
     # Static files with ?v=<hash> are immutable (1 year); without it, revalidate every request.
     # The hash is injected at startup by helpers.static_url(), ensuring cache busting on deploy.
     if request.url.path.startswith("/static/"):

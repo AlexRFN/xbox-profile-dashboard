@@ -252,18 +252,22 @@
 <script>
 var _statsData = {{ stats | tojson }};
 function _runCharts() { initDashboardCharts(_statsData); }
-if (typeof Chart !== 'undefined') {
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', _runCharts);
-    } else {
+function _ensureChartsThenRun() {
+    if (typeof Chart !== 'undefined') {
         _runCharts();
+    } else {
+        var _cs = document.createElement('script');
+        _cs.src = '{{ static_url("js/vendor/chart.umd.min.js") }}';
+        _cs.onload = _runCharts;
+        document.head.appendChild(_cs);
     }
+}
+// Wait for DOMContentLoaded so the deferred app.js bundle has executed and
+// initDashboardCharts is defined — otherwise a cached Chart.js can race ahead.
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', _ensureChartsThenRun);
 } else {
-    // Chart.js not yet loaded — SPA navigation skips the head block, so inject it now
-    var _cs = document.createElement('script');
-    _cs.src = '{{ static_url("js/vendor/chart.umd.min.js") }}';
-    _cs.onload = _runCharts;
-    document.head.appendChild(_cs);
+    _ensureChartsThenRun();
 }
 </script>
 {% endif %}

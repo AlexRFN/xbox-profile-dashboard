@@ -109,14 +109,17 @@
     </nav>
     <script>
     // First-paint pill positioning — snap to active link before app.js loads.
-    // No transition — just set left/width directly.
+    // Sets CSS vars (no .pill-animate class) so the track appears instantly
+    // without a slide from 0. Glow counter-slide handled by CSS calc in layout.css.
+    //
+    // Cross-tab full-nav: if sessionStorage has 'pill-from-path' (written by
+    // startFullNav), park the track at the FROM link instead. initNavPillTrack
+    // then slides it to the real active link so the animation crosses tabs.
     (function() {
         var pill = document.querySelector('.nav-pill');
         var track = document.getElementById('nav-pill-track');
         if (!pill || !track) return;
 
-        var glow = track.querySelector('.nav-pill-glow');
-        var firstLink = pill.querySelector('.nav-link');
         var currentPath = pill.dataset.activePath || window.location.pathname;
         var activeLink = pill.querySelector('.nav-link[href="' + currentPath + '"]');
         if (!activeLink) return;
@@ -128,17 +131,17 @@
             else link.removeAttribute('aria-current');
         });
 
-        var pillRect = pill.getBoundingClientRect();
-        var activeRect = activeLink.getBoundingClientRect();
-        var trackLeft = activeRect.left - pillRect.left;
+        var parkLink = activeLink;
+        try {
+            var fromPath = sessionStorage.getItem('pill-from-path');
+            if (fromPath && fromPath !== currentPath) {
+                var fromLink = pill.querySelector('.nav-link[href="' + fromPath + '"]');
+                if (fromLink) parkLink = fromLink;
+            }
+        } catch (e) {}
 
-        track.style.left = trackLeft + 'px';
-        track.style.width = activeRect.width + 'px';
-
-        if (glow && firstLink) {
-            var firstRect = firstLink.getBoundingClientRect();
-            glow.style.left = (firstRect.left - pillRect.left - trackLeft - track.clientLeft) + 'px';
-        }
+        track.style.setProperty('--pill-x', parkLink.offsetLeft + 'px');
+        track.style.setProperty('--pill-w', parkLink.offsetWidth + 'px');
     })();
     </script>
 

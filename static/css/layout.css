@@ -148,13 +148,14 @@
     gap: 0;
 }
 
-/* Sliding active indicator — positioned by inline script before first paint. */
+/* Sliding active indicator. CSS vars set by inline first-paint script and
+   nav.js — transitions only fire when .pill-animate is present (click/popstate). */
 .nav-pill-track {
     position: absolute;
     top: 3px;
     bottom: 3px;
-    left: 0;
-    width: 0;
+    left: var(--pill-x, 0);
+    width: var(--pill-w, 0);
     border-radius: calc(var(--radius-btn) - 2px);
     background: var(--xbox-green-subtle);
     border: 1px solid rgba(0, 210, 106, 0.20);
@@ -164,17 +165,28 @@
     overflow: hidden;
 }
 
+.nav-pill-track.pill-animate {
+    transition: left var(--dur-pill) var(--ease-pill),
+                width var(--dur-pill) var(--ease-pill);
+}
+
 /* Green text overlay — clipped by track to reveal green text only under the pill.
-   Counter-slides the track movement so labels stay visually aligned with real links. */
+   Counter-slides the track movement so labels stay visually aligned with real links.
+   Offset source is --nav-pill-inset in tokens.css. */
 .nav-pill-glow {
     position: absolute;
     top: 0;
     bottom: 0;
+    left: calc(var(--nav-pill-inset) - var(--pill-x, 0px));
     display: flex;
     align-items: center;
     gap: 0;
     pointer-events: none;
     white-space: nowrap;
+}
+
+.nav-pill-track.pill-animate .nav-pill-glow {
+    transition: left var(--dur-pill) var(--ease-pill);
 }
 
 .nav-pill-glow span {

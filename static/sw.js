@@ -44,6 +44,10 @@ self.addEventListener('fetch', (e) => {
   if (url.pathname.startsWith('/api/')) return;
   if (url.origin !== self.location.origin) return;
 
+  // htmx SPA navigations must always hit the network — never serve stale cache.
+  // htmx sends Accept: */* (not text/html), so the HTML block below won't match.
+  if (e.request.headers.get('HX-Request') === 'true') return;
+
   // Static assets with ?v= — cache-first (immutable, versioned)
   if (url.pathname.startsWith('/static/') && url.searchParams.has('v')) {
     e.respondWith(

@@ -183,9 +183,14 @@ async def get_achievement_stats() -> dict:
     return stats
 
 async def get_page_context_data() -> dict:
+    # Return a shallow copy: callers mutate the returned dict (adding request,
+    # gamertag, route-specific keys) and Starlette's TemplateResponse injects
+    # `request` via setdefault. If we returned the cached instance, the first
+    # request's `request` object would persist inside the cache and every
+    # subsequent render within the TTL would see a stale URL path.
     cached = _cache_get(CacheKey.PAGE_CONTEXT, ttl=30)
     if cached is not None:
-        return cached
+        return dict(cached)
     conn = await get_connection()
     cursor = await conn.execute(
         """SELECT * FROM sync_log WHERE sync_type IN ('full_library', 'smart_sync', 'unified_sync')
@@ -202,4 +207,4 @@ async def get_page_context_data() -> dict:
         "gamerpic": pic_row["value"] if pic_row else None,
     }
     _cache_set(CacheKey.PAGE_CONTEXT, result)
-    return result
+    return dict(result)

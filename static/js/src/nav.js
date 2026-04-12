@@ -51,30 +51,17 @@ let _pendingSpaNavTimer = null;
 let _spaNavGen = 0;
 let _spaNavInFlight = false;
 
-function _slidePillTo(el, animate) {
-    const pill = document.querySelector('.nav-pill');
+// Position the pill track over `el`. Uses offsetLeft/offsetWidth (integer
+// layout values, stable across font swaps) and sets CSS custom properties
+// instead of inline left/width. The .pill-animate class gates the transition
+// so initial paint and ResizeObserver updates snap while clicks animate.
+// Glow counter-slide is handled in CSS via calc(2px - var(--pill-x)).
+function _positionPill(el, animate) {
     const track = document.getElementById('nav-pill-track');
-    if (!pill || !track || !el) return;
-
-    const pillRect = pill.getBoundingClientRect();
-    const linkRect = el.getBoundingClientRect();
-    const trackLeft = linkRect.left - pillRect.left;
-
-    track.style.transition = animate
-        ? 'left var(--dur-pill) var(--ease-pill), width var(--dur-pill) var(--ease-pill)'
-        : '';
-    track.style.left = trackLeft + 'px';
-    track.style.width = linkRect.width + 'px';
-
-    const glow = track.querySelector('.nav-pill-glow');
-    const firstLink = pill.querySelector('.nav-link');
-    if (glow && firstLink) {
-        const contentStart = firstLink.getBoundingClientRect().left - pillRect.left;
-        glow.style.transition = animate
-            ? 'left var(--dur-pill) var(--ease-pill)'
-            : '';
-        glow.style.left = (contentStart - trackLeft - track.clientLeft) + 'px';
-    }
+    if (!track || !el) return;
+    track.classList.toggle('pill-animate', !!animate);
+    track.style.setProperty('--pill-x', el.offsetLeft + 'px');
+    track.style.setProperty('--pill-w', el.offsetWidth + 'px');
 }
 
 function _setNavClasses(path) {
@@ -95,6 +82,10 @@ function startFullNav(urlish) {
     const dir = _navDirection(window.location.href, href);
     if (dir) sessionStorage.setItem('nav-dir', dir);
     else sessionStorage.removeItem('nav-dir');
+
+    // Remember where the pill was so the next page can animate from this
+    // position instead of snapping to the new active link on load.
+    try { sessionStorage.setItem('pill-from-path', _navActivePath(location.pathname)); } catch (e) {}
 
     const main = _getMain();
     if (main) {
@@ -139,7 +130,7 @@ document.body.addEventListener('htmx:confirm', (evt) => {
 
     const main = _getMain();
 
-    if (el.closest('.nav-pill')) _slidePillTo(el, true);
+    if (el.closest('.nav-pill')) _positionPill(el, true);
 
     const toPath = el.getAttribute('hx-get');
 
@@ -235,7 +226,7 @@ function _executeSPAScripts(main) {
 function _updateNavActive(path, animate) {
     _setNavClasses(path);
     const active = document.querySelector('.nav-pill .nav-link.active');
-    if (active) _slidePillTo(active, animate);
+    if (active) _positionPill(active, animate);
 }
 
 document.body.addEventListener('htmx:afterSwap', (evt) => {
@@ -316,28 +307,39 @@ document.addEventListener('click', (e) => {
 });
 
 // --- Nav pill track: position the sliding indicator behind the active link ---
+// Single ResizeObserver handles font swaps and window resizes. If the user
+// arrived here via a full-page nav (startFullNav wrote 'pill-from-path'), the
+// inline first-paint script parked the track at the FROM link — we schedule a
+// slide to the real active link so the animation crosses tabs visually.
+// Flags: _spaNavInFlight and _pillInitialSlidePending suppress the RO from
+// snapping the pill mid-animation.
+let _pillInitialSlidePending = false;
 function initNavPillTrack() {
     const pill = document.querySelector('.nav-pill');
-    const track = document.getElementById('nav-pill-track');
-    if (!pill || !track) return;
-
+    if (!pill) return;
     _bindHistoryNavSync();
-    // Snap to correct position (no animation) — inline script may have approximate values.
-    _updateNavActive(window.location.href, false);
 
-    let resizeRaf = 0;
-    if (document.fonts?.ready) {
-        document.fonts.ready.then(() => {
-            if (!_spaNavInFlight) _updateNavActive(window.location.href, false);
-        }).catch(() => {});
+    const fromPath = sessionStorage.getItem('pill-from-path');
+    sessionStorage.removeItem('pill-from-path');
+    const currentNavPath = _navActivePath(location.pathname);
+    const shouldSlideIn = fromPath && _navActivePath(fromPath) !== currentNavPath;
+
+    if (shouldSlideIn) {
+        _pillInitialSlidePending = true;
+        // Double rAF: let the browser commit the FROM position from the inline
+        // script before we flip to TO and start the transition.
+        requestAnimationFrame(() => requestAnimationFrame(() => {
+            const active = pill.querySelector('.nav-link.active');
+            if (active) _positionPill(active, true);
+            setTimeout(() => { _pillInitialSlidePending = false; }, _cssDur('--dur-pill') + 32);
+        }));
     }
-    window.addEventListener('resize', () => {
-        if (_spaNavInFlight || resizeRaf) return;
-        resizeRaf = requestAnimationFrame(() => {
-            resizeRaf = 0;
-            _updateNavActive(window.location.href, false);
-        });
-    }, { passive: true });
+
+    new ResizeObserver(() => {
+        if (_spaNavInFlight || _pillInitialSlidePending) return;
+        const active = pill.querySelector('.nav-link.active');
+        if (active) _positionPill(active, false);
+    }).observe(pill);
 }
 
 // --- Scroll-aware nav: add/remove .scrolled class ---

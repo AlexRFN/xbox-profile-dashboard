@@ -6,7 +6,6 @@ document.addEventListener('DOMContentLoaded', () => {
     initPageEntrance();
     initScrollAnimations();
     initCaptureGroupAnimations();
-    updateThemeButton(_savedTheme || 'dark');
     initRevealHighlight();
     initAmbientGlow();
     initClickableRows();
