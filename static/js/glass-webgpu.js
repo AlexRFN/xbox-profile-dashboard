@@ -744,16 +744,19 @@ fn surfaceHeight(t: f32) -> f32 {
     });
 
     function updatePhysics(ts) {
+        var dtRatio = _frameDt * 60;
+        var dampingDt = Math.pow(DAMPING, dtRatio);
+        var maxSpd = MAX_SPEED * dtRatio;
         for (var i = 0; i < nodes.length; i++) {
             var n = nodes[i];
             var tx = n.ax + Math.sin((ts * n.freqX * TAU) + n.phaseX) * n.ampX;
             var ty = n.ay + Math.cos((ts * n.freqY * TAU) + n.phaseY) * n.ampY;
-            n.vx += (tx - n.x) * SPRING;
-            n.vy += (ty - n.y) * SPRING;
-            n.vx *= DAMPING; n.vy *= DAMPING;
+            n.vx += (tx - n.x) * SPRING * dtRatio;
+            n.vy += (ty - n.y) * SPRING * dtRatio;
+            n.vx *= dampingDt; n.vy *= dampingDt;
             var s = Math.sqrt(n.vx * n.vx + n.vy * n.vy);
-            if (s > MAX_SPEED) { n.vx = (n.vx / s) * MAX_SPEED; n.vy = (n.vy / s) * MAX_SPEED; }
-            n.x += n.vx; n.y += n.vy;
+            if (s > maxSpd) { n.vx = (n.vx / s) * maxSpd; n.vy = (n.vy / s) * maxSpd; }
+            n.x += n.vx * dtRatio; n.y += n.vy * dtRatio;
             if (n.x < SOFT_MIN) { n.x = SOFT_MIN; n.vx = Math.abs(n.vx) * 0.55; }
             if (n.x > SOFT_MAX) { n.x = SOFT_MAX; n.vx = -Math.abs(n.vx) * 0.55; }
             if (n.y < SOFT_MIN) { n.y = SOFT_MIN; n.vy = Math.abs(n.vy) * 0.55; }
