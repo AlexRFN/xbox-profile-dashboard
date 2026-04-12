@@ -2,6 +2,33 @@
 // Dashboard charts (Chart.js), count-up animation, ambient glow, confetti.
 // globals: initDashboardCharts, animateCountUp, initAmbientGlow, fireCompletionConfetti
 
+var _doughnutCenterPlugin = {
+    id: 'doughnutCenter',
+    afterDraw: function(chart) {
+        if (chart.config.type !== 'doughnut' || !chart.options.plugins.doughnutCenter) return;
+        var cfg = chart.options.plugins.doughnutCenter;
+        var ctx = chart.ctx;
+        var area = chart.chartArea;
+        var cx = (area.left + area.right) / 2;
+        var cy = (area.top + area.bottom) / 2;
+
+        ctx.save();
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+
+        ctx.font = "700 " + (cfg.valueSize || 28) + "px 'Rajdhani', system-ui, sans-serif";
+        ctx.fillStyle = cfg.valueColor || '#00d26a';
+        ctx.fillText(cfg.value || '', cx, cy - 8);
+
+        ctx.font = "600 " + (cfg.labelSize || 11) + "px 'Rajdhani', system-ui, sans-serif";
+        ctx.fillStyle = cfg.labelColor || '#8b8fa3';
+        ctx.letterSpacing = '0.08em';
+        ctx.fillText((cfg.label || '').toUpperCase(), cx, cy + 14);
+
+        ctx.restore();
+    }
+};
+
 // --- Count-up animation for stat cards ---
 function animateCountUp() {
     document.querySelectorAll('[data-countup]').forEach(el => {
@@ -80,9 +107,11 @@ function _glassScales(textColor, gridColor) {
 
 function _initCompletionChart(ctx, stats, textColor, xboxGreen, style) {
     if (!ctx || stats.zero_progress === undefined) return;
-    const zeroColor = style.getPropertyValue('--text-tertiary').trim() || '#505366';
+    var total = (stats.zero_progress || 0) + (stats.low_progress || 0) + (stats.high_progress || 0) + (stats.completed_games || 0);
+    var pct = total > 0 ? Math.round((stats.completed_games / total) * 100) : 0;
     new Chart(ctx, {
         type: 'doughnut',
+        plugins: [_doughnutCenterPlugin],
         data: {
             labels: ['0%', '1-50%', '51-99%', '100%'],
             datasets: [{
@@ -93,13 +122,8 @@ function _initCompletionChart(ctx, stats, textColor, xboxGreen, style) {
                     'rgba(59, 130, 246, 0.55)',
                     'rgba(0, 210, 106, 0.6)',
                 ],
-                borderColor: [
-                    'rgba(80, 83, 102, 0.25)',
-                    'rgba(245, 158, 11, 0.30)',
-                    'rgba(59, 130, 246, 0.30)',
-                    'rgba(0, 210, 106, 0.30)',
-                ],
-                borderWidth: 1,
+                borderColor: 'transparent',
+                borderWidth: 0,
                 hoverBackgroundColor: [
                     'rgba(80, 83, 102, 0.85)',
                     'rgba(245, 158, 11, 0.80)',
@@ -125,6 +149,14 @@ function _initCompletionChart(ctx, stats, textColor, xboxGreen, style) {
                     },
                 },
                 tooltip: _glassTooltip(),
+                doughnutCenter: {
+                    value: pct + '%',
+                    label: 'completed',
+                    valueColor: xboxGreen,
+                    labelColor: textColor,
+                    valueSize: 28,
+                    labelSize: 11,
+                },
             },
         },
     });
@@ -145,20 +177,33 @@ function _initGamerscoreChart(ctx, monthLabels, stats, textColor, gridColor) {
                 backgroundColor: fillGrad,
                 fill: true,
                 tension: 0.4,
+                cubicInterpolationMode: 'monotone',
                 pointRadius: 3,
-                pointHoverRadius: 6,
+                pointHoverRadius: 7,
                 pointBackgroundColor: 'rgba(245, 158, 11, 0.9)',
                 pointBorderColor: 'rgba(245, 158, 11, 0.3)',
                 pointBorderWidth: 4,
                 pointHoverBorderColor: 'rgba(245, 158, 11, 0.5)',
-                pointHoverBorderWidth: 6,
+                pointHoverBorderWidth: 8,
                 borderWidth: 2,
             }]
         },
         options: {
             responsive: true,
-            plugins: { legend: { display: false }, tooltip: _glassTooltip() },
-            scales: _glassScales(textColor, gridColor),
+            interaction: { mode: 'index', intersect: false },
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    ..._glassTooltip(),
+                    callbacks: {
+                        label: function(c) { return ' ' + (c.raw || 0).toLocaleString() + 'G'; }
+                    }
+                },
+            },
+            scales: {
+                ..._glassScales(textColor, gridColor),
+                y: { ..._glassScales(textColor, gridColor).y, ticks: { ..._glassScales(textColor, gridColor).y.ticks, callback: function(v) { return v.toLocaleString() + 'G'; } } },
+            },
         },
     });
 }
@@ -177,6 +222,7 @@ function _initAchievementsChart(ctx, monthLabels, stats, textColor, gridColor, x
                 backgroundColor: barGrad,
                 hoverBackgroundColor: 'rgba(0, 210, 106, 0.75)',
                 borderColor: 'rgba(0, 210, 106, 0.30)',
+                hoverBorderColor: 'rgba(0, 210, 106, 0.60)',
                 borderWidth: 1,
                 borderRadius: 6,
                 borderSkipped: false,
@@ -184,6 +230,7 @@ function _initAchievementsChart(ctx, monthLabels, stats, textColor, gridColor, x
         },
         options: {
             responsive: true,
+            interaction: { mode: 'index', intersect: false },
             plugins: { legend: { display: false }, tooltip: _glassTooltip() },
             scales: {
                 ..._glassScales(textColor, gridColor),
@@ -211,6 +258,7 @@ function _initMostPlayedChart(ctx, stats, textColor, gridColor, xboxGreen) {
                 data: hours,
                 backgroundColor: barGrad,
                 hoverBackgroundColor: 'rgba(0, 210, 106, 0.70)',
+                hoverBorderColor: 'rgba(0, 210, 106, 0.50)',
                 borderColor: 'rgba(0, 210, 106, 0.25)',
                 borderWidth: 1,
                 borderRadius: 6,
