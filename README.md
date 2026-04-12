@@ -33,7 +33,11 @@ cp .env.example .env
 uvicorn main:app --reload --port 8000
 ```
 
+**Windows:** double-click `start.bat` — it installs deps, starts the dev server, and opens the browser automatically.
+
 Open http://localhost:8000. The SQLite database is created automatically on first run. Your XUID and gamertag are resolved from the API — no manual lookup needed.
+
+> **Note:** `bundle.css` and `app.js` are built automatically on server startup. If the server fails to start (missing dependency, wrong Python version), these files won't exist and the UI will appear broken. Check the terminal for errors.
 
 ## Configuration
 

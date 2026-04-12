@@ -3,6 +3,7 @@
 /* ========== Chart Cards ========== */
 .chart-card {
     padding: 1.5rem;
+    min-width: 0; /* prevent grid blowout */
 }
 
 .chart-card .section-title {
@@ -11,6 +12,7 @@
 
 .chart-card canvas {
     filter: drop-shadow(0 0 20px rgba(0, 210, 106, 0.04));
+    max-width: 100%;
 }
 
 #completionChart {
@@ -20,7 +22,7 @@
 /* ========== Stat Cards ========== */
 .stat-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(min(160px, 100%), 1fr));
     gap: 1rem;
 }
 

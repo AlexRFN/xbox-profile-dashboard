@@ -95,15 +95,11 @@ hr {
 }
 
 
-/* Responsive grid */
+/* Responsive grid — collapses to 1-col when children would be < 360px */
 .grid {
     display: grid;
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(auto-fit, minmax(min(360px, 100%), 1fr));
     gap: 1.5rem;
-}
-
-@media (max-width: 768px) {
-    .grid { grid-template-columns: 1fr; }
 }
 
 /* hgroup */

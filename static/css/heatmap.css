@@ -138,8 +138,9 @@
     display: grid;
     grid-template-columns: 24px repeat(var(--hm-weeks, 53), minmax(0, 1fr));
     grid-template-rows: auto repeat(7, auto);
-    gap: 3px;
+    gap: clamp(2px, 0.3vw, 4px);
     width: 100%;
+    max-width: 100%;
 }
 
 .hm-label {
