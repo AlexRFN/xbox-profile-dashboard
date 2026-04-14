@@ -1,150 +1,192 @@
 // === animations.js ===
 // Scroll-triggered animations, row scroll-reveal, edge scale, capture group animations,
-// and directional page entrance. Depends on: utils.js (_cssDur), reveal.js.
+// and directional page entrance. Depends on: utils.js (_cssDur).
 // globals: initScrollAnimations, initRowScrollReveal, initEdgeScale,
-//          initCaptureGroupAnimations, initPageEntrance
+//          initCaptureGroupAnimations, _resetAnimations, _reapplyEntranceDir
 
-// --- Directional entrance state ---
-// _tabEnterClass: per-element class for current tab-switch entrance (horizontal).
-// Set by initPageEntrance() in nav.js; consumed by initScrollAnimations() for above-fold leaders.
-// Scroll-revealed elements never receive it — they always animate vertically.
+// ─── Shared selector ──────────────────────────────────────────────────────────
+const ANIM_SEL = '.anim-blur-rise, .anim-blur-scale, .anim-slide-blur, .anim-drop, .anim-pop, .anim-grow';
+
+// ─── Directional entrance state ───────────────────────────────────────────────
+// Written by initPageEntrance() (nav.js) before initScrollAnimations() runs.
+// _tabEnterClass     — consumed by the first initScrollAnimations call for above-fold leaders.
+// _lastTabEnterClass — survives that call so async content (grid fetched after SPA nav)
+//                     can still receive the correct direction via _reapplyEntranceDir.
+// Scroll-revealed elements never receive this — they always animate vertically.
 let _tabEnterClass = null;
-// Preserved copy so async content loads (e.g. grid fetch after SPA nav) still get the direction.
-// _tabEnterClass is consumed by the first initScrollAnimations call; _lastTabEnterClass survives.
 let _lastTabEnterClass = null;
 
-// Re-apply the saved entrance direction for async content loads (grid, etc.).
+// Re-apply the saved entrance direction for async content (e.g. grid fetched after SPA nav).
 function _reapplyEntranceDir(root) {
-    if (_lastTabEnterClass) { _tabEnterClass = _lastTabEnterClass; _lastTabEnterClass = null; }
+    if (_lastTabEnterClass) {
+        _tabEnterClass = _lastTabEnterClass;
+        _lastTabEnterClass = null;
+    }
     initScrollAnimations(root, true);
 }
 
-// --- Scroll-triggered animations (IntersectionObserver) ---
-// scroll-ready is set on <html> in base.html so elements are hidden from first paint.
-// On DOMContentLoaded (or htmx swap), we trigger animate-in via a single rAF to
-// guarantee the hidden state has been composited before transitioning.
-// On initial page load, above-the-fold elements are staggered for a cascade entrance.
+// ─── Scroll-triggered animations ─────────────────────────────────────────────
+// scroll-ready is set on <html> in base.html so elements start hidden from first paint.
+// animate-in is triggered via rAF (htmx swaps) or synchronously (initial DCL) to
+// guarantee the hidden state is composited before transitioning.
+//
+// Generation counter: incremented on every initScrollAnimations call. Each rAF callback
+// and every setTimeout it creates captures the generation at scheduling time and bails
+// early if a newer call has since superseded it. This prevents stale timer callbacks
+// from firing on old DOM after rapid navigations, and eliminates the observer self-
+// reference bug (no module-level unobserve() — each call uses a captured local obs).
+
 let _scrollAnimObs = null;
+let _scrollAnimGen = 0;
+
 function initScrollAnimations(root, forceStagger = false) {
-    // Disconnect previous observer to prevent memory leaks across SPA navigations
     if (_scrollAnimObs) { _scrollAnimObs.disconnect(); _scrollAnimObs = null; }
+
     const scope = root || document;
     const isInitialLoad = !root || forceStagger;
-    const els = scope.querySelectorAll('.anim-blur-rise, .anim-blur-scale, .anim-slide-blur, .anim-drop, .anim-pop, .anim-grow');
+    const els = scope.querySelectorAll(ANIM_SEL);
     if (!els.length) return;
 
-    // For htmx partial swaps (root provided), use rAF so the new DOM is composited
-    // before we read rects. For initial page load (DCL), first paint has already
-    // happened so we can run synchronously — avoids a 500ms+ rAF delay caused by
-    // other DCL handlers running between our call and the next animation frame.
-    const run = isInitialLoad && !root ? fn => fn() : fn => requestAnimationFrame(fn);
+    const gen = ++_scrollAnimGen;
 
-    run(() => {
+    // Initial DCL: first paint already happened — run synchronously.
+    // htmx swaps: use rAF so new DOM is composited before reading rects.
+    const schedule = (isInitialLoad && !root) ? fn => fn() : fn => requestAnimationFrame(fn);
+
+    schedule(() => {
+        if (_scrollAnimGen !== gen) return; // superseded by a newer initScrollAnimations call
+
         const viewH = window.innerHeight;
-        // Shared timing — used by both above-fold cascade and scroll observer batches.
-        // CSS --i stagger is bypassed (transitionDelay forced to '0ms') so JS setTimeout
-        // is the sole timing source. This prevents the CSS delay from stacking on top of
-        // the observer firing time, which caused visible lag (row 15 → 750ms wait after
-        // entering the viewport).
-        const stagger = _cssDur('--stagger') || 50;
-        const unit = Math.round(stagger * 0.8); // ~48ms per element — above 50ms visual-perception threshold
 
-        _scrollAnimObs = new IntersectionObserver((entries) => {
-            // Batch and sort by vertical position so elements cascade top-to-bottom.
+        // CSS --i stagger is suppressed (transitionDelay forced to '0ms') so JS setTimeout
+        // is the sole timing source. Without this, CSS delay stacks on top of observer fire
+        // time — visible lag on deeply-indexed rows (e.g. row 15 → 750ms wait).
+        const stagger = _cssDur('--stagger') || 50;
+        const unit = Math.round(stagger * 0.8); // ~48ms per step, above 50ms perception threshold
+
+        const obs = new IntersectionObserver((entries) => {
             const visible = entries
                 .filter(e => e.isIntersecting)
                 .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
             visible.forEach((entry, idx) => {
-                _scrollAnimObs.unobserve(entry.target);
+                obs.unobserve(entry.target); // captured local — never stale
                 setTimeout(() => {
+                    if (_scrollAnimGen !== gen) return; // stale — discard
                     entry.target.style.transitionDelay = '0ms';
                     entry.target.classList.add('animate-in');
                 }, idx * unit);
             });
         }, { threshold: 0, rootMargin: '0px 0px -40px 0px' });
-        const observer = _scrollAnimObs;
+        _scrollAnimObs = obs;
 
         const aboveFold = [];
 
         els.forEach(el => {
             if (el.classList.contains('animate-in')) return;
-            // Captures by-game elements are grouped and sequenced by initCaptureGroupAnimations
-            if (el.closest('.captures-game-group')) return;
+            if (el.closest('.captures-game-group')) return; // sequenced by initCaptureGroupAnimations
             const rect = el.getBoundingClientRect();
-            // Skip elements inside display:none containers — their rect is (0,0,0,0).
-            if (rect.width === 0 && rect.height === 0) return;
+            if (rect.width === 0 && rect.height === 0) return; // skip display:none containers
+
             const isGameRow = el.classList.contains('game-row');
-            const rowTop = isGameRow ? _scrollRevealTopExit : 0;
-            const rowBot = isGameRow ? viewH : viewH + 120;
-            if (rect.top > rowTop && rect.top < rowBot) {
+            const topEdge = isGameRow ? _scrollRevealTopExit : 0;
+            const botEdge = isGameRow ? viewH : viewH + 120;
+
+            if (rect.top > topEdge && rect.top < botEdge) {
                 aboveFold.push(el);
             } else if (!isGameRow) {
-                observer.observe(el);
+                obs.observe(el);
             } else {
                 el.dataset.revealed = '1';
             }
         });
 
         if (isInitialLoad && aboveFold.length > 0) {
-            // Global DOM-order stagger: one unified cascade from top to bottom.
-            const aboveFoldSet = new Set(aboveFold);
-            const MAX_CASCADE = 500;
-
-            const leaders = [];
-            const dependents = [];
-            aboveFold.forEach(el => {
-                let ancestor = el.parentElement;
-                let isDependent = false;
-                while (ancestor) {
-                    if (aboveFoldSet.has(ancestor)) { isDependent = true; break; }
-                    ancestor = ancestor.parentElement;
-                }
-                (isDependent ? dependents : leaders).push(el);
-            });
-
-            // Dependents: instantly commit to animate-in state, hidden by parent's opacity.
-            if (dependents.length) {
-                if (_tabEnterClass) dependents.forEach(el => el.classList.add(_tabEnterClass));
-                dependents.forEach(el => el.style.transition = 'none');
-                dependents.forEach(el => el.classList.add('animate-in'));
-                dependents[0].offsetHeight; // single reflow commits all at once
-                dependents.forEach(el => el.style.transition = '');
-            }
-
-            // Leaders: stagger sequentially in DOM order.
-            const leaderUnit = leaders.length <= 8
-                ? Math.max(unit, 80)
-                : Math.max(Math.floor(MAX_CASCADE / leaders.length), 12);
-
-            if (_tabEnterClass) leaders.forEach(el => el.classList.add(_tabEnterClass));
-
-            leaders.forEach((el, idx) => {
-                el.style.transitionDelay = '0ms';
-                if (idx === 0 && isInitialLoad && !root) {
-                    el.classList.add('animate-in');
-                } else {
-                    setTimeout(() => el.classList.add('animate-in'), idx * leaderUnit);
-                }
-            });
-
-            // Consume the direction — only the first initScrollAnimations call uses it.
-            _tabEnterClass = null;
+            _cascadeAboveFold(aboveFold, unit, !root, gen);
         } else {
             aboveFold.forEach(el => el.classList.add('animate-in'));
         }
     });
 }
 
-// --- Persistent scroll-reveal for game rows ---
-// Dual IntersectionObserver for persistent scroll-reveal on game rows.
-//   Entry: fires when row enters visible area → adds animate-in
-//   Exit:  fires 60px before edge → removes animate-in (visible fade-out)
+// Staggered entrance cascade for above-fold elements on initial load or tab switch.
+// Splits elements into leaders (top-level animated elements) and dependents (animated
+// children of other animated elements). Leaders stagger in DOM order; dependents commit
+// instantly, hidden behind their parent's opacity until the parent animates in.
+// gen is passed through to setTimeout guards so stale timers from superseded calls bail early.
+function _cascadeAboveFold(aboveFold, unit, isFirstPaint, gen) {
+    const MAX_CASCADE = 500;
+    const aboveFoldSet = new Set(aboveFold);
+
+    const leaders = [];
+    const dependents = [];
+    for (const el of aboveFold) {
+        let ancestor = el.parentElement;
+        let isDependent = false;
+        while (ancestor) {
+            if (aboveFoldSet.has(ancestor)) { isDependent = true; break; }
+            ancestor = ancestor.parentElement;
+        }
+        (isDependent ? dependents : leaders).push(el);
+    }
+
+    // Dependents: commit to animate-in instantly with no transition (hidden by parent opacity).
+    if (dependents.length) {
+        if (_tabEnterClass) dependents.forEach(el => el.classList.add(_tabEnterClass));
+        dependents.forEach(el => el.style.transition = 'none');
+        dependents.forEach(el => el.classList.add('animate-in'));
+        dependents[0].offsetHeight; // single forced reflow commits all at once
+        dependents.forEach(el => el.style.transition = '');
+    }
+
+    // Leaders: stagger sequentially in DOM order, compressed to fit MAX_CASCADE when many.
+    const leaderUnit = leaders.length <= 8
+        ? Math.max(unit, 80)
+        : Math.max(Math.floor(MAX_CASCADE / leaders.length), 12);
+
+    // Snap leaders to the directional entry position before re-enabling transitions.
+    // Adding tab-enter-forward/back changes transform from translateY → translateX, which
+    // fires the CSS transition between the two hidden states. When animate-in is added
+    // milliseconds later, the interrupted position is still essentially translateY, so
+    // the entrance plays as the vertical "fresh load" animation instead of horizontal.
+    // transition:none + forced reflow locks in the translateX start position first.
+    if (_tabEnterClass && leaders.length) {
+        leaders.forEach(el => {
+            el.style.transition = 'none';
+            el.classList.add(_tabEnterClass);
+        });
+        leaders[0].offsetHeight; // single forced reflow commits all positions at once
+        leaders.forEach(el => el.style.transition = '');
+    }
+
+    leaders.forEach((el, idx) => {
+        el.style.transitionDelay = '0ms';
+        if (idx === 0 && isFirstPaint) {
+            el.classList.add('animate-in'); // first element fires synchronously on true page load
+        } else {
+            setTimeout(() => {
+                if (_scrollAnimGen !== gen) return; // stale — discard
+                el.classList.add('animate-in');
+            }, idx * leaderUnit);
+        }
+    });
+
+    _tabEnterClass = null; // consumed — only the first initScrollAnimations call per nav uses it
+}
+
+// ─── Row scroll-reveal ────────────────────────────────────────────────────────
+// Dual IntersectionObserver for persistent scroll-reveal on game rows:
+//   Entry observer — fires when a row enters the visible area → animate-in
+//   Exit observer  — fires 60px before the edge → removes animate-in (visible fade-out)
+// _scrollRevealTopExit is also consumed by initScrollAnimations for the initial cascade.
+//
+// viewMid is computed inside each observer callback from live _cachedNav* values so that
+// resize events (which update the cache) are reflected without recreating the observers.
+
 let _rowEntryObs = null;
 let _rowExitObs = null;
-// Shared with initScrollAnimations so initial cascade uses the same zone.
 let _cachedNavH = 56;
 let _cachedTheadH = 35;
-let _scrollRevealTopExit = 56 + 35 + 60;
+let _scrollRevealTopExit = _cachedNavH + _cachedTheadH + 60;
 
 function _refreshScrollRevealHeights() {
     const nav = document.querySelector('.xbox-nav');
@@ -153,24 +195,26 @@ function _refreshScrollRevealHeights() {
     _cachedTheadH = thead ? thead.offsetHeight : 35;
     _scrollRevealTopExit = _cachedNavH + _cachedTheadH + 60;
 }
+
 window.addEventListener('resize', _refreshScrollRevealHeights, { passive: true });
 document.addEventListener('DOMContentLoaded', _refreshScrollRevealHeights);
 
 function initRowScrollReveal(scope) {
+    // Disconnect before the early return so stale observers don't hold library DOM
+    // nodes alive when navigating away from the library to a non-library page.
+    if (_rowEntryObs) { _rowEntryObs.disconnect(); _rowEntryObs = null; }
+    if (_rowExitObs)  { _rowExitObs.disconnect();  _rowExitObs  = null; }
+
     const container = scope || document;
     const rows = container.querySelectorAll('.game-row.anim-blur-rise');
     if (!rows.length) return;
 
-    if (_rowEntryObs) _rowEntryObs.disconnect();
-    if (_rowExitObs) _rowExitObs.disconnect();
-
     const topInset = _cachedNavH + _cachedTheadH;
 
-    // viewMid relative to the visible area (below nav+thead, above bottom)
-    const viewMid = (topInset + window.innerHeight) / 2;
-
-    // Entry — at the viewport edge, inset by the top chrome.
+    // viewMid is read from the cache inside each callback rather than captured here —
+    // this keeps it current after window resizes without recreating the observers.
     _rowEntryObs = new IntersectionObserver((entries) => {
+        const viewMid = (_cachedNavH + _cachedTheadH + window.innerHeight) / 2;
         for (const entry of entries) {
             const el = entry.target;
             if (!entry.isIntersecting || !el.dataset.revealed) continue;
@@ -180,8 +224,8 @@ function initRowScrollReveal(scope) {
         }
     }, { threshold: 0.05, rootMargin: `-${topInset}px 0px 0px 0px` });
 
-    // Exit — inset so fade starts while row is still visible.
     _rowExitObs = new IntersectionObserver((entries) => {
+        const viewMid = (_cachedNavH + _cachedTheadH + window.innerHeight) / 2;
         for (const entry of entries) {
             const el = entry.target;
             if (entry.isIntersecting) {
@@ -205,8 +249,12 @@ function initRowScrollReveal(scope) {
     });
 }
 
-// --- Edge proximity scale for game rows ---
-// Continuously shrinks rows as they approach the top/bottom exit boundaries.
+// ─── Edge proximity scale ─────────────────────────────────────────────────────
+// Continuously scales game rows down as they approach the top/bottom viewport edges.
+// An IntersectionObserver tracks the nearby-rows set (activeRows) so the rAF loop
+// only processes rows near the viewport. --edge-scale is written to each row only
+// when the value changes.
+
 let _edgeScaleCleanup = null;
 let _edgeScaleRowsObs = null;
 
@@ -218,13 +266,14 @@ function initEdgeScale() {
     const navH = nav ? nav.offsetHeight : 56;
     const theadH = thead ? thead.offsetHeight : 35;
     const topBound = navH + theadH + 60;
-    const fadeZone = 160;
-    const minScale = 0.96;
+    const FADE_ZONE = 160;
+    const MIN_SCALE = 0.96;
     const ACTIVE_MARGIN = 220;
+
     const allRows = Array.from(document.querySelectorAll('.game-row.anim-blur-rise'));
     if (!allRows.length) return;
-    const activeRows = new Set();
 
+    const activeRows = new Set();
     const rowDocTop = new Float32Array(allRows.length);
     const rowHeight  = new Float32Array(allRows.length);
     const rowIdx     = new Map();
@@ -238,20 +287,19 @@ function initEdgeScale() {
         }
     }
 
-    if (_edgeScaleRowsObs) _edgeScaleRowsObs.disconnect();
-
     function seedActiveRows() {
         const scrollY = window.scrollY;
         const vpH = window.innerHeight;
-        const minDocTop = scrollY - ACTIVE_MARGIN;
-        const maxDocTop = scrollY + vpH + ACTIVE_MARGIN;
         for (let i = 0; i < allRows.length; i++) {
             const docTop = rowDocTop[i];
-            if (docTop + rowHeight[i] >= minDocTop && docTop <= maxDocTop) activeRows.add(allRows[i]);
+            const inRange = docTop + rowHeight[i] >= scrollY - ACTIVE_MARGIN
+                         && docTop <= scrollY + vpH + ACTIVE_MARGIN;
+            if (inRange) activeRows.add(allRows[i]);
             else activeRows.delete(allRows[i]);
         }
     }
 
+    if (_edgeScaleRowsObs) _edgeScaleRowsObs.disconnect();
     _edgeScaleRowsObs = new IntersectionObserver((entries) => {
         for (const entry of entries) {
             if (entry.isIntersecting) activeRows.add(entry.target);
@@ -271,36 +319,38 @@ function initEdgeScale() {
     function update() {
         ticking = false;
         if (!activeRows.size) return;
+
         const vpH = window.innerHeight;
         const scrollY = window.scrollY;
         const botBound = vpH - 60;
 
         for (const row of activeRows) {
-            if (!row.isConnected) {
-                activeRows.delete(row);
-                continue;
-            }
+            if (!row.isConnected) { activeRows.delete(row); continue; }
+
             const i = rowIdx.get(row);
             const rTop = rowDocTop[i] - scrollY;
             const rHeight = rowHeight[i];
+
+            // Compensate for the entrance transform offset on hidden rows so the
+            // scale pivot tracks the row's visual midpoint, not its layout midpoint.
             let compensate = 0;
             if (!row.classList.contains('animate-in')) {
                 compensate = row.classList.contains('reveal-top') ? 48 : -48;
             }
             const rowMid = rTop + compensate + rHeight * 0.5;
 
-            const fromTop = rowMid - topBound;
-            const fromBot = botBound - rowMid;
-            const closest = Math.min(fromTop, fromBot);
+            const distFromTop = rowMid - topBound;
+            const distFromBot = botBound - rowMid;
+            const closest = Math.min(distFromTop, distFromBot);
 
             let s;
-            if (closest >= fadeZone) {
+            if (closest >= FADE_ZONE) {
                 s = 1;
             } else if (closest <= 0) {
-                s = minScale;
+                s = MIN_SCALE;
             } else {
-                const t = closest / fadeZone;
-                s = minScale + (1 - minScale) * (1 - (1 - t) * (1 - t));
+                const t = closest / FADE_ZONE;
+                s = MIN_SCALE + (1 - MIN_SCALE) * (1 - (1 - t) * (1 - t));
             }
 
             const nextScale = s.toFixed(4);
@@ -311,14 +361,8 @@ function initEdgeScale() {
         }
     }
 
-    function onScroll() {
-        if (!ticking) { ticking = true; requestAnimationFrame(update); }
-    }
-    function onResize() {
-        seedRowPositions();
-        seedActiveRows();
-        onScroll();
-    }
+    function onScroll() { if (!ticking) { ticking = true; requestAnimationFrame(update); } }
+    function onResize() { seedRowPositions(); seedActiveRows(); onScroll(); }
 
     window.addEventListener('scroll', onScroll, { passive: true });
     window.addEventListener('resize', onResize, { passive: true });
@@ -327,67 +371,83 @@ function initEdgeScale() {
     _edgeScaleCleanup = () => {
         window.removeEventListener('scroll', onScroll);
         window.removeEventListener('resize', onResize);
-        if (_edgeScaleRowsObs) {
-            _edgeScaleRowsObs.disconnect();
-            _edgeScaleRowsObs = null;
-        }
+        if (_edgeScaleRowsObs) { _edgeScaleRowsObs.disconnect(); _edgeScaleRowsObs = null; }
         _edgeScaleCleanup = null;
     };
 }
 
-// --- Captures by-game group animations ---
-// Handles the by-game view's group-aware stagger so each element has no transforming/opacity
-// parent — required for backdrop-filter (glass) to composite correctly.
-function _fireGroupElements(group, baseDelay, itemUnit) {
-    const animEls = Array.from(group.querySelectorAll(
-        '.anim-blur-rise, .anim-blur-scale, .anim-slide-blur, .anim-drop, .anim-pop, .anim-grow'
-    )).filter(el => !el.classList.contains('animate-in'));
+// ─── Captures by-game group animations ───────────────────────────────────────
+// The by-game view sequences each group's elements individually rather than via
+// initScrollAnimations — required because animated parent containers would create
+// stacking contexts that break backdrop-filter compositing on glass children.
+//
+// Same gen-counter pattern: incremented on each initCaptureGroupAnimations call,
+// passed to _fireGroupElements so stale timers from superseded calls bail early.
+
+let _captureGroupObs = null;
+let _captureGroupGen = 0;
+
+function _fireGroupElements(group, baseDelay, itemUnit, gen) {
+    const animEls = Array.from(group.querySelectorAll(ANIM_SEL))
+        .filter(el => !el.classList.contains('animate-in'));
     if (!animEls.length) return;
+
     animEls.sort((a, b) => {
         const ra = a.getBoundingClientRect(), rb = b.getBoundingClientRect();
         return (ra.top - rb.top) || (ra.left - rb.left);
     });
     animEls.forEach((el, idx) => {
         el.style.transitionDelay = '0ms';
-        setTimeout(() => el.classList.add('animate-in'), baseDelay + idx * itemUnit);
+        setTimeout(() => {
+            if (_captureGroupGen !== gen) return; // stale — discard
+            el.classList.add('animate-in');
+        }, baseDelay + idx * itemUnit);
     });
 }
 
-let _captureGroupObs = null;
 function initCaptureGroupAnimations(scope) {
     if (_captureGroupObs) { _captureGroupObs.disconnect(); _captureGroupObs = null; }
+
     const groups = Array.from((scope || document).querySelectorAll('.captures-game-group'));
     if (!groups.length) return;
+
+    const gen = ++_captureGroupGen;
+
     requestAnimationFrame(() => {
+        if (_captureGroupGen !== gen) return; // superseded
+
         const stagger = _cssDur('--stagger') || 60;
         const groupUnit = Math.max(stagger, 80);
         const itemUnit  = Math.round(stagger * 0.8);
         const viewH = window.innerHeight;
+
         const aboveGroups = [];
         const belowGroups = [];
-        groups.forEach(group => {
+        for (const group of groups) {
             const rect = group.getBoundingClientRect();
-            if (rect.width === 0 && rect.height === 0) return;
-            if (rect.top < viewH + 40) aboveGroups.push(group);
-            else belowGroups.push(group);
-        });
-        aboveGroups.forEach((group, gIdx) => {
-            _fireGroupElements(group, gIdx * groupUnit, itemUnit);
-        });
-        _captureGroupObs = new IntersectionObserver((entries) => {
-            entries.filter(e => e.isIntersecting).forEach(entry => {
-                _captureGroupObs.unobserve(entry.target);
-                _fireGroupElements(entry.target, 0, itemUnit);
-            });
+            if (rect.width === 0 && rect.height === 0) continue;
+            (rect.top < viewH + 40 ? aboveGroups : belowGroups).push(group);
+        }
+
+        aboveGroups.forEach((group, gIdx) => _fireGroupElements(group, gIdx * groupUnit, itemUnit, gen));
+
+        const captureObs = new IntersectionObserver((entries) => {
+            for (const entry of entries) {
+                if (!entry.isIntersecting) continue;
+                captureObs.unobserve(entry.target); // captured local — never stale
+                _fireGroupElements(entry.target, 0, itemUnit, gen);
+            }
         }, { threshold: 0, rootMargin: '0px 0px -40px 0px' });
-        belowGroups.forEach(group => _captureGroupObs.observe(group));
+        _captureGroupObs = captureObs;
+
+        belowGroups.forEach(group => captureObs.observe(group));
     });
 }
 
-// --- Reset animations helper (used by library view toggle) ---
+// ─── Reset animations ─────────────────────────────────────────────────────────
+// Clears animate-in state before re-triggering (used by library view toggle).
 function _resetAnimations(scope) {
-    const sel = '.anim-blur-rise, .anim-blur-scale, .anim-slide-blur, .anim-drop, .anim-pop, .anim-grow';
-    const els = Array.from(scope.querySelectorAll(sel));
+    const els = Array.from(scope.querySelectorAll(ANIM_SEL));
     if (!els.length) return;
     els.forEach(el => {
         el.style.transition = 'none';
@@ -395,6 +455,6 @@ function _resetAnimations(scope) {
         el.style.transitionDelay = '';
         delete el.dataset.revealed;
     });
-    scope.offsetHeight; // single forced reflow commits the hidden state
+    scope.offsetHeight; // forced reflow commits the hidden state before transitions restore
     els.forEach(el => el.style.transition = '');
 }

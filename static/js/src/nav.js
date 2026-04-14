@@ -6,6 +6,9 @@
 
 const NAV_ORDER = { '/': 0, '/library': 1, '/achievements': 2, '/timeline': 3, '/captures': 4, '/friends': 5 };
 
+const TAB_EXIT_FWD  = 'tab-exit-forward';
+const TAB_EXIT_BACK = 'tab-exit-back';
+
 function _navPathname(urlish) {
     if (!urlish) return window.location.pathname;
     try {
@@ -38,12 +41,12 @@ function initPageEntrance() {
 function _navDirection(fromPath, toPath) {
     const fromIdx = NAV_ORDER[_navActivePath(fromPath)] ?? -1;
     const toIdx = NAV_ORDER[_navActivePath(toPath)] ?? -1;
-    if (fromIdx >= 0 && toIdx >= 0 && fromIdx !== toIdx) {
-        return toIdx > fromIdx ? 'forward' : 'back';
-    }
-    return null;
+    return (fromIdx >= 0 && toIdx >= 0 && fromIdx !== toIdx)
+        ? (toIdx > fromIdx ? 'forward' : 'back')
+        : null;
 }
 
+// ─── Navigation state ─────────────────────────────────────────────────────────
 let _mainEl = null;
 function _getMain() { return _mainEl || (_mainEl = document.querySelector('main')); }
 
@@ -51,11 +54,10 @@ let _pendingSpaNavTimer = null;
 let _spaNavGen = 0;
 let _spaNavInFlight = false;
 
-// Position the pill track over `el`. Uses offsetLeft/offsetWidth (integer
-// layout values, stable across font swaps) and sets CSS custom properties
-// instead of inline left/width. The .pill-animate class gates the transition
-// so initial paint and ResizeObserver updates snap while clicks animate.
-// Glow counter-slide is handled in CSS via calc(2px - var(--pill-x)).
+// Position the pill track over `el`. Uses offsetLeft/offsetWidth (integer layout
+// values, stable across font swaps) and sets CSS custom properties instead of inline
+// left/width. .pill-animate gates the transition so initial paint and ResizeObserver
+// updates snap while clicks animate.
 function _positionPill(el, animate) {
     const track = document.getElementById('nav-pill-track');
     if (!track || !el) return;
@@ -83,8 +85,6 @@ function startFullNav(urlish) {
     if (dir) sessionStorage.setItem('nav-dir', dir);
     else sessionStorage.removeItem('nav-dir');
 
-    // Remember where the pill was so the next page can animate from this
-    // position instead of snapping to the new active link on load.
     try { sessionStorage.setItem('pill-from-path', _navActivePath(location.pathname)); } catch (e) {}
 
     const main = _getMain();
@@ -99,9 +99,9 @@ function _bindHistoryNavSync() {
     if (window.__navHistorySyncBound) return;
     window.__navHistorySyncBound = true;
 
-    // pushState/replaceState: only update .active classes — pill was already
-    // positioned by the htmx:confirm handler, re-sliding would restart the transition.
-    const wrap = (methodName) => {
+    // Intercept pushState/replaceState to update .active classes only — the pill was
+    // already positioned by the htmx:confirm handler, re-sliding would restart the transition.
+    const wrapHistoryMethod = (methodName) => {
         const original = history[methodName];
         history[methodName] = function(...args) {
             const result = original.apply(this, args);
@@ -110,63 +110,71 @@ function _bindHistoryNavSync() {
         };
     };
 
-    wrap('pushState');
-    wrap('replaceState');
-    // popstate (back/forward): full update with animation — no confirm handler fired.
+    wrapHistoryMethod('pushState');
+    wrapHistoryMethod('replaceState');
+    // popstate (back/forward): full update with animation — no confirm handler fires.
     window.addEventListener('popstate', () => _updateNavActive(window.location.href, true));
 }
 
+// ─── Same-page navigation (e.g. Library → Library) ───────────────────────────
+// Fades out, resets library state, then fades back in — no actual htmx request.
+function _handleSamePageNav(gen) {
+    const main = _getMain();
+    if (main) {
+        main.style.transition = 'opacity var(--dur-micro) var(--ease-exit)';
+        main.style.opacity = '0';
+    }
+    _pendingSpaNavTimer = setTimeout(() => {
+        _pendingSpaNavTimer = null;
+        if (gen !== _spaNavGen) return;
+        if (main) { main.style.opacity = ''; main.style.transition = ''; }
+        _gridDirty = true;
+        _tableDirty = true;
+        if (window.resumeGlass) window.resumeGlass();
+        setLibraryView(_currentLibView);
+    }, _cssDur('--dur-micro'));
+}
+
+// ─── SPA exit animation ───────────────────────────────────────────────────────
+// Directional nav: slide main off-screen via CSS class.
+// Non-directional nav: simple opacity fade.
+function _applySpaExitAnimation(main, dir) {
+    if (main && dir) {
+        main.classList.add(dir === 'forward' ? TAB_EXIT_FWD : TAB_EXIT_BACK);
+    } else if (main) {
+        main.style.transition = 'opacity var(--dur-micro) var(--ease-exit)';
+        main.style.opacity = '0';
+    }
+}
+
+// ─── htmx:confirm — intercept SPA nav clicks ─────────────────────────────────
 document.body.addEventListener('htmx:confirm', (evt) => {
     const el = evt.detail.elt;
     if (!el.hasAttribute('hx-get') || !el.closest('.nav-inner')) return;
 
     evt.preventDefault();
 
-    if (_pendingSpaNavTimer) {
-        clearTimeout(_pendingSpaNavTimer);
-        _pendingSpaNavTimer = null;
-    }
+    if (_pendingSpaNavTimer) { clearTimeout(_pendingSpaNavTimer); _pendingSpaNavTimer = null; }
     _spaNavGen++;
 
     const main = _getMain();
+    const toPath = el.getAttribute('hx-get');
 
     if (el.closest('.nav-pill')) _positionPill(el, true);
 
-    const toPath = el.getAttribute('hx-get');
-
-    // Same-page nav (e.g. clicking Library while already on Library)
+    // Same-page nav (e.g. clicking Library while already on Library).
     if (toPath === location.pathname) {
-        if (document.getElementById('library-table-wrap')) {
-            if (main) {
-                main.style.transition = 'opacity var(--dur-micro) var(--ease-exit)';
-                main.style.opacity = '0';
-            }
-            const gen = _spaNavGen;
-            _pendingSpaNavTimer = setTimeout(() => {
-                _pendingSpaNavTimer = null;
-                if (gen !== _spaNavGen) return;
-                if (main) { main.style.opacity = ''; main.style.transition = ''; }
-                _gridDirty = true;
-                _tableDirty = true;
-                if (window.resumeGlass) window.resumeGlass();
-                setLibraryView(_currentLibView);
-            }, _cssDur('--dur-micro'));
-        }
+        if (document.getElementById('library-table-wrap')) _handleSamePageNav(_spaNavGen);
         return;
     }
 
     const dir = _navDirection(location.pathname, toPath);
     if (dir) sessionStorage.setItem('nav-dir', dir);
-    if (main && dir) {
-        main.classList.add(dir === 'forward' ? 'tab-exit-forward' : 'tab-exit-back');
-    } else if (main) {
-        main.style.transition = 'opacity var(--dur-micro) var(--ease-exit)';
-        main.style.opacity = '0';
-    }
+
+    _applySpaExitAnimation(main, dir);
 
     window.scrollTo(0, 0);
     if (window.lenis) window.lenis.scrollTo(0, { immediate: true });
-
     if (window.pauseGlass) window.pauseGlass();
 
     _spaNavInFlight = true;
@@ -177,7 +185,7 @@ document.body.addEventListener('htmx:confirm', (evt) => {
     }, exitDelay);
 });
 
-// --- SPA post-swap: re-initialize page modules after htmx swaps <main> ---
+// ─── SPA post-swap: re-initialize page modules after htmx swaps <main> ───────
 const PAGE_BODY_CLASSES = ['page-game-detail', 'auto-fetch-friends'];
 
 function _processSPAMeta(main) {
@@ -217,8 +225,7 @@ function _executeSPAScripts(main) {
             s.textContent = oldScript.textContent;
         }
         document.body.appendChild(s);
-        // Inline scripts execute synchronously — safe to remove immediately
-        if (!oldScript.src) cleanup();
+        if (!oldScript.src) cleanup(); // inline scripts execute synchronously
     });
     scriptTpl.remove();
 }
@@ -230,22 +237,19 @@ function _updateNavActive(path, animate) {
 }
 
 document.body.addEventListener('htmx:afterSwap', (evt) => {
-    // Only process SPA page swaps, not library table / timeline partial swaps
     if (evt.detail.target.id !== 'main') return;
 
     const main = evt.detail.target;
-
     _spaNavInFlight = false;
 
     _processSPAMeta(main);
     _processSPAOverlay(main);
     _executeSPAScripts(main);
 
-    main.classList.remove('tab-exit-forward', 'tab-exit-back');
+    main.classList.remove(TAB_EXIT_FWD, TAB_EXIT_BACK);
     main.style.opacity = '';
     main.style.transition = '';
 
-    // Reset library dirty flags — every SPA nav to the library page needs fresh content.
     _gridDirty = true;
     _tableDirty = false;
 
@@ -255,10 +259,10 @@ document.body.addEventListener('htmx:afterSwap', (evt) => {
     main.querySelectorAll('.animate-in').forEach(el => el.classList.remove('animate-in'));
     _lightboxDirty = true;
 
-    // Re-initialize page modules — staggered across frames to avoid aurora jank:
+    // Re-initialize page modules in priority order:
     //   This frame: entrance direction + scroll animations (visual-critical)
     //   Next rAF:   glass re-cache + reveal highlight + blurhash
-    //   Idle:       everything else (non-visual-critical)
+    //   Idle:       non-visual-critical modules
     initPageEntrance();
     initScrollAnimations(main, true);
     initCaptureGroupAnimations(main);
@@ -267,24 +271,36 @@ document.body.addEventListener('htmx:afterSwap', (evt) => {
     requestAnimationFrame(() => {
         if (gen !== _spaNavGen) return;
         if (window.resumeGlass) window.resumeGlass();
-        initRevealHighlight();
-        initBlurhash(main);
+        // Scope to new content only — nav elements are already initialized from DOMContentLoaded
+        initRevealHighlight(main);
         fireCompletionConfetti();
 
-        const _idle = window.requestIdleCallback || ((cb) => setTimeout(cb, 16));
-        _idle(() => {
+        // Run immediately in this rAF — lightweight, starts as cards become visible.
+        animateCountUp();
+        initHeatmapTooltip();
+        initClickableRows();
+
+        // Delay CPU-heavy idle tasks until AFTER the entrance cascade completes.
+        // Worst case: ≤8 above-fold leaders × 80ms/step = ~640ms. Without this guard,
+        // requestIdleCallback fires between the first few steps (browser idle between
+        // 80ms gaps) and heavy tasks (blurhash, ambient glow) cause a visible
+        // mid-cascade pause — "1-3 tiles appear, freeze, then the rest animate".
+        const CASCADE_WAIT = 680;
+        const idle = window.requestIdleCallback || ((cb) => setTimeout(cb, 16));
+        setTimeout(() => idle(() => {
+            if (gen !== _spaNavGen) return;
+            // Blurhash moved here from rAF — it's CPU-heavy and doesn't need to block
+            // the first paint frame (prevents "slow to start" after many tab switches)
+            initBlurhash(main);
             initAmbientGlow();
-            initClickableRows();
             initRowScrollReveal();
             initEdgeScale();
-            animateCountUp();
-            initHeatmapTooltip();
             initTimelineCalendar();
             initTimelineContinuationFix();
             restoreLibraryView();
             if (typeof updateExportLinks === 'function') updateExportLinks();
             if (document.body.classList.contains('auto-fetch-friends')) fetchFriends();
-        });
+        }), CASCADE_WAIT);
     });
 });
 
@@ -293,7 +309,26 @@ document.body.addEventListener('htmx:afterSettle', (evt) => {
     _setNavClasses(location.pathname);
 });
 
-// --- Non-SPA link exit animation (game detail, etc.) ---
+// ─── SPA navigation error recovery ───────────────────────────────────────────
+// If the htmx request for #main fails, htmx:afterSwap never fires so _spaNavInFlight
+// stays true — the pill ResizeObserver silently ignores all resize events until the
+// next successful nav. Main is also left in its exit state (opacity 0 or tab-exit
+// class). Restore both here so the page remains usable after network errors.
+function _recoverSpaNav(evt) {
+    if (evt.detail.target?.id !== 'main') return;
+    _spaNavInFlight = false;
+    const main = _getMain();
+    if (main) {
+        main.classList.remove(TAB_EXIT_FWD, TAB_EXIT_BACK);
+        main.style.opacity = '';
+        main.style.transition = '';
+    }
+}
+
+document.body.addEventListener('htmx:responseError', _recoverSpaNav);
+document.body.addEventListener('htmx:sendError', _recoverSpaNav);
+
+// ─── Non-SPA link exit (game detail, external pages) ─────────────────────────
 document.addEventListener('click', (e) => {
     const link = e.target.closest('a[href]');
     if (!link || link.target || link.hasAttribute('download') ||
@@ -306,14 +341,13 @@ document.addEventListener('click', (e) => {
     startFullNav(href);
 });
 
-// --- Nav pill track: position the sliding indicator behind the active link ---
-// Single ResizeObserver handles font swaps and window resizes. If the user
-// arrived here via a full-page nav (startFullNav wrote 'pill-from-path'), the
-// inline first-paint script parked the track at the FROM link — we schedule a
-// slide to the real active link so the animation crosses tabs visually.
-// Flags: _spaNavInFlight and _pillInitialSlidePending suppress the RO from
-// snapping the pill mid-animation.
+// ─── Nav pill track ───────────────────────────────────────────────────────────
+// Single ResizeObserver handles font swaps and window resizes. If the user arrived
+// via startFullNav (which saves 'pill-from-path'), the inline first-paint script
+// parked the track at the FROM link — we schedule a slide to the active link so
+// the pill appears to travel across tabs visually.
 let _pillInitialSlidePending = false;
+
 function initNavPillTrack() {
     const pill = document.querySelector('.nav-pill');
     if (!pill) return;
@@ -327,7 +361,7 @@ function initNavPillTrack() {
     if (shouldSlideIn) {
         _pillInitialSlidePending = true;
         // Double rAF: let the browser commit the FROM position from the inline
-        // script before we flip to TO and start the transition.
+        // script before flipping to TO and starting the transition.
         requestAnimationFrame(() => requestAnimationFrame(() => {
             const active = pill.querySelector('.nav-link.active');
             if (active) _positionPill(active, true);
@@ -342,19 +376,20 @@ function initNavPillTrack() {
     }).observe(pill);
 }
 
-// --- Scroll-aware nav: add/remove .scrolled class ---
+// ─── Scroll-aware nav ─────────────────────────────────────────────────────────
 let _scrollNavInit = false;
+
 function initScrollNav() {
     if (_scrollNavInit) return;
     const nav = document.getElementById('xbox-nav');
     if (!nav) return;
     _scrollNavInit = true;
 
+    const THRESHOLD = 20;
     let scrolled = false;
-    const threshold = 20;
 
     function check(scrollY) {
-        const isScrolled = scrollY > threshold;
+        const isScrolled = scrollY > THRESHOLD;
         if (isScrolled !== scrolled) {
             scrolled = isScrolled;
             nav.classList.toggle('scrolled', scrolled);

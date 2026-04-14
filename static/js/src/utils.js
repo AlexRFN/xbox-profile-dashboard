@@ -95,15 +95,17 @@ function softRefresh(delayMs = 0) {
 // Used by library view toggle and captures view toggle.
 function updateToggleSlider(container) {
     if (!container) return;
-    const active = container.querySelector('.view-btn.active');
-    if (!active) return;
-    // Batch all reads before any writes to avoid interleaved forced reflows.
-    const x = active.offsetLeft, w = active.offsetWidth, h = active.offsetHeight, top = active.offsetTop;
-    container.style.setProperty('--slider-x', x + 'px');
-    container.style.setProperty('--slider-w', w + 'px');
-    container.style.setProperty('--slider-h', h + 'px');
-    container.style.setProperty('--slider-top', top + 'px');
-    if (!container.classList.contains('slider-ready')) {
-        requestAnimationFrame(() => container.classList.add('slider-ready'));
-    }
+    requestAnimationFrame(function() {
+        const active = container.querySelector('.view-btn.active');
+        if (!active) return;
+        // Batch all reads before any writes to avoid interleaved forced reflows.
+        const x = active.offsetLeft, w = active.offsetWidth, h = active.offsetHeight, top = active.offsetTop;
+        container.style.setProperty('--slider-x', x + 'px');
+        container.style.setProperty('--slider-w', w + 'px');
+        container.style.setProperty('--slider-h', h + 'px');
+        container.style.setProperty('--slider-top', top + 'px');
+        if (!container.classList.contains('slider-ready')) {
+            requestAnimationFrame(() => container.classList.add('slider-ready'));
+        }
+    });
 }

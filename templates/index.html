@@ -262,12 +262,21 @@ function _ensureChartsThenRun() {
         document.head.appendChild(_cs);
     }
 }
+// Defer chart init until after the entrance animation (~600ms durSlow) so
+// Chart.js layout passes don't compete with _cascadeAboveFold on the main thread.
+function _scheduleCharts() {
+    if (typeof requestIdleCallback !== 'undefined') {
+        requestIdleCallback(_ensureChartsThenRun, { timeout: 2000 });
+    } else {
+        setTimeout(_ensureChartsThenRun, 650);
+    }
+}
 // Wait for DOMContentLoaded so the deferred app.js bundle has executed and
 // initDashboardCharts is defined — otherwise a cached Chart.js can race ahead.
 if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', _ensureChartsThenRun);
+    document.addEventListener('DOMContentLoaded', _scheduleCharts);
 } else {
-    _ensureChartsThenRun();
+    _scheduleCharts();
 }
 </script>
 {% endif %}

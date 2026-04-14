@@ -8,7 +8,7 @@ function _revealRaf() {
     const p = _revealPending;
     if (!p) return;
     _revealPending = null;
-    const rect = p.item.getBoundingClientRect();
+    const rect = p.rect;
     const x = p.cx - rect.left;
     const y = p.cy - rect.top;
     p.item.style.setProperty('--reveal-x', x + 'px');
@@ -26,7 +26,7 @@ function initRevealHighlight(root) {
     function _revealMove(item, e) {
         if (!_revealCanTrack()) return;
         const schedule = !_revealPending;
-        _revealPending = { item, cx: e.clientX, cy: e.clientY };
+        _revealPending = { item, cx: e.clientX, cy: e.clientY, rect: item.getBoundingClientRect() };
         if (schedule) requestAnimationFrame(_revealRaf);
     }
 

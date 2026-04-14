@@ -290,15 +290,15 @@ a.outline.reveal-item            { --reveal-intensity: 0.95; --reveal-mid: 0.55;
     100% { background-position: -200% 0; }
 }
 
-.htmx-settling:not(#heatmap-content),
-[hx-target].htmx-request:not(.hm-tab):not(.hm-year-btn):not(.cal-nav):not(.calendar-toggle-btn),
+.htmx-settling:not(#heatmap-content):not(#main),
+[hx-target].htmx-request:not(.hm-tab):not(.hm-year-btn):not(.cal-nav):not(.calendar-toggle-btn):not(.nav-link):not(.nav-brand):not(.nav-profile-chip),
 .htmx-request > tbody {
     position: relative;
     pointer-events: none;
 }
 
-.htmx-settling:not(#heatmap-content)::after,
-[hx-target].htmx-request:not(.hm-tab):not(.hm-year-btn):not(.cal-nav):not(.calendar-toggle-btn)::after,
+.htmx-settling:not(#heatmap-content):not(#main)::after,
+[hx-target].htmx-request:not(.hm-tab):not(.hm-year-btn):not(.cal-nav):not(.calendar-toggle-btn):not(.nav-link):not(.nav-brand):not(.nav-profile-chip)::after,
 .htmx-request > tbody::after {
     content: '';
     position: absolute;

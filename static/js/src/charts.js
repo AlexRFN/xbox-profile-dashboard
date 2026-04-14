@@ -32,6 +32,9 @@ var _doughnutCenterPlugin = {
 // --- Count-up animation for stat cards ---
 function animateCountUp() {
     document.querySelectorAll('[data-countup]').forEach(el => {
+        if (el.dataset.countupInit) return;
+        el.dataset.countupInit = '1';
+
         const text = el.textContent.trim();
         const match = text.match(/^[\d,]+/);
         if (!match) return;
@@ -40,24 +43,44 @@ function animateCountUp() {
         if (isNaN(target) || target === 0) return;
 
         const suffix = text.slice(match[0].length);
-        const duration = 1200;
-        const start = performance.now();
 
-        function step(now) {
-            const elapsed = now - start;
-            const progress = Math.min(elapsed / duration, 1);
-            const eased = 1 - Math.pow(1 - progress, 3);
-            const current = Math.round(target * eased);
-            el.textContent = current.toLocaleString() + suffix;
-            if (progress < 1) requestAnimationFrame(step);
+        function startCount() {
+            const duration = 1200;
+            const start = performance.now();
+            function step(now) {
+                const elapsed = now - start;
+                const progress = Math.min(elapsed / duration, 1);
+                const eased = 1 - Math.pow(1 - progress, 3);
+                el.textContent = Math.round(target * eased).toLocaleString() + suffix;
+                if (progress < 1) requestAnimationFrame(step);
+                else el.textContent = target.toLocaleString() + suffix;
+            }
+            requestAnimationFrame(step);
         }
 
+        // Start counting the moment the card's entrance animation fires.
+        // The stat card is article.anim-blur-rise — watch for animate-in on that ancestor.
+        const container = el.closest('.anim-blur-rise, .anim-drop, .anim-pop, .anim-blur-scale, .anim-slide-blur, .anim-grow');
         el.textContent = '0' + suffix;
-        requestAnimationFrame(step);
+
+        if (!container || container.classList.contains('animate-in')) {
+            startCount();
+            return;
+        }
+
+        const obs = new MutationObserver(() => {
+            if (container.classList.contains('animate-in')) {
+                obs.disconnect();
+                startCount();
+            }
+        });
+        obs.observe(container, { attributes: true, attributeFilter: ['class'] });
     });
 }
 
 // --- Dashboard Charts ---
+
+var _dashboardCharts = [];
 
 function _buildMonthLabels(monthlyStats) {
     return monthlyStats.map(m => {
@@ -106,10 +129,10 @@ function _glassScales(textColor, gridColor) {
 }
 
 function _initCompletionChart(ctx, stats, textColor, xboxGreen, style) {
-    if (!ctx || stats.zero_progress === undefined) return;
+    if (!ctx || stats.zero_progress === undefined) return null;
     var total = (stats.zero_progress || 0) + (stats.low_progress || 0) + (stats.high_progress || 0) + (stats.completed_games || 0);
     var pct = total > 0 ? Math.round((stats.completed_games / total) * 100) : 0;
-    new Chart(ctx, {
+    return new Chart(ctx, {
         type: 'doughnut',
         plugins: [_doughnutCenterPlugin],
         data: {
@@ -163,10 +186,10 @@ function _initCompletionChart(ctx, stats, textColor, xboxGreen, style) {
 }
 
 function _initGamerscoreChart(ctx, monthLabels, stats, textColor, gridColor) {
-    if (!ctx) return;
+    if (!ctx) return null;
     const canvas = ctx.getContext('2d');
     const fillGrad = _glassGradient(canvas, 'rgba(245, 158, 11, 0.25)', 'rgba(245, 158, 11, 0.02)');
-    new Chart(ctx, {
+    return new Chart(ctx, {
         type: 'line',
         data: {
             labels: monthLabels,
@@ -209,10 +232,10 @@ function _initGamerscoreChart(ctx, monthLabels, stats, textColor, gridColor) {
 }
 
 function _initAchievementsChart(ctx, monthLabels, stats, textColor, gridColor, xboxGreen) {
-    if (!ctx) return;
+    if (!ctx) return null;
     const canvas = ctx.getContext('2d');
     const barGrad = _glassGradient(canvas, 'rgba(0, 210, 106, 0.6)', 'rgba(0, 210, 106, 0.20)');
-    new Chart(ctx, {
+    return new Chart(ctx, {
         type: 'bar',
         data: {
             labels: monthLabels,
@@ -241,7 +264,7 @@ function _initAchievementsChart(ctx, monthLabels, stats, textColor, gridColor, x
 }
 
 function _initMostPlayedChart(ctx, stats, textColor, gridColor, xboxGreen) {
-    if (!ctx || !stats.most_played?.length) return;
+    if (!ctx || !stats.most_played?.length) return null;
     const top10 = stats.most_played.slice(0, 10);
     const labels = top10.map(g => g.name.length > 25 ? g.name.substring(0, 23) + '...' : g.name);
     const hours = top10.map(g => Math.round((g.minutes_played || 0) / 60 * 10) / 10);
@@ -249,7 +272,7 @@ function _initMostPlayedChart(ctx, stats, textColor, gridColor, xboxGreen) {
     const barGrad = canvas.createLinearGradient(0, 0, canvas.canvas.width, 0);
     barGrad.addColorStop(0, 'rgba(0, 210, 106, 0.15)');
     barGrad.addColorStop(1, 'rgba(0, 210, 106, 0.55)');
-    new Chart(ctx, {
+    return new Chart(ctx, {
         type: 'bar',
         data: {
             labels,
@@ -298,6 +321,8 @@ function _initMostPlayedChart(ctx, stats, textColor, gridColor, xboxGreen) {
 }
 
 function initDashboardCharts(stats) {
+    _dashboardCharts.forEach(function(c) { try { c.destroy(); } catch (e) {} });
+    _dashboardCharts = [];
     if (!stats) return;
     const style = getComputedStyle(document.documentElement);
     const textColor = style.getPropertyValue('--text-secondary').trim() || '#8b8fa3';
@@ -307,12 +332,13 @@ function initDashboardCharts(stats) {
     const hasMonthly = stats.monthly_stats && stats.monthly_stats.length > 1;
     const monthLabels = hasMonthly ? _buildMonthLabels(stats.monthly_stats) : [];
 
-    _initCompletionChart(document.getElementById('completionChart'), stats, textColor, xboxGreen, style);
-    if (hasMonthly) {
-        _initGamerscoreChart(document.getElementById('gamerscoreTimeChart'), monthLabels, stats, textColor, gridColor);
-        _initAchievementsChart(document.getElementById('achievementsTimeChart'), monthLabels, stats, textColor, gridColor, xboxGreen);
-    }
-    _initMostPlayedChart(document.getElementById('mostPlayedChart'), stats, textColor, gridColor, xboxGreen);
+    const created = [
+        _initCompletionChart(document.getElementById('completionChart'), stats, textColor, xboxGreen, style),
+        hasMonthly ? _initGamerscoreChart(document.getElementById('gamerscoreTimeChart'), monthLabels, stats, textColor, gridColor) : null,
+        hasMonthly ? _initAchievementsChart(document.getElementById('achievementsTimeChart'), monthLabels, stats, textColor, gridColor, xboxGreen) : null,
+        _initMostPlayedChart(document.getElementById('mostPlayedChart'), stats, textColor, gridColor, xboxGreen),
+    ];
+    _dashboardCharts = created.filter(Boolean);
 }
 
 // --- Ambient glow: extract dominant color from game art ---
