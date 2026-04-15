@@ -636,6 +636,10 @@ fn surfaceHeight(t: f32) -> f32 {
         halfW = Math.max(Math.round(vpW / HALF_RES), 1);
         halfH = Math.max(Math.round(vpH / HALF_RES), 1);
 
+        // Force aurora pass on the next render — new textures are empty/black and the
+        // blit would show a blank frame if the render happens to be a non-aurora frame.
+        _auroraFrame = 0;
+
         // Destroy old textures
         if (texAurora) texAurora.destroy();
         if (texBlur[0]) texBlur[0].destroy();
@@ -900,6 +904,7 @@ fn surfaceHeight(t: f32) -> f32 {
     var _cachedSticky = new Uint8Array(MAX_CACHED);   // 1 = sticky/fixed, always re-read rect
     var _mainEl = null;
     var _layoutDirty = true;
+    var _anyAnimating = false; // true while any panel is mid-entrance or reveal-fading
     var panelCount = 0;
 
     // Rect cache: avoid getBoundingClientRect on every frame during scroll-only updates.
@@ -911,9 +916,10 @@ fn surfaceHeight(t: f32) -> f32 {
     var _rectScrollY = 0;
     var _rectValid = false;
     var _rectAge = 0;          // frames since last full read
-    var _RECT_MAX_AGE = 4;     // force full re-read every N frames as safety net
+    var _RECT_MAX_AGE = 8;     // force full re-read every N frames as safety net
 
     function cacheElements() {
+        _anyAnimating = true;         // DOM changed — stay awake until collectPanels confirms idle
         _layoutDirty = false;
         _rectValid = false;           // invalidate rect cache on layout change
         _cachedEls = [];
@@ -964,11 +970,16 @@ fn surfaceHeight(t: f32) -> f32 {
     function collectPanels() {
         var visCount = 0;
 
-        var mainExiting = _mainEl && (_mainEl.style.opacity === '0' ||
+        var mainSlideExiting = _mainEl && (
             _mainEl.classList.contains('tab-exit-forward') ||
             _mainEl.classList.contains('tab-exit-back'));
-        // Read main's actual computed opacity so glass fades in sync with CSS transition
-        var mainOpacity = mainExiting ? parseFloat(getComputedStyle(_mainEl).opacity) : 1.0;
+        var mainFadeExiting = _mainEl && !mainSlideExiting && _mainEl.style.opacity === '0';
+        var mainExiting = mainSlideExiting || mainFadeExiting;
+        // Tab-exit is a pure transform animation — opacity stays 1.0 throughout.
+        // Only call getComputedStyle for fade-exit (opacity transition) so we don't
+        // pay a forced style recalculation on every frame during the common directional
+        // tab switch (which accounts for the vast majority of SPA navigations).
+        var mainOpacity = mainFadeExiting ? parseFloat(getComputedStyle(_mainEl).opacity) : 1.0;
 
         // Rect cache: reuse cached document-relative rects when only scroll changed.
         // Force full re-read on layout change, active animations, or every _RECT_MAX_AGE frames.
@@ -1144,20 +1155,22 @@ fn surfaceHeight(t: f32) -> f32 {
     // Render pipeline
     // ====================================================================
     var _auroraFrame = 0;
+    var _lastRenderMouseX = -9999, _lastRenderMouseY = -9999;
+    var _lastRenderScrollY = 0;
 
-    function render() {
+    function render(doAurora) {
         var canvasTexture;
         try {
             canvasTexture = ctx.getCurrentTexture();
         } catch (e) {
-            return; // Canvas lost — skip frame
+            return; // Canvas lost / swap chain not ready — skip frame
         }
         var canvasView = canvasTexture.createView();
 
         var encoder = device.createCommandEncoder({ label: 'frame' });
 
-        // Pass 1+2: Aurora + Blur (every 2nd frame)
-        if ((_auroraFrame++ & 1) === 0) {
+        // Pass 1+2: Aurora + Blur (every 2nd frame, controlled by frame())
+        if (doAurora) {
             // Upload aurora uniforms
             for (var i = 0; i < 5; i++) {
                 // nodes: vec4(x, y, 0, 0)
@@ -1281,11 +1294,51 @@ fn surfaceHeight(t: f32) -> f32 {
 
         resizeTargets();
         updatePhysics(_simTime);
+
+        // Determine aurora parity before any early-return so the counter stays accurate.
+        var doAurora = (_auroraFrame++ & 1) === 0;
+
         // Cooldown: skip heavy layout work for a few frames after DOM changes
-        if (_layoutCooldown > 0) { _layoutCooldown--; render(); return; }
+        if (_layoutCooldown > 0) { _layoutCooldown--; render(doAurora); return; }
         if (_layoutDirty) cacheElements();
+
+        // Fast-path idle skip: if no animations are running, scroll/mouse are unchanged,
+        // and this isn't an aurora frame, skip collectPanels + render entirely.
+        // collectPanels is the bulk of per-frame CPU work; skipping it on truly static
+        // frames reduces iGPU memory bus pressure beyond what the render-only skip achieves.
+        if (!doAurora && !_anyAnimating &&
+            window.scrollY === _lastRenderScrollY &&
+            _mouseX === _lastRenderMouseX && _mouseY === _lastRenderMouseY) return;
+
         collectPanels();
-        render();
+
+        // Update idle flag: false once all visible panels confirm fully opaque and no reveals.
+        _anyAnimating = false;
+        for (var _ai = 0; _ai < _cachedEls.length; _ai++) {
+            if (_cachedAnimIn[_ai] && !_fullyOpaque[_ai]) { _anyAnimating = true; break; }
+            if (_revealAnim[_ai] > 0.002) { _anyAnimating = true; break; }
+        }
+
+        // Secondary render-skip: ran collectPanels but output would still be identical.
+        if (!doAurora) {
+            // Compare against scroll at last render, not at last rect-read — _rectScrollY
+            // is updated inside collectPanels() so it would match window.scrollY on the
+            // same frame, masking the position change and skipping visible scroll updates.
+            var canSkip = window.scrollY === _lastRenderScrollY;
+            if (canSkip) {
+                for (var _sci = 0; _sci < _cachedEls.length; _sci++) {
+                    if (_revealAnim[_sci] > 0.002) { canSkip = false; break; }
+                    if (_cachedAnimIn[_sci] && !_fullyOpaque[_sci]) { canSkip = false; break; }
+                }
+            }
+            if (canSkip && (_mouseX !== _lastRenderMouseX || _mouseY !== _lastRenderMouseY)) canSkip = false;
+            if (canSkip) return;
+        }
+
+        render(doAurora);
+        _lastRenderScrollY = window.scrollY;
+        _lastRenderMouseX = _mouseX;
+        _lastRenderMouseY = _mouseY;
     }
 
     // ====================================================================
@@ -1328,7 +1381,8 @@ fn surfaceHeight(t: f32) -> f32 {
             updatePhysics(0);
             cacheElements();
             collectPanels();
-            render();
+            _auroraFrame = 0; // ensure first render includes aurora pass
+            render(true);
 
             // Fade in canvas over the CSS aurora now that glass is ready
             canvas.style.opacity = '1';
@@ -1357,7 +1411,7 @@ fn surfaceHeight(t: f32) -> f32 {
             updatePhysics(_simTime);  // resume from where simulation left off — no jump
             cacheElements();
             collectPanels();
-            render();
+            render(true); // force aurora on visibility resume for a fresh frame
         }
     });
 

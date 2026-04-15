@@ -189,6 +189,7 @@ function _initGamerscoreChart(ctx, monthLabels, stats, textColor, gridColor) {
     if (!ctx) return null;
     const canvas = ctx.getContext('2d');
     const fillGrad = _glassGradient(canvas, 'rgba(245, 158, 11, 0.25)', 'rgba(245, 158, 11, 0.02)');
+    const sc = _glassScales(textColor, gridColor);
     return new Chart(ctx, {
         type: 'line',
         data: {
@@ -224,8 +225,8 @@ function _initGamerscoreChart(ctx, monthLabels, stats, textColor, gridColor) {
                 },
             },
             scales: {
-                ..._glassScales(textColor, gridColor),
-                y: { ..._glassScales(textColor, gridColor).y, ticks: { ..._glassScales(textColor, gridColor).y.ticks, callback: function(v) { return v.toLocaleString() + 'G'; } } },
+                ...sc,
+                y: { ...sc.y, ticks: { ...sc.y.ticks, callback: function(v) { return v.toLocaleString() + 'G'; } } },
             },
         },
     });
@@ -235,6 +236,7 @@ function _initAchievementsChart(ctx, monthLabels, stats, textColor, gridColor, x
     if (!ctx) return null;
     const canvas = ctx.getContext('2d');
     const barGrad = _glassGradient(canvas, 'rgba(0, 210, 106, 0.6)', 'rgba(0, 210, 106, 0.20)');
+    const sc = _glassScales(textColor, gridColor);
     return new Chart(ctx, {
         type: 'bar',
         data: {
@@ -256,8 +258,8 @@ function _initAchievementsChart(ctx, monthLabels, stats, textColor, gridColor, x
             interaction: { mode: 'index', intersect: false },
             plugins: { legend: { display: false }, tooltip: _glassTooltip() },
             scales: {
-                ..._glassScales(textColor, gridColor),
-                y: { ..._glassScales(textColor, gridColor).y, ticks: { ..._glassScales(textColor, gridColor).y.ticks, stepSize: 1 } },
+                ...sc,
+                y: { ...sc.y, ticks: { ...sc.y.ticks, stepSize: 1 } },
             },
         },
     });

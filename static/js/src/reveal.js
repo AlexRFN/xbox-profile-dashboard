@@ -86,16 +86,16 @@ function initRevealHighlight(root) {
         });
     });
 
-    // Focus-tracking for form inputs — reveal follows cursor while typing
+    // Focus-tracking for form inputs — reveal follows cursor while typing.
+    // Routes through the same _revealMove → rAF path as all other reveal items so
+    // getBoundingClientRect is read once per frame (not once per mousemove event)
+    // and the CSS custom-property write is deferred until rAF, avoiding read+write
+    // interleaving that forces synchronous layout flushes.
     scope.querySelectorAll('input[type="search"], input[type="text"], input[type="date"], select, textarea').forEach(input => {
         if (input.dataset.revealFocus) return;
         input.dataset.revealFocus = '1';
         input.classList.add('reveal-focus');
         if (!_revealFinePointer) return;
-        input.addEventListener('mousemove', (e) => {
-            const rect = input.getBoundingClientRect();
-            input.style.setProperty('--reveal-x', (e.clientX - rect.left) + 'px');
-            input.style.setProperty('--reveal-y', (e.clientY - rect.top) + 'px');
-        });
+        input.addEventListener('mousemove', (e) => _revealMove(input, e));
     });
 }

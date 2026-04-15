@@ -177,10 +177,21 @@ function _cascadeAboveFold(aboveFold, unit, isFirstPaint, gen) {
         if (idx === 0 && isFirstPaint) {
             el.classList.add('animate-in'); // first element fires synchronously on true page load
         } else {
-            setTimeout(() => {
-                if (_scrollAnimGen !== gen) return; // stale — discard
-                el.classList.add('animate-in');
-            }, idx * leaderUnit);
+            const ms = idx * leaderUnit;
+            if (ms === 0) {
+                // rAF instead of setTimeout(0): fires in the same vsync as the first glass
+                // frame so glass and content begin their entrance transitions together,
+                // eliminating the ~16ms window where content moves without glass behind it.
+                requestAnimationFrame(() => {
+                    if (_scrollAnimGen !== gen) return;
+                    el.classList.add('animate-in');
+                });
+            } else {
+                setTimeout(() => {
+                    if (_scrollAnimGen !== gen) return;
+                    el.classList.add('animate-in');
+                }, ms);
+            }
         }
     });
 
@@ -210,7 +221,15 @@ function _refreshScrollRevealHeights() {
     _scrollRevealTopExit = _cachedNavH + _cachedTheadH + 60;
 }
 
-window.addEventListener('resize', _refreshScrollRevealHeights, { passive: true });
+// Debounce the resize handler: _refreshScrollRevealHeights reads offsetHeight on two
+// elements — firing on every resize event (up to 60/s during window drag) causes
+// unnecessary forced layout reads. A 120ms trailing debounce fires once the user
+// pauses, which is sufficient for the scroll-reveal threshold to stay accurate.
+let _rrResizeTimer = 0;
+window.addEventListener('resize', () => {
+    clearTimeout(_rrResizeTimer);
+    _rrResizeTimer = setTimeout(_refreshScrollRevealHeights, 120);
+}, { passive: true });
 document.addEventListener('DOMContentLoaded', _refreshScrollRevealHeights);
 
 function initRowScrollReveal(scope) {
@@ -376,7 +395,14 @@ function initEdgeScale() {
     }
 
     function onScroll() { if (!ticking) { ticking = true; requestAnimationFrame(update); } }
-    function onResize() { seedRowPositions(); seedActiveRows(); onScroll(); }
+
+    // seedRowPositions calls getBoundingClientRect for every row — debounce at 120ms
+    // so continuous window-drag resize only triggers one batch read after the user pauses.
+    let _edgeResizeTimer = 0;
+    function onResize() {
+        clearTimeout(_edgeResizeTimer);
+        _edgeResizeTimer = setTimeout(() => { seedRowPositions(); seedActiveRows(); onScroll(); }, 120);
+    }
 
     window.addEventListener('scroll', onScroll, { passive: true });
     window.addEventListener('resize', onResize, { passive: true });
@@ -385,6 +411,7 @@ function initEdgeScale() {
     _edgeScaleCleanup = () => {
         window.removeEventListener('scroll', onScroll);
         window.removeEventListener('resize', onResize);
+        clearTimeout(_edgeResizeTimer); // cancel any pending debounce
         if (_edgeScaleRowsObs) { _edgeScaleRowsObs.disconnect(); _edgeScaleRowsObs = null; }
         _edgeScaleCleanup = null;
     };
