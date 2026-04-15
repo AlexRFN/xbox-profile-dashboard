@@ -1074,24 +1074,29 @@
     var _prevFrameTime = 0;
     var _frameDt = 0.016;
     var _time = 0;
+    // Simulation time: accumulates only capped frame deltas so blob targets never jump
+    // ahead of what the spring integrator has actually stepped through. Prevents the
+    // "pauses then accelerates" artifact when the main thread drops frames during SPA nav.
+    var _simTime = 0;
 
     function frame(t) {
         if (!reduced) requestAnimationFrame(frame);
 
-        // Skip all work when tab is hidden (rAF is throttled but not stopped)
-        if (document.hidden) return;
+        // Skip all work while paused (SPA nav) or hidden (browser tab switch).
+        // Canvas holds its last presented frame — no blank flash, zero GPU submissions.
+        if (document.hidden || _glassPaused) return;
 
         _frameDt = _prevFrameTime ? Math.min((t - _prevFrameTime) * 0.001, 0.1) : 0.016;
         _prevFrameTime = t;
         _time = t * 0.001;
+        _simTime += _frameDt;  // advances by at most 100ms per frame — never wall-clock jumps
 
         // Drive Lenis smooth scroll on same rAF tick as WebGL —
         // scroll position + panel rects + render all happen in one frame.
         if (window.lenis && !window.__lenisOwnRaf) window.lenis.raf(t);
 
         resizeFBOs();
-        updatePhysics(_time);
-        if (_glassPaused) { panelCount = 0; render(); return; }
+        updatePhysics(_simTime);
         // Cooldown: skip heavy layout work for a few frames after DOM changes
         if (_layoutCooldown > 0) { _layoutCooldown--; render(); return; }
         if (_layoutDirty) cacheElements();
@@ -1129,7 +1134,8 @@
         if (!document.hidden) {
             resizeFBOs();
             _layoutDirty = true;
-            updatePhysics(performance.now() * 0.001);
+            _prevFrameTime = 0;
+            updatePhysics(_simTime);  // resume from where simulation left off — no jump
             cacheElements();
             collectPanels();
             render();
@@ -1178,7 +1184,11 @@
         collectPanels();
     };
     window.pauseGlass = function () { _glassPaused = true; };
-    window.resumeGlass = function () { _glassPaused = false; _layoutDirty = true; };
+    window.resumeGlass = function () {
+        _glassPaused = false;
+        _layoutDirty = true;
+        _prevFrameTime = 0; // discard gap so first resumed frame gets a clean 16ms delta
+    };
     window.invalidateGlassRects = function () { _rectValid = false; _rectAge = _RECT_MAX_AGE; };
 
     // ====================================================================

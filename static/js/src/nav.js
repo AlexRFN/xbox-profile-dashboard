@@ -175,12 +175,14 @@ document.body.addEventListener('htmx:confirm', (evt) => {
 
     window.scrollTo(0, 0);
     if (window.lenis) window.lenis.scrollTo(0, { immediate: true });
-    if (window.pauseGlass) window.pauseGlass();
 
     _spaNavInFlight = true;
     const exitDelay = dir ? _cssDur('--dur-fast') : _cssDur('--dur-micro');
     _pendingSpaNavTimer = setTimeout(() => {
         _pendingSpaNavTimer = null;
+        // Pause glass after exit animation completes — the panels need to render
+        // during the slide/fade out. Only freeze once content has fully exited.
+        if (window.pauseGlass) window.pauseGlass();
         evt.detail.issueRequest();
     }, exitDelay);
 });
@@ -271,6 +273,10 @@ document.body.addEventListener('htmx:afterSwap', (evt) => {
     requestAnimationFrame(() => {
         if (gen !== _spaNavGen) return;
         if (window.resumeGlass) window.resumeGlass();
+        // Prewarm immediately: scan new DOM + build panel list so the very first rendered
+        // glass frame after resume has correct panels. Without this, there is a 1-frame
+        // window where new DOM elements are visible but glass hasn't re-scanned yet.
+        if (window.prewarmGlassPanels) window.prewarmGlassPanels();
         // Scope to new content only — nav elements are already initialized from DOMContentLoaded
         initRevealHighlight(main);
         fireCompletionConfetti();
@@ -279,20 +285,21 @@ document.body.addEventListener('htmx:afterSwap', (evt) => {
         animateCountUp();
         initHeatmapTooltip();
         initClickableRows();
+        // Blurhash: O(1) dominant-color fast path per image + async Worker dispatch.
+        // Safe to call here — nothing blocks; full decode happens off-thread.
+        initBlurhash(main);
+        // Ambient glow: O(1) per card via blurhash DC component (no canvas, no image decode).
+        initAmbientGlow(main);
 
-        // Delay CPU-heavy idle tasks until AFTER the entrance cascade completes.
+        // Delay truly CPU-heavy idle tasks until AFTER the entrance cascade completes.
         // Worst case: ≤8 above-fold leaders × 80ms/step = ~640ms. Without this guard,
         // requestIdleCallback fires between the first few steps (browser idle between
-        // 80ms gaps) and heavy tasks (blurhash, ambient glow) cause a visible
+        // 80ms gaps) and heavy tasks (ambient glow, scroll reveal) cause a visible
         // mid-cascade pause — "1-3 tiles appear, freeze, then the rest animate".
         const CASCADE_WAIT = 680;
         const idle = window.requestIdleCallback || ((cb) => setTimeout(cb, 16));
         setTimeout(() => idle(() => {
             if (gen !== _spaNavGen) return;
-            // Blurhash moved here from rAF — it's CPU-heavy and doesn't need to block
-            // the first paint frame (prevents "slow to start" after many tab switches)
-            initBlurhash(main);
-            initAmbientGlow();
             initRowScrollReveal();
             initEdgeScale();
             initTimelineCalendar();

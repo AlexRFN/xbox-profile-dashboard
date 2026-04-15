@@ -82,6 +82,9 @@ function _ensureLibraryTableHeadVisible(tableWrap) {
 
 function _loadLibraryGridView(gridWrap, paginationEl) {
     gridWrap.innerHTML = '';
+    // Detached elements remain in _cachedEls — force a fresh rect read so stale glass
+    // panels don't linger at old positions until the periodic _RECT_MAX_AGE flush.
+    if (window.invalidateGlassRects) window.invalidateGlassRects();
     gridWrap.style.display = '';
     gridWrap.style.minHeight = '100vh';
     if (paginationEl) paginationEl.style.display = 'none';
@@ -211,7 +214,9 @@ function _syncLibraryResultCount(target) {
 function _resumeLibraryGlassAfterTableSwap() {
     requestAnimationFrame(() => requestAnimationFrame(() => {
         if (window.resumeGlass) window.resumeGlass();
-        requestGlassPanelsUpdate();
+        // resumeGlass() sets _layoutDirty=true — cacheElements() runs on the next glass
+        // frame without any cooldown. requestGlassPanelsUpdate() would add a 3-frame
+        // delay, making glass lag behind the newly visible table rows.
     }));
 }
 
@@ -274,16 +279,37 @@ function _handleLibraryGridSwap(target) {
     if (!_viewToggleSwap) _tableDirty = true; // filter change → table is now stale
     initAmbientGlow(target);
     updateExportLinks();
-    requestGlassPanelsUpdate();
+    // updateGlassPanelsNow() skips the 3-frame cooldown — the htmx swap is complete so
+    // getBoundingClientRect() is stable. Eliminates the ~66ms "stale panels" window.
+    if (window.updateGlassPanelsNow) window.updateGlassPanelsNow();
+    else requestGlassPanelsUpdate();
 }
 
 // Called by library.html's inline grid fetch — equivalent to an htmx grid swap
 // but without firing htmx:afterSwap. Keeps dirty flags, glass, and animations in sync.
 window.onInlineGridLoad = function(gw) {
+    // The grid response includes an OOB pagination element (oob=true — no anim-blur-rise,
+    // links target the grid endpoint). Because the inline fetch uses gw.innerHTML = html
+    // instead of htmx's response pipeline, htmx.process() does NOT run OOB swaps — the
+    // element ends up as a child of #library-grid-wrap (left-aligned in the card flex
+    // layout) instead of replacing the top-level #pagination. Extract and move it now.
+    const oobPg = gw.querySelector('[hx-swap-oob][id="pagination"]');
+    if (oobPg) {
+        const topLevelPg = Array.from(document.querySelectorAll('#pagination'))
+            .find(el => !gw.contains(el));
+        oobPg.remove();
+        oobPg.removeAttribute('hx-swap-oob');
+        if (topLevelPg) topLevelPg.replaceWith(oobPg);
+    }
+
     _handleLibraryGridSwap(gw);
     _reapplyEntranceDir(gw);  // apply SPA nav entrance direction if available
     initRevealHighlight(gw);
     initBlurhash(gw);
+    // setLibraryView wasn't called for this path (restoreLibraryView returned early),
+    // so sync filter htmx bindings to grid endpoints manually.
+    const { filtersEl, paginationEl } = _libraryViewElements();
+    _syncLibraryRequestBindings('grid', filtersEl, paginationEl);
 };
 
 // Show a toast for failed htmx partial requests (filter changes, pagination, load-more, etc.)
@@ -348,13 +374,23 @@ document.body.addEventListener('htmx:afterSwap', (evt) => {
             // SPA nav arrival (restoreLibraryView) — apply entrance direction
             _reapplyEntranceDir(_gridTarget);
         } else {
-            // Manual view toggle — discard any stale direction, use CSS --i stagger
+            // Manual view toggle — JS stagger so transitionDelay = '0ms' is set upfront.
+            // CSS --i stagger must NOT be left active: it staggers the EXIT animation too,
+            // causing cards to slide out at different times when the user navigates away.
             _lastTabEnterClass = null;
             requestAnimationFrame(() => {
-                _gridTarget.querySelectorAll('.anim-pop').forEach(el => el.classList.add('animate-in'));
+                const cards = Array.from(_gridTarget.querySelectorAll('.anim-pop'));
+                const stagger = _cssDur('--stagger') || 60;
+                const unit = cards.length <= 8
+                    ? Math.max(Math.round(stagger * 0.8), 80)
+                    : Math.max(Math.floor(500 / cards.length), 12);
+                cards.forEach((el, idx) => {
+                    el.style.transitionDelay = '0ms'; // suppress CSS --i so exit is simultaneous
+                    setTimeout(() => el.classList.add('animate-in'), idx * unit);
+                });
             });
         }
-        (window.requestIdleCallback || setTimeout)(function() { initBlurhash(_gridTarget); });
+        initBlurhash(_gridTarget);
     } else if (evt.detail.target.id !== 'game-table-body' && evt.detail.target.id !== 'captures-grid') {
         initScrollAnimations(evt.detail.target);
         initBlurhash(evt.detail.target);

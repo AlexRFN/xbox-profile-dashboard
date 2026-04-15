@@ -17,12 +17,15 @@ let _tabEnterClass = null;
 let _lastTabEnterClass = null;
 
 // Re-apply the saved entrance direction for async content (e.g. grid fetched after SPA nav).
+// Passes keepGen=true so the global _scrollAnimGen is NOT incremented — this prevents
+// cancelling the still-in-flight stagger cascade for the main page elements that were
+// queued by the earlier initScrollAnimations(main, true) call.
 function _reapplyEntranceDir(root) {
     if (_lastTabEnterClass) {
         _tabEnterClass = _lastTabEnterClass;
         _lastTabEnterClass = null;
     }
-    initScrollAnimations(root, true);
+    initScrollAnimations(root, true, true);
 }
 
 // ─── Scroll-triggered animations ─────────────────────────────────────────────
@@ -39,7 +42,7 @@ function _reapplyEntranceDir(root) {
 let _scrollAnimObs = null;
 let _scrollAnimGen = 0;
 
-function initScrollAnimations(root, forceStagger = false) {
+function initScrollAnimations(root, forceStagger = false, keepGen = false) {
     if (_scrollAnimObs) { _scrollAnimObs.disconnect(); _scrollAnimObs = null; }
 
     const scope = root || document;
@@ -47,7 +50,11 @@ function initScrollAnimations(root, forceStagger = false) {
     const els = scope.querySelectorAll(ANIM_SEL);
     if (!els.length) return;
 
-    const gen = ++_scrollAnimGen;
+    // keepGen: don't increment the global counter. Used by _reapplyEntranceDir for async
+    // sub-page content (e.g. grid fetched after SPA nav) so it doesn't cancel the still-
+    // in-flight stagger cascade for the main page elements (filters, header, etc.).
+    if (!keepGen) ++_scrollAnimGen;
+    const gen = _scrollAnimGen;
 
     // Initial DCL: first paint already happened — run synchronously.
     // htmx swaps: use rAF so new DOM is composited before reading rects.
@@ -103,7 +110,14 @@ function initScrollAnimations(root, forceStagger = false) {
         if (isInitialLoad && aboveFold.length > 0) {
             _cascadeAboveFold(aboveFold, unit, !root, gen);
         } else {
-            aboveFold.forEach(el => el.classList.add('animate-in'));
+            // Set transitionDelay to '0ms' to suppress the CSS --i stagger before adding
+            // animate-in. Without this, the CSS calc(var(--i) * var(--stagger)) rule on
+            // .anim-stagger children persists and staggers the EXIT animation when the user
+            // navigates away — the same fix applied to grid cards in the htmx:afterSwap handler.
+            aboveFold.forEach(el => {
+                el.style.transitionDelay = '0ms';
+                el.classList.add('animate-in');
+            });
         }
     });
 }
@@ -392,8 +406,12 @@ function _fireGroupElements(group, baseDelay, itemUnit, gen) {
         .filter(el => !el.classList.contains('animate-in'));
     if (!animEls.length) return;
 
+    // Pre-read all rects before the sort comparator runs.
+    // Sorting with getBoundingClientRect() inside the comparator triggers O(n log n) layout
+    // reads — one per comparison. Batching them first reduces that to a single O(n) flush.
+    const rectOf = new Map(animEls.map(el => [el, el.getBoundingClientRect()]));
     animEls.sort((a, b) => {
-        const ra = a.getBoundingClientRect(), rb = b.getBoundingClientRect();
+        const ra = rectOf.get(a), rb = rectOf.get(b);
         return (ra.top - rb.top) || (ra.left - rb.left);
     });
     animEls.forEach((el, idx) => {

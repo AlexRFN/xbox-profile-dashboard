@@ -348,6 +348,22 @@ function initAmbientGlow(root) {
         if (card.dataset.glowSet) return;
         const img = card.querySelector('.lib-grid-art img');
         if (!img) return;
+
+        // Fast path: extract dominant color from blurhash DC component.
+        // The DC value encodes the average image color as a 24-bit sRGB integer —
+        // identical purpose to the 1×1 canvas approach but requires no image decode,
+        // no canvas allocation, and no GPU readback. O(1) per card.
+        const hash = img.dataset.blurhash;
+        if (hash && hash.length >= 6) {
+            const color = _bhDominantColor(hash);   // "rgb(r,g,b)" — defined in blurhash.js
+            const rgb   = color.slice(4, -1);        // "r,g,b"
+            card.style.setProperty('--card-glow', color);
+            card.style.setProperty('--card-glow-rgb', rgb);
+            card.dataset.glowSet = '1';
+            return;
+        }
+
+        // Fallback: canvas readback for cards that have no blurhash stored.
         const apply = () => {
             try {
                 const canvas = document.createElement('canvas');
