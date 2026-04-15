@@ -265,7 +265,9 @@ function _handleLibraryTableSwap(target) {
     _tableDirty = false;
     if (!_viewToggleSwap) _gridDirty = true; // filter change → grid is now stale
     initClickableRows();
-    initScrollAnimations(target);
+    // View toggle (_viewToggleSwap=true): forceStagger so rows cascade in like a fresh load.
+    // Filter/page change (_viewToggleSwap=false): no stagger — all rows swap simultaneously.
+    initScrollAnimations(target, _viewToggleSwap);
     initRowScrollReveal(target);
     initEdgeScale();
     _syncLibraryResultCount(target);
