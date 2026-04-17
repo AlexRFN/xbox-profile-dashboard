@@ -20,21 +20,47 @@ let _cmdSearchTimer = null;
 let _miniSearch = null;
 let _miniSearchLoading = false;
 
+const _MS_OPTS = {
+    fields: ['name'],
+    storeFields: ['name', 'title_id', 'display_image', 'progress_percentage', 'status'],
+    searchOptions: { fuzzy: 0.2, prefix: true },
+};
+
+async function _buildIndexInWorker() {
+    return new Promise((resolve, reject) => {
+        const worker = new Worker('/static/js/minisearch.worker.js');
+        worker.onmessage = (e) => {
+            worker.terminate();
+            if (e.data.type === 'ready') resolve(e.data.json);
+            else reject(new Error(e.data.message || 'worker error'));
+        };
+        worker.onerror = (err) => { worker.terminate(); reject(err); };
+        worker.postMessage({ type: 'build', url: '/api/games/index' });
+    });
+}
+
+async function _buildIndexOnMain() {
+    const res = await fetch('/api/games/index');
+    const games = await res.json();
+    const index = new MiniSearch(_MS_OPTS);
+    index.addAll(games.map((g, i) => ({ id: i, ...g })));
+    return index;
+}
+
 async function _ensureGameIndex() {
     if (_miniSearch || _miniSearchLoading) return;
     if (typeof MiniSearch === 'undefined') return;
     _miniSearchLoading = true;
     try {
-        const res = await fetch('/api/games/index');
-        const games = await res.json();
-        _miniSearch = new MiniSearch({
-            fields: ['name'],
-            storeFields: ['name', 'title_id', 'display_image', 'progress_percentage', 'status'],
-            searchOptions: { fuzzy: 0.2, prefix: true },
-        });
-        _miniSearch.addAll(games.map((g, i) => ({ id: i, ...g })));
+        if (typeof Worker !== 'undefined') {
+            const json = await _buildIndexInWorker();
+            _miniSearch = MiniSearch.loadJSON(json, _MS_OPTS);
+        } else {
+            _miniSearch = await _buildIndexOnMain();
+        }
     } catch (_) {
-        // silently skip — game search will fall back to server-side
+        // Worker path failed — try main-thread fallback once, then give up silently.
+        try { _miniSearch = await _buildIndexOnMain(); } catch (__) { /* server-side search remains */ }
     } finally {
         _miniSearchLoading = false;
     }

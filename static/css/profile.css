@@ -4,6 +4,10 @@
 .chart-card {
     padding: 1.5rem;
     min-width: 0; /* prevent grid blowout */
+    /* Hug content — don't let a taller sibling in the grid row stretch this
+       card. With responsive:false the canvas won't grow to fill the extra
+       height, so stretching just leaves empty space below the chart. */
+    align-self: start;
 }
 
 .chart-card .section-title {
@@ -12,12 +16,19 @@
 
 .chart-card canvas {
     filter: drop-shadow(0 0 20px rgba(0, 210, 106, 0.04));
+    width: 100%;
     max-width: 100%;
+    /* Explicit display height keeps the OffscreenCanvas renderer from
+       feeding its intrinsic size back into the parent via ResizeObserver.
+       The main-thread fallback (responsive:true) overrides height via
+       inline styles so this is harmless for that path. */
+    display: block;
 }
 
-#completionChart {
-    max-height: 280px;
-}
+#completionChart      { height: 280px; }
+#mostPlayedChart      { height: 280px; }
+#gamerscoreTimeChart  { height: 280px; }
+#achievementsTimeChart{ height: 280px; }
 
 /* ========== Stat Cards ========== */
 .stat-grid {

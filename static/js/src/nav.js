@@ -171,7 +171,12 @@ document.body.addEventListener('htmx:confirm', (evt) => {
     const dir = _navDirection(location.pathname, toPath);
     if (dir) sessionStorage.setItem('nav-dir', dir);
 
+    // Pause glass before the exit animation starts — removes GPU glass work from
+    // the INP presentation-delay critical path on nav interactions.
+    if (window.pauseGlass) window.pauseGlass();
     _applySpaExitAnimation(main, dir);
+    // Resume in the next rAF so glass still tracks panels during the slide/fade out.
+    requestAnimationFrame(() => { if (window.resumeGlass) window.resumeGlass(); });
 
     window.scrollTo(0, 0);
     if (window.lenis) window.lenis.scrollTo(0, { immediate: true });

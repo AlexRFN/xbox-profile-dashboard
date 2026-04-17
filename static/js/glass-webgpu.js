@@ -36,6 +36,7 @@
 
     (async function init() {
 
+
     var adapter, device, ctx;
     try {
         adapter = await navigator.gpu.requestAdapter();

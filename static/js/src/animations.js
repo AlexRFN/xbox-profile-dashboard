@@ -294,10 +294,10 @@ let _edgeScaleRowsObs = null;
 function initEdgeScale() {
     if (_edgeScaleCleanup) _edgeScaleCleanup();
 
-    const nav = document.querySelector('.xbox-nav');
-    const thead = document.querySelector('.game-table thead');
-    const navH = nav ? nav.offsetHeight : 56;
-    const theadH = thead ? thead.offsetHeight : 35;
+    // _cachedNavH/_cachedTheadH are kept fresh by _refreshScrollRevealHeights (DOMContentLoaded
+    // + debounced resize). Reading offsetHeight here would duplicate the same forced layout.
+    const navH   = _cachedNavH;
+    const theadH = _cachedTheadH;
     const topBound = navH + theadH + 60;
     const FADE_ZONE = 160;
     const MIN_SCALE = 0.96;

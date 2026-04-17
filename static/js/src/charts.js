@@ -79,8 +79,100 @@ function animateCountUp() {
 }
 
 // --- Dashboard Charts ---
+// Renderer strategy: when the browser supports OffscreenCanvas, all 4 charts
+// are built and drawn inside a shared worker (charts.worker.js). The main
+// thread only forwards ResizeObserver and pointer events for hover tooltips.
+// When OffscreenCanvas is unavailable, _mainThreadInit() runs the original
+// path in-place (keeps Safari < 16.4 and old Firefox working).
 
 var _dashboardCharts = [];
+var _chartsWorker = null;
+var _workerCharts = [];   // [{id, canvas, ro, onMove, onLeave, supportsWorker:true}]
+var _chartIdSeq = 0;
+var _lastStats = null;
+
+function _workerSupported() {
+    return typeof Worker !== 'undefined' &&
+        typeof OffscreenCanvas !== 'undefined' &&
+        typeof HTMLCanvasElement !== 'undefined' &&
+        typeof HTMLCanvasElement.prototype.transferControlToOffscreen === 'function';
+}
+
+function _getOrCreateWorker() {
+    if (_chartsWorker) return _chartsWorker;
+    _chartsWorker = new Worker('/static/js/charts.worker.js');
+    _chartsWorker.onerror = function () { /* worker crashed — next init will fall back */ };
+    return _chartsWorker;
+}
+
+function _destroyWorkerCharts() {
+    _workerCharts.forEach(function (c) {
+        try { c.ro && c.ro.disconnect(); } catch (e) {}
+        try { c.canvas.removeEventListener('pointermove', c.onMove); } catch (e) {}
+        try { c.canvas.removeEventListener('pointerleave', c.onLeave); } catch (e) {}
+        try { _chartsWorker && _chartsWorker.postMessage({ type: 'destroy', id: c.id }); } catch (e) {}
+    });
+    _workerCharts = [];
+}
+
+function _spawnWorkerChart(kind, canvas, stats, theme) {
+    if (!canvas) return null;
+    const worker = _getOrCreateWorker();
+    // offsetWidth/offsetHeight report the layout box (content-box for the
+    // canvas element, independent of any ancestor transform or opacity).
+    // getBoundingClientRect on the parent article would include its padding
+    // and be visually scaled down by anim-blur-rise's transform.
+    const width = Math.max(1, canvas.offsetWidth || canvas.clientWidth);
+    const height = Math.max(1, canvas.offsetHeight || canvas.clientHeight);
+    const dpr = window.devicePixelRatio || 1;
+    const offscreen = canvas.transferControlToOffscreen();
+    const id = ++_chartIdSeq;
+    const lastSize = { w: width, h: height };
+    worker.postMessage({ type: 'create', id, kind, canvas: offscreen, stats, theme, width, height, dpr }, [offscreen]);
+
+    // Resize: observe the canvas itself. Skip redundant posts at the same
+    // size (fires on observe() with initial dims and on entrance animation
+    // transform:scale → none without changing layout size).
+    const ro = new ResizeObserver(function (entries) {
+        for (const entry of entries) {
+            const cr = entry.contentRect;
+            const w = Math.max(1, Math.round(cr.width));
+            const h = Math.max(1, Math.round(cr.height));
+            if (w === lastSize.w && h === lastSize.h) continue;
+            lastSize.w = w; lastSize.h = h;
+            worker.postMessage({ type: 'resize', id, width: w, height: h, dpr: window.devicePixelRatio || 1 });
+        }
+    });
+    ro.observe(canvas);
+
+    // Pointer events: main thread captures position, worker updates tooltip.
+    const onMove = function (e) {
+        const r = canvas.getBoundingClientRect();
+        worker.postMessage({ type: 'pointer', id, x: e.clientX - r.left, y: e.clientY - r.top });
+    };
+    const onLeave = function () {
+        worker.postMessage({ type: 'pointer', id, x: null, y: null });
+    };
+    canvas.addEventListener('pointermove', onMove, { passive: true });
+    canvas.addEventListener('pointerleave', onLeave, { passive: true });
+
+    return { id, canvas, ro, onMove, onLeave };
+}
+
+function _initWorkerCharts(stats, theme) {
+    _destroyWorkerCharts();
+    const hasMonthly = stats.monthly_stats && stats.monthly_stats.length > 1;
+    const specs = [
+        { kind: 'completion',   el: document.getElementById('completionChart') },
+        hasMonthly ? { kind: 'gamerscore',   el: document.getElementById('gamerscoreTimeChart') } : null,
+        hasMonthly ? { kind: 'achievements', el: document.getElementById('achievementsTimeChart') } : null,
+        stats.most_played && stats.most_played.length ? { kind: 'mostPlayed', el: document.getElementById('mostPlayedChart') } : null,
+    ].filter(Boolean);
+    for (const s of specs) {
+        const entry = _spawnWorkerChart(s.kind, s.el, stats, theme);
+        if (entry) _workerCharts.push(entry);
+    }
+}
 
 function _buildMonthLabels(monthlyStats) {
     return monthlyStats.map(m => {
@@ -323,14 +415,26 @@ function _initMostPlayedChart(ctx, stats, textColor, gridColor, xboxGreen) {
 }
 
 function initDashboardCharts(stats) {
+    // Destroy whichever path was previously active.
     _dashboardCharts.forEach(function(c) { try { c.destroy(); } catch (e) {} });
     _dashboardCharts = [];
+    _destroyWorkerCharts();
+
     if (!stats) return;
+    _lastStats = stats;
+
     const style = getComputedStyle(document.documentElement);
     const textColor = style.getPropertyValue('--text-secondary').trim() || '#8b8fa3';
     const gridColor = style.getPropertyValue('--border-subtle').trim() || 'rgba(255,255,255,0.06)';
     const xboxGreen = style.getPropertyValue('--xbox-green').trim() || '#00d26a';
+    const theme = { textColor, gridColor, xboxGreen };
 
+    if (_workerSupported()) {
+        _initWorkerCharts(stats, theme);
+        return;
+    }
+
+    // Fallback: main-thread render (Safari < 16.4, older Firefox).
     const hasMonthly = stats.monthly_stats && stats.monthly_stats.length > 1;
     const monthLabels = hasMonthly ? _buildMonthLabels(stats.monthly_stats) : [];
 

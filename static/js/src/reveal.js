@@ -8,7 +8,9 @@ function _revealRaf() {
     const p = _revealPending;
     if (!p) return;
     _revealPending = null;
-    const rect = p.rect;
+    // Read rect at frame boundary — not during mousemove — so forced layout
+    // only happens once per rAF cycle regardless of how many events coalesced.
+    const rect = p.item.getBoundingClientRect();
     const x = p.cx - rect.left;
     const y = p.cy - rect.top;
     p.item.style.setProperty('--reveal-x', x + 'px');
@@ -22,11 +24,14 @@ function _revealRaf() {
 function initRevealHighlight(root) {
     const scope = root || document;
     if (_revealFinePointer) _initRevealScrollWatch();
-    // rAF-batched: coalesce rapid mousemove into one layout read per frame
+    // rAF-batched: coalesce rapid mousemove into one layout read per frame.
+    // Only cursor coords are captured here — getBoundingClientRect is deferred
+    // to _revealRaf so the forced layout happens once at the frame boundary,
+    // not once per mousemove event.
     function _revealMove(item, e) {
         if (!_revealCanTrack()) return;
         const schedule = !_revealPending;
-        _revealPending = { item, cx: e.clientX, cy: e.clientY, rect: item.getBoundingClientRect() };
+        _revealPending = { item, cx: e.clientX, cy: e.clientY };
         if (schedule) requestAnimationFrame(_revealRaf);
     }
 

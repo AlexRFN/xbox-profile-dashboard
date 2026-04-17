@@ -252,7 +252,14 @@
 <script>
 var _statsData = {{ stats | tojson }};
 function _runCharts() { initDashboardCharts(_statsData); }
+function _workerChartsOk() {
+    return typeof OffscreenCanvas !== 'undefined' &&
+        typeof HTMLCanvasElement !== 'undefined' &&
+        typeof HTMLCanvasElement.prototype.transferControlToOffscreen === 'function';
+}
 function _ensureChartsThenRun() {
+    // Worker path owns Chart.js inside charts.worker.js — main thread skips the download.
+    if (_workerChartsOk()) { _runCharts(); return; }
     if (typeof Chart !== 'undefined') {
         _runCharts();
     } else {
@@ -262,13 +269,16 @@ function _ensureChartsThenRun() {
         document.head.appendChild(_cs);
     }
 }
-// Defer chart init until after the entrance animation (~600ms durSlow) so
-// Chart.js layout passes don't compete with _cascadeAboveFold on the main thread.
+// Charts live in a worker thread — no contention with the entrance animation
+// on the main thread. Kick off on the next frame so layout is settled.
 function _scheduleCharts() {
-    if (typeof requestIdleCallback !== 'undefined') {
-        requestIdleCallback(_ensureChartsThenRun, { timeout: 2000 });
+    if (_workerChartsOk()) {
+        requestAnimationFrame(_ensureChartsThenRun);
+    } else if (typeof requestIdleCallback !== 'undefined') {
+        // Main-thread fallback path — yield so Chart.js layout doesn't stall entrance.
+        requestIdleCallback(_ensureChartsThenRun, { timeout: 1500 });
     } else {
-        setTimeout(_ensureChartsThenRun, 650);
+        setTimeout(_ensureChartsThenRun, 300);
     }
 }
 // Wait for DOMContentLoaded so the deferred app.js bundle has executed and
