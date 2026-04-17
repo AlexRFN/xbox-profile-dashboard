@@ -39,3 +39,6 @@ SANITIZATION_REPORT.md
 
 # Orphaned test scripts (no test runner)
 /test_xbox_*.py
+
+# Playwright CLI debug dumps
+.playwright-cli/
