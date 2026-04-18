@@ -42,3 +42,7 @@ SANITIZATION_REPORT.md
 
 # Playwright CLI debug dumps
 .playwright-cli/
+
+# Local-only notes (keep on disk, not in repo)
+AGENTS.md
+docs/
