@@ -5,12 +5,12 @@
 
 {# Stat card — reusable across profile and achievements pages.
    Use as a call block: {% call stat_card(value, label) %}<svg>...</svg>{% endcall %} #}
-{% macro stat_card(value, label, color="", i=0) %}
+{% macro stat_card(value, label, color="", i=0, value_id="") %}
 <article class="stat-card reveal-item reveal-border anim-blur-rise" style="--i: {{ i }}">
     <div class="stat-icon"{% if color %} style="color: {{ color }}"{% endif %}>
         {{ caller() }}
     </div>
-    <h3 data-countup>{{ value }}</h3>
+    <h3 data-countup{% if value_id %} id="{{ value_id }}"{% endif %}>{{ value }}</h3>
     <p>{{ label }}</p>
 </article>
 {% endmacro %}
@@ -58,7 +58,9 @@
 <div class="timeline-event timeline-event-achievement timeline-batch">
     <div class="timeline-dot timeline-dot-achievement anim-pop" style="--i: {{ i }}"></div>
     <div class="timeline-event-card timeline-batch-card reveal-item anim-slide-blur" style="--i: {{ i }}">
-        <a href="/game/{{ event.title_id }}" class="timeline-batch-header">
+        <a href="/game/{{ event.title_id }}" class="timeline-batch-header"
+           hx-get="/game/{{ event.title_id }}" hx-target="#main" hx-swap="innerHTML show:window:top"
+           hx-push-url="true" hx-headers='{"X-SPA-Nav":"true"}'>
             <img src="{{ event.game_image|thumb(48) }}" alt="{{ event.game_name }}" class="timeline-event-img"
                  {% if event.game_blurhash %}data-blurhash="{{ event.game_blurhash }}"{% endif %}
                  loading="lazy" decoding="async" width="48" height="48">
@@ -78,7 +80,9 @@
         </a>
         <div class="timeline-batch-list">
             {% for b in event.batch_events %}
-            <a href="/game/{{ b.title_id }}" class="timeline-batch-item{% if b.rarity %} timeline-batch-item-{{ b.rarity | lower }}{% endif %}">
+            <a href="/game/{{ b.title_id }}" class="timeline-batch-item{% if b.rarity %} timeline-batch-item-{{ b.rarity | lower }}{% endif %}"
+               hx-get="/game/{{ b.title_id }}" hx-target="#main" hx-swap="innerHTML show:window:top"
+               hx-push-url="true" hx-headers='{"X-SPA-Nav":"true"}'>
                 {% set media = b.achievement_media | fromjson if b.achievement_media is string else b.achievement_media %}
                 {% if media and media | length > 0 %}
                 <img src="{{ media[0].url if media[0] is mapping else '' }}" alt="" class="timeline-batch-icon"
@@ -96,7 +100,9 @@
 </div>
 {% elif event.event_type == 'completion' %}
 {# Completion: celebration hero card #}
-<a href="/game/{{ event.title_id }}" class="timeline-event timeline-event-completion timeline-event-celebration">
+<a href="/game/{{ event.title_id }}" class="timeline-event timeline-event-completion timeline-event-celebration"
+   hx-get="/game/{{ event.title_id }}" hx-target="#main" hx-swap="innerHTML show:window:top"
+   hx-push-url="true" hx-headers='{"X-SPA-Nav":"true"}'>
     <div class="timeline-dot timeline-dot-completion anim-pop" style="--i: {{ i }}"></div>
     <div class="timeline-event-card timeline-event-card-celebration reveal-item anim-slide-blur" style="--i: {{ i }}">
         {% if event.game_image %}
@@ -123,7 +129,9 @@
 </a>
 {% elif event.event_type == 'first_played' %}
 {# First played: compact subtle card #}
-<a href="/game/{{ event.title_id }}" class="timeline-event timeline-event-first_played">
+<a href="/game/{{ event.title_id }}" class="timeline-event timeline-event-first_played"
+   hx-get="/game/{{ event.title_id }}" hx-target="#main" hx-swap="innerHTML show:window:top"
+   hx-push-url="true" hx-headers='{"X-SPA-Nav":"true"}'>
     <div class="timeline-dot timeline-dot-first_played anim-pop" style="--i: {{ i }}"></div>
     <div class="timeline-event-card timeline-event-card-compact reveal-item anim-slide-blur" style="--i: {{ i }}">
         <img src="{{ event.game_image|thumb(48) }}" alt="{{ event.game_name }}" class="timeline-event-img"
@@ -141,7 +149,9 @@
 {% else %}
 {# Achievement: rarity-styled card with achievement icon #}
 {% set rarity_class = (' timeline-event-rarity-' + (event.rarity | lower)) if event.rarity else '' %}
-<a href="/game/{{ event.title_id }}" class="timeline-event timeline-event-achievement{{ rarity_class }}">
+<a href="/game/{{ event.title_id }}" class="timeline-event timeline-event-achievement{{ rarity_class }}"
+   hx-get="/game/{{ event.title_id }}" hx-target="#main" hx-swap="innerHTML show:window:top"
+   hx-push-url="true" hx-headers='{"X-SPA-Nav":"true"}'>
     <div class="timeline-dot timeline-dot-achievement{% if event.rarity %} timeline-dot-rarity-{{ event.rarity | lower }}{% endif %} anim-pop" style="--i: {{ i }}"></div>
     <div class="timeline-event-card reveal-item anim-slide-blur" style="--i: {{ i }}">
         {% set media = event.achievement_media | fromjson if event.achievement_media is string else event.achievement_media %}
@@ -238,7 +248,9 @@
 
 {# Achievement card — used by achievements.html (recent, rarest, highest) #}
 {% macro achievement_card(ach, show_percentage=false, show_date=true, i=0) %}
-<a href="/game/{{ ach.title_id }}" class="ach-card ach-unlocked anim-pop" style="--i: {{ i }}">
+<a href="/game/{{ ach.title_id }}" class="ach-card ach-unlocked anim-pop" style="--i: {{ i }}"
+   hx-get="/game/{{ ach.title_id }}" hx-target="#main" hx-swap="innerHTML show:window:top"
+   hx-push-url="true" hx-headers='{"X-SPA-Nav":"true"}'>
     {% set media = ach.media_assets | fromjson if ach.media_assets is string else ach.media_assets %}
     {% if media and media | length > 0 %}
     <img src="{{ media[0].url if media[0] is mapping else '' }}" alt="" class="ach-icon"

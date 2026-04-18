@@ -13,16 +13,16 @@
 <!-- Summary Stat Cards -->
 {% set ts = timeline_stats %}
 <div class="stat-grid stat-grid-4 anim-stagger" id="timeline-stats">
-    {% call stat_card("{:,}".format(ts.achievement_count), "Achievements", "var(--xbox-green)", 0) %}
+    {% call stat_card("{:,}".format(ts.achievement_count), "Achievements", "var(--xbox-green)", 0, "ts-achievement-count") %}
     <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
     {% endcall %}
-    {% call stat_card("{:,}".format(ts.completion_count), "Completions", "var(--cyan)", 1) %}
+    {% call stat_card("{:,}".format(ts.completion_count), "Completions", "var(--cyan)", 1, "ts-completion-count") %}
     <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 21h8m-4-4v4m-5.2-4h10.4c1.68 0 2.52 0 3.16-.33a3 3 0 001.31-1.3C22 14.72 22 13.88 22 12.2V7.8c0-1.68 0-2.52-.33-3.16a3 3 0 00-1.3-1.31C19.72 3 18.88 3 17.2 3H6.8c-1.68 0-2.52 0-3.16.33a3 3 0 00-1.31 1.3C2 5.28 2 6.12 2 7.8v4.4c0 1.68 0 2.52.33 3.16a3 3 0 001.3 1.31C4.28 17 5.12 17 6.8 17z"/></svg>
     {% endcall %}
-    {% call stat_card("{:,}".format(ts.first_played_count), "Games Started", "#3b82f6", 2) %}
+    {% call stat_card("{:,}".format(ts.first_played_count), "Games Started", "#3b82f6", 2, "ts-first-played-count") %}
     <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 12h4m-2-2v4m6-3h.01m3 0h.01"/></svg>
     {% endcall %}
-    {% call stat_card("{:,}".format(ts.total_gamerscore), "Gamerscore", "var(--gold)", 3) %}
+    {% call stat_card("{:,}".format(ts.total_gamerscore), "Gamerscore", "var(--gold)", 3, "ts-total-gamerscore") %}
     <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
     {% endcall %}
 </div>
@@ -61,7 +61,7 @@
     </select>
     <div class="calendar-picker" id="timeline-calendar">
         {% if date_from %}
-        <div class="filter-pill">
+        <div class="filter-pill anim-pop" style="--i: 2">
             {% if date_from == date_to %}
             <span>{{ date_from | shortdate }}</span>
             {% else %}
@@ -210,7 +210,9 @@
         </h4>
         <div class="sidebar-near-list">
             {% for g in near_completion %}
-            <a href="/game/{{ g.title_id }}" class="sidebar-near-item">
+            <a href="/game/{{ g.title_id }}" class="sidebar-near-item"
+               hx-get="/game/{{ g.title_id }}" hx-target="#main" hx-swap="innerHTML show:window:top"
+               hx-push-url="true" hx-headers='{"X-SPA-Nav":"true"}'>
                 <img src="{{ g.display_image|thumb(48) }}" alt="" class="sidebar-near-img"
                      {% if g.blurhash %}data-blurhash="{{ g.blurhash }}"{% endif %}
                      loading="lazy" decoding="async" onerror="this.style.display='none'">

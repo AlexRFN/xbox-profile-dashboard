@@ -10,7 +10,9 @@
     <td>
         <div class="game-cell">
             <div class="game-name-row">
-                <a href="/game/{{ game.title_id }}" class="game-name">{{ game.name }}</a>
+                <a href="/game/{{ game.title_id }}" class="game-name"
+                   hx-get="/game/{{ game.title_id }}" hx-target="#main" hx-swap="innerHTML show:window:top"
+                   hx-push-url="true" hx-headers='{"X-SPA-Nav":"true"}'>{{ game.name }}</a>
                 {% if game.progress_percentage == 100 %}
                 <span class="completion-diamond" title="100% Complete">
                     <svg viewBox="0 0 24 24" width="16" height="16" fill="none">

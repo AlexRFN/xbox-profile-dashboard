@@ -8,6 +8,7 @@ const NAV_ORDER = { '/': 0, '/library': 1, '/achievements': 2, '/timeline': 3, '
 
 const TAB_EXIT_FWD  = 'tab-exit-forward';
 const TAB_EXIT_BACK = 'tab-exit-back';
+const ALL_EXIT_CLASSES = [TAB_EXIT_FWD, TAB_EXIT_BACK];
 
 function _navPathname(urlish) {
     if (!urlish) return window.location.pathname;
@@ -95,6 +96,31 @@ function startFullNav(urlish) {
     setTimeout(() => { window.location.href = href; }, _cssDur('--dur-micro'));
 }
 
+// Programmatic SPA nav — used by row clicks on tables that can't host an <a>.
+// Builds a temporary hx-get anchor, processes it, clicks it, then cleans up.
+// This runs the full htmx flow (confirm → exit anim → issueRequest → afterSwap)
+// so entrance animations, glass prewarm, and preload cache all behave identically
+// to clicking a real nav/game link.
+function startSpaNav(urlish) {
+    const href = String(urlish);
+    if (!window.htmx) { startFullNav(href); return; }
+    const a = document.createElement('a');
+    a.setAttribute('hx-get', href);
+    a.setAttribute('hx-target', '#main');
+    a.setAttribute('hx-swap', 'innerHTML show:window:top');
+    a.setAttribute('hx-push-url', 'true');
+    a.setAttribute('hx-headers', '{"X-SPA-Nav":"true"}');
+    a.style.display = 'none';
+    document.body.appendChild(a);
+    try { htmx.process(a); } catch (_) {}
+    a.click();
+    // Must outlive htmx's confirm→exit-delay→issueRequest chain. Directional
+    // nav waits --dur-fast (~250ms) before firing the request; removing the
+    // source element before then aborts the flow mid-exit (frozen page).
+    setTimeout(() => { try { a.remove(); } catch (_) {} }, 2000);
+}
+window.startSpaNav = startSpaNav;
+
 function _bindHistoryNavSync() {
     if (window.__navHistorySyncBound) return;
     window.__navHistorySyncBound = true;
@@ -136,13 +162,17 @@ function _handleSamePageNav(gen) {
 }
 
 // ─── SPA exit animation ───────────────────────────────────────────────────────
-// Directional nav: slide main off-screen via CSS class.
-// Non-directional nav: simple opacity fade.
+// Directional nav: slide main off-screen via CSS class (per-child translate+opacity).
+// Non-directional nav (game detail): zoom out + fade <main> as a whole — scale
+// mirrors the entrance --scale-rise so the page "retracts" before the game page's
+// own entrance animation lands. Applied inline to avoid per-child selectors
+// interfering with the htmx confirm → issueRequest handshake.
 function _applySpaExitAnimation(main, dir) {
-    if (main && dir) {
+    if (!main) return;
+    if (dir) {
         main.classList.add(dir === 'forward' ? TAB_EXIT_FWD : TAB_EXIT_BACK);
-    } else if (main) {
-        main.style.transition = 'opacity var(--dur-micro) var(--ease-exit)';
+    } else {
+        main.style.transition = 'opacity var(--dur-micro) var(--ease-out)';
         main.style.opacity = '0';
     }
 }
@@ -150,7 +180,10 @@ function _applySpaExitAnimation(main, dir) {
 // ─── htmx:confirm — intercept SPA nav clicks ─────────────────────────────────
 document.body.addEventListener('htmx:confirm', (evt) => {
     const el = evt.detail.elt;
-    if (!el.hasAttribute('hx-get') || !el.closest('.nav-inner')) return;
+    // Match any SPA link: must target #main. Covers nav bar, game cards, and any
+    // future SPA-routed element. Non-SPA hx-get calls (filters, partial swaps)
+    // target other elements and are ignored here.
+    if (!el.hasAttribute('hx-get') || el.getAttribute('hx-target') !== '#main') return;
 
     evt.preventDefault();
 
@@ -168,8 +201,12 @@ document.body.addEventListener('htmx:confirm', (evt) => {
         return;
     }
 
-    const dir = _navDirection(location.pathname, toPath);
+    // Game detail is a deep-link, not a sibling tab — fade in/out instead of
+    // the horizontal tab slide. Leaving a game page via nav still uses slide.
+    const isToGameDetail = toPath && toPath.startsWith('/game/');
+    const dir = isToGameDetail ? null : _navDirection(location.pathname, toPath);
     if (dir) sessionStorage.setItem('nav-dir', dir);
+    else sessionStorage.removeItem('nav-dir');
 
     // Pause glass before the exit animation starts — removes GPU glass work from
     // the INP presentation-delay critical path on nav interactions.
@@ -178,15 +215,18 @@ document.body.addEventListener('htmx:confirm', (evt) => {
     // Resume in the next rAF so glass still tracks panels during the slide/fade out.
     requestAnimationFrame(() => { if (window.resumeGlass) window.resumeGlass(); });
 
-    window.scrollTo(0, 0);
-    if (window.lenis) window.lenis.scrollTo(0, { immediate: true });
-
     _spaNavInFlight = true;
+    // Directional nav (tab slide) needs full --dur-fast to fully exit before swap;
+    // non-directional (game fade) uses --dur-micro to stay under htmx's ~200ms
+    // issueRequest invalidation window.
     const exitDelay = dir ? _cssDur('--dur-fast') : _cssDur('--dur-micro');
     _pendingSpaNavTimer = setTimeout(() => {
         _pendingSpaNavTimer = null;
-        // Pause glass after exit animation completes — the panels need to render
-        // during the slide/fade out. Only freeze once content has fully exited.
+        // Scroll reset deferred to end of exit animation — so the slide/fade plays
+        // from the user's current scroll position instead of teleporting to top first.
+        // Jump lands under cover of the imminent innerHTML swap, so no visible flash.
+        window.scrollTo(0, 0);
+        if (window.lenis) window.lenis.scrollTo(0, { immediate: true });
         if (window.pauseGlass) window.pauseGlass();
         evt.detail.issueRequest();
     }, exitDelay);
@@ -195,14 +235,31 @@ document.body.addEventListener('htmx:confirm', (evt) => {
 // ─── SPA post-swap: re-initialize page modules after htmx swaps <main> ───────
 const PAGE_BODY_CLASSES = ['page-game-detail', 'auto-fetch-friends'];
 
+// Fallback used by historyRestore when the cached HTML predates #spa-meta (e.g.
+// the page was first reached via full-page SSR, not an htmx swap).
+function _bodyClassesForPath(path) {
+    const classes = [];
+    if (path.startsWith('/game/')) classes.push('page-game-detail');
+    if (path === '/friends') classes.push('auto-fetch-friends');
+    return classes;
+}
+
+function _applyBodyClasses(classes) {
+    PAGE_BODY_CLASSES.forEach(cls => document.body.classList.remove(cls));
+    classes.forEach(cls => document.body.classList.add(cls));
+}
+
 function _processSPAMeta(main) {
     const meta = main.querySelector('#spa-meta');
     if (!meta) return;
     document.title = meta.dataset.title || 'Xbox Profile';
-    PAGE_BODY_CLASSES.forEach(cls => document.body.classList.remove(cls));
-    (meta.dataset.bodyClass || '').split(' ').filter(Boolean).forEach(cls => document.body.classList.add(cls));
+    _applyBodyClasses((meta.dataset.bodyClass || '').split(' ').filter(Boolean));
     updateRateBadge(meta.dataset.rateUsed || '0');
-    _setNavClasses(meta.dataset.pagePath);
+    // Update classes + reposition pill. For nav-pill clicks the pill was already
+    // pre-slid in htmx:confirm (no-op here). For programmatic nav via startSpaNav
+    // (heatmap, calendar, cmd-palette, tracking) the click source is outside
+    // .nav-pill, so this is the only chance to move the pill to the new tab.
+    _updateNavActive(meta.dataset.pagePath, true);
     meta.remove();
 }
 
@@ -243,19 +300,20 @@ function _updateNavActive(path, animate) {
     if (active) _positionPill(active, animate);
 }
 
-document.body.addEventListener('htmx:afterSwap', (evt) => {
-    if (evt.detail.target.id !== 'main') return;
-
-    const main = evt.detail.target;
-    _spaNavInFlight = false;
-
-    _processSPAMeta(main);
-    _processSPAOverlay(main);
-    _executeSPAScripts(main);
-
-    main.classList.remove(TAB_EXIT_FWD, TAB_EXIT_BACK);
+// Clear all exit-animation state left behind by _applySpaExitAnimation. Called
+// from both afterSwap (forward nav) and htmx:historyRestore (back/forward nav).
+function _clearExitState(main) {
+    if (!main) return;
+    main.classList.remove(...ALL_EXIT_CLASSES);
     main.style.opacity = '';
     main.style.transition = '';
+}
+
+// Run the full re-init pipeline on a freshly-swapped <main>. Shared by afterSwap
+// and historyRestore so cached back-nav content gets glass, entrance, reveal, and
+// idle-deferred modules just like a forward nav does.
+function _reinitMain(main) {
+    _clearExitState(main);
 
     _gridDirty = true;
     _tableDirty = false;
@@ -267,9 +325,16 @@ document.body.addEventListener('htmx:afterSwap', (evt) => {
     _lightboxDirty = true;
 
     // Re-initialize page modules in priority order:
-    //   This frame: entrance direction + scroll animations (visual-critical)
-    //   Next rAF:   glass re-cache + reveal highlight + blurhash
+    //   This frame: glass resume + prewarm, then entrance direction + scroll animations
+    //   Next rAF:   reveal highlight + blurhash + ambient glow
     //   Idle:       non-visual-critical modules
+    //
+    // Glass must prewarm BEFORE initPageEntrance so the GPU panel list is populated
+    // in the same frame that the tab-switch class triggers the CSS entrance. Deferring
+    // prewarm to the next rAF left glass 1 frame behind CSS on tab switches.
+    if (window.resumeGlass) window.resumeGlass();
+    if (window.prewarmGlassPanels) window.prewarmGlassPanels();
+
     initPageEntrance();
     initScrollAnimations(main, true);
     initCaptureGroupAnimations(main);
@@ -277,11 +342,6 @@ document.body.addEventListener('htmx:afterSwap', (evt) => {
     const gen = _spaNavGen;
     requestAnimationFrame(() => {
         if (gen !== _spaNavGen) return;
-        if (window.resumeGlass) window.resumeGlass();
-        // Prewarm immediately: scan new DOM + build panel list so the very first rendered
-        // glass frame after resume has correct panels. Without this, there is a 1-frame
-        // window where new DOM elements are visible but glass hasn't re-scanned yet.
-        if (window.prewarmGlassPanels) window.prewarmGlassPanels();
         // Scope to new content only — nav elements are already initialized from DOMContentLoaded
         initRevealHighlight(main);
         fireCompletionConfetti();
@@ -310,10 +370,49 @@ document.body.addEventListener('htmx:afterSwap', (evt) => {
             initTimelineCalendar();
             initTimelineContinuationFix();
             restoreLibraryView();
+            if (typeof prewarmCapturesOffView === 'function') prewarmCapturesOffView();
             if (typeof updateExportLinks === 'function') updateExportLinks();
             if (document.body.classList.contains('auto-fetch-friends')) fetchFriends();
         }), CASCADE_WAIT);
     });
+}
+
+document.body.addEventListener('htmx:afterSwap', (evt) => {
+    if (evt.detail.target.id !== 'main') return;
+
+    const main = evt.detail.target;
+    _spaNavInFlight = false;
+
+    _processSPAMeta(main);
+    _processSPAOverlay(main);
+    _executeSPAScripts(main);
+
+    _reinitMain(main);
+});
+
+// Back/forward nav: htmx swaps cached HTML into the history target and fires
+// historyRestore (NOT afterSwap). Without this handler, the exit classes from
+// the forward nav stay on <main>, body classes from the previous page remain,
+// and no entrance animation fires — children stay invisible and the dark aurora
+// shows through = "black flash on back". Mirror the afterSwap pipeline here.
+document.body.addEventListener('htmx:historyRestore', () => {
+    _spaNavGen++;
+    _spaNavInFlight = false;
+    const main = _getMain();
+    if (!main) return;
+    // Prefer #spa-meta if cached (SPA-swapped entry); otherwise derive body classes
+    // from URL so pages first reached via SSR (no #spa-meta in cache) still look right.
+    const hasMeta = !!main.querySelector('#spa-meta');
+    if (hasMeta) {
+        _processSPAMeta(main);
+    } else {
+        _applyBodyClasses(_bodyClassesForPath(location.pathname));
+        _setNavClasses(location.pathname);
+    }
+    _processSPAOverlay(main);
+    _executeSPAScripts(main);
+    sessionStorage.removeItem('nav-dir'); // back-nav shouldn't replay a tab-slide entrance
+    _reinitMain(main);
 });
 
 document.body.addEventListener('htmx:afterSettle', (evt) => {
@@ -329,12 +428,7 @@ document.body.addEventListener('htmx:afterSettle', (evt) => {
 function _recoverSpaNav(evt) {
     if (evt.detail.target?.id !== 'main') return;
     _spaNavInFlight = false;
-    const main = _getMain();
-    if (main) {
-        main.classList.remove(TAB_EXIT_FWD, TAB_EXIT_BACK);
-        main.style.opacity = '';
-        main.style.transition = '';
-    }
+    _clearExitState(_getMain());
 }
 
 document.body.addEventListener('htmx:responseError', _recoverSpaNav);

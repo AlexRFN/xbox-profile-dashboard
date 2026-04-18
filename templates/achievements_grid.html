@@ -11,7 +11,9 @@
 {% endif %}
 {% set ns.current_game = ach.game_name %}
 <div class="ach-game-group">
-    <a href="/game/{{ ach.title_id }}" class="ach-group-header anim-drop">
+    <a href="/game/{{ ach.title_id }}" class="ach-group-header anim-drop"
+       hx-get="/game/{{ ach.title_id }}" hx-target="#main" hx-swap="innerHTML show:window:top"
+       hx-push-url="true" hx-headers='{"X-SPA-Nav":"true"}'>
         <img src="{{ ach.game_image|thumb(48) }}" alt="" class="ach-group-img" loading="lazy" decoding="async" width="32" height="32">
         <span class="ach-group-name">{{ ach.game_name }}</span>
     </a>

@@ -26,8 +26,11 @@
     <link rel="dns-prefetch" href="https://screenshotscontent-t2001.media.xboxlive.com">
     <link rel="dns-prefetch" href="https://screenshotscontent-t3001.media.xboxlive.com">
     <link rel="dns-prefetch" href="https://screenshotscontent-t4001.media.xboxlive.com">
+    <link rel="preload" href="{{ static_url('js/vendor/lenis.min.js') }}" as="script">
     <link rel="preload" href="{{ static_url('js/glass-webgpu.js') }}" as="script">
     <link rel="preload" href="{{ static_url('js/app.js') }}" as="script">
+    <link rel="preload" href="{{ static_url('js/vendor/minisearch.min.js') }}" as="script">
+    <link rel="preload" href="{{ static_url('js/vendor/hotkeys.min.js') }}" as="script">
     <link rel="stylesheet" href="{{ css_bundle_url() }}">
     <script defer src="{{ static_url('js/vendor/htmx.min.js') }}"></script>
     <!-- Canvas starts hidden; fades in after first render so the CSS aurora is never interrupted -->
@@ -140,7 +143,7 @@
     })();
     </script>
 
-    <main class="container" id="main">
+    <main class="container" id="main" hx-history-elt>
         {{ self.content() }}
     </main>
 

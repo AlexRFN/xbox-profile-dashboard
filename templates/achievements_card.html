@@ -1,7 +1,9 @@
 {% from "macros.html" import icon %}
 {% set rarity_lc = ach.rarity_category | lower if ach.rarity_category else 'common' %}
 {% set is_unlocked = ach.progress_state == 'Achieved' %}
-<a href="/game/{{ ach.title_id }}" class="ach-grid-card anim-blur-rise {% if is_unlocked %}ach-grid-unlocked ach-grid-rarity-{{ rarity_lc }}{% else %}ach-grid-locked{% endif %}" style="--i: {{ loop.index0 if loop is defined else 0 }}">
+<a href="/game/{{ ach.title_id }}" class="ach-grid-card anim-blur-rise {% if is_unlocked %}ach-grid-unlocked ach-grid-rarity-{{ rarity_lc }}{% else %}ach-grid-locked{% endif %}" style="--i: {{ loop.index0 if loop is defined else 0 }}"
+   hx-get="/game/{{ ach.title_id }}" hx-target="#main" hx-swap="innerHTML show:window:top"
+   hx-push-url="true" hx-headers='{"X-SPA-Nav":"true"}'>
     {% if is_unlocked %}
     <div class="ach-grid-border ach-grid-border-{{ rarity_lc }}"></div>
     {% else %}

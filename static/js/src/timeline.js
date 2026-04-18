@@ -44,6 +44,14 @@ function setTimelineRange(btn) {
     const pill = document.querySelector('#timeline-filters .filter-pill');
     if (pill) pill.remove();
 
+    // Persist in URL so reload/share/back preserve the preset range.
+    try {
+        const url = new URL(window.location);
+        if (dateFrom) url.searchParams.set('date_from', dateFrom); else url.searchParams.delete('date_from');
+        if (dateTo) url.searchParams.set('date_to', dateTo); else url.searchParams.delete('date_to');
+        history.replaceState(history.state || { spa: true }, '', url);
+    } catch (_) {}
+
     // Trigger htmx reload via the event_type select (has hx-trigger="change" + hx-include)
     const typeSelect = document.querySelector('#timeline-filters [name="event_type"]');
     if (typeSelect) {
@@ -280,7 +288,66 @@ function initTimelineCalendar() {
 }
 
 function calGo(from, to) {
-    startFullNav('/timeline?date_from=' + from + '&date_to=' + to);
+    const fromEl = document.getElementById('timeline-date-from');
+    const toEl = document.getElementById('timeline-date-to');
+    const typeSelect = document.querySelector('#timeline-filters [name="event_type"]');
+    // If we're not on the timeline tab (filter inputs missing), fall back to SPA nav.
+    if (!fromEl || !toEl || !typeSelect) {
+        startSpaNav('/timeline?date_from=' + from + '&date_to=' + to);
+        return;
+    }
+    fromEl.value = from;
+    toEl.value = to;
+    _resetQuickNavPills();
+    _updateDatePill(from, to);
+    closeCal();
+    // Persist the picked range in the URL so reload/share/back preserve it.
+    // The partial-target request below won't push (hx-target is #timeline, not
+    // #main) so we replaceState ourselves.
+    try {
+        const params = new URLSearchParams(location.search);
+        params.set('date_from', from);
+        params.set('date_to', to);
+        history.replaceState(history.state || { spa: true }, '', location.pathname + '?' + params.toString());
+    } catch (_) {}
+    htmx.trigger(typeSelect, 'change');
+}
+
+function _fmtShortDate(iso) {
+    // Match Python shortdate filter ("Apr 18, 2026")
+    const d = new Date(iso + 'T00:00:00');
+    if (isNaN(d)) return iso;
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function _updateDatePill(from, to) {
+    const picker = document.querySelector('#timeline-filters .calendar-picker');
+    if (!picker) return;
+    let pill = picker.querySelector('.filter-pill');
+    if (!pill) {
+        pill = document.createElement('div');
+        // anim-pop + animate-in → participates in tab-switch exit/entrance like sibling filter elements.
+        pill.className = 'filter-pill anim-pop animate-in';
+        pill.style.setProperty('--i', '2');
+        // Inline one-shot spring spawn reusing the pill-pop keyframe (scale/opacity).
+        pill.style.animation = 'pill-pop var(--dur-fast) var(--ease-spring)';
+        const span = document.createElement('span');
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.title = 'Clear date filter';
+        btn.setAttribute('onclick', 'clearDateFilter()');
+        btn.innerHTML = '&times;';
+        pill.appendChild(span);
+        pill.appendChild(btn);
+        picker.prepend(pill);
+        // Clear the spawn animation once done so it doesn't block future transitions.
+        pill.addEventListener('animationend', () => {
+            pill.style.animation = '';
+        }, { once: true });
+    }
+    pill.querySelector('span').textContent = from === to
+        ? _fmtShortDate(from)
+        : _fmtShortDate(from) + ' \u2013 ' + _fmtShortDate(to);
 }
 
 let _calDayCache = null;

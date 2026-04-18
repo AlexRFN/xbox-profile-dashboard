@@ -4,7 +4,33 @@
 // globals: setCapturesView, expandCaptureGame, collapseCaptureGame,
 //          toggleSelectMode, toggleCaptureCard, selectAllCaptures,
 //          clearCaptureSelection, updateSelectCount, downloadSelectedCaptures,
-//          syncCaptures
+//          syncCaptures, prewarmCapturesOffView
+
+// Background-populate the off-view (by-game) on idle so the first toggle is instant.
+// Only fires when the active view is 'all' — if the user saved 'by-game', the inline
+// script in captures.html already loads it.
+function prewarmCapturesOffView() {
+    const byGameWrap = document.getElementById('captures-by-game-wrap');
+    const allWrap = document.getElementById('captures-all-wrap');
+    if (!byGameWrap || !allWrap) return;
+    if (byGameWrap.children.length > 0) return;  // already populated
+    if (localStorage.getItem('capturesView') === 'by-game') return;  // inline script owns it
+
+    const run = () => {
+        fetch('/api/captures/by-game')
+            .then(r => r.ok ? r.text() : null)
+            .then(html => {
+                if (html == null || byGameWrap.children.length > 0) return;
+                byGameWrap.innerHTML = html;
+                byGameWrap.style.display = 'none';  // stay hidden until toggled
+                if (typeof _lightboxDirty !== 'undefined') _lightboxDirty = true;
+                if (typeof initRevealHighlight === 'function') initRevealHighlight(byGameWrap);
+            })
+            .catch(() => {});
+    };
+    if (window.requestIdleCallback) requestIdleCallback(run, { timeout: 3000 });
+    else setTimeout(run, 1200);
+}
 
 // FLIP helper: makes a button travel from fromTop (old viewport Y) to its natural position.
 // Record fromTop BEFORE the layout change, call this AFTER the button is in the DOM.

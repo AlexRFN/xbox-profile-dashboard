@@ -141,7 +141,9 @@
     </h4>
     <div class="playing-games-grid anim-stagger">
         {% for game in stats.playing_list %}
-        <a href="/game/{{ game.title_id }}" class="playing-game-card reveal-item anim-pop" style="--i: {{ loop.index0 }}">
+        <a href="/game/{{ game.title_id }}" class="playing-game-card reveal-item anim-pop" style="--i: {{ loop.index0 }}"
+           hx-get="/game/{{ game.title_id }}" hx-target="#main" hx-swap="innerHTML show:window:top"
+           hx-push-url="true" hx-headers='{"X-SPA-Nav":"true"}'>
             <img src="{{ game.display_image|thumb(240) }}" alt="{{ game.name }}" class="playing-game-img"
                  {% if game.blurhash %}data-blurhash="{{ game.blurhash }}"{% endif %}
                  loading="lazy" decoding="async" width="231" height="231">
@@ -198,7 +200,9 @@
                              loading="lazy" decoding="async" width="40" height="40">
                     </td>
                     <td>
-                        <a href="/game/{{ game.title_id }}" class="game-name">{{ game.name }}</a>
+                        <a href="/game/{{ game.title_id }}" class="game-name"
+                           hx-get="/game/{{ game.title_id }}" hx-target="#main" hx-swap="innerHTML show:window:top"
+                           hx-push-url="true" hx-headers='{"X-SPA-Nav":"true"}'>{{ game.name }}</a>
                     </td>
                     <td>{{ progress_bar(game.progress_percentage) }}</td>
                     <td class="gs-cell">{{ gamerscore_display(game.current_gamerscore, game.total_gamerscore) }}</td>
@@ -221,7 +225,9 @@
     </h4>
     <div class="completed-games-grid anim-stagger">
         {% for game in stats.completed_list %}
-        <a href="/game/{{ game.title_id }}" class="completed-game-card reveal-item anim-pop" style="--i: {{ loop.index0 }}">
+        <a href="/game/{{ game.title_id }}" class="completed-game-card reveal-item anim-pop" style="--i: {{ loop.index0 }}"
+           hx-get="/game/{{ game.title_id }}" hx-target="#main" hx-swap="innerHTML show:window:top"
+           hx-push-url="true" hx-headers='{"X-SPA-Nav":"true"}'>
             <img src="{{ game.display_image|thumb(240) }}" alt="{{ game.name }}" class="completed-game-img"
                  {% if game.blurhash %}data-blurhash="{{ game.blurhash }}"{% endif %}
                  loading="lazy" decoding="async">

@@ -115,14 +115,57 @@ function _loadLibraryTableView(tableWrap, gridWrap) {
 }
 
 function restoreLibraryView() {
+    _prewarmTried = false;  // fresh entry to /library — allow prewarm again
     if (_currentLibView === 'grid' && document.getElementById('library-table-wrap')) {
         const gridWrap = document.getElementById('library-grid-wrap');
         // Grid already clean and populated — inline fetch or a prior htmx swap fully
         // initialized it (glass, animations, direction). Calling setLibraryView here
         // would reset and re-animate without the entrance direction.
-        if (gridWrap && !_gridDirty && gridWrap.children.length > 0) return;
+        if (gridWrap && !_gridDirty && gridWrap.children.length > 0) {
+            prewarmLibraryOffView();
+            return;
+        }
         setLibraryView('grid');
     }
+    prewarmLibraryOffView();
+}
+
+// Background-populate the off-view so the first toggle is instant.
+// Runs once per library page load; filter/page changes invalidate via dirty flags.
+let _prewarmTried = false;
+function prewarmLibraryOffView() {
+    if (_prewarmTried) return;
+    const { tableWrap, gridWrap } = _libraryViewElements();
+    if (!tableWrap || !gridWrap) return;
+    _prewarmTried = true;
+
+    const run = () => {
+        const page = _currentLibraryPage();
+        const values = _currentLibraryFilters();
+        // Suppress dirty-flag cross-flip inside the swap handlers.
+        _viewToggleSwap = true;
+        const restore = () => { _viewToggleSwap = false; };
+
+        if (_currentLibView === 'table' && _gridDirty) {
+            // gridWrap is display:none at rest — htmx.ajax only updates innerHTML,
+            // so it stays hidden throughout the swap.
+            htmx.ajax('GET', `/api/library/grid?page=${page}`, {
+                target: '#library-grid-wrap',
+                swap: 'innerHTML',
+                values,
+            }).finally(() => { gridWrap.style.display = 'none'; restore(); });
+        } else if (_currentLibView === 'grid' && !document.querySelector('#game-table-body .game-row')) {
+            htmx.ajax('GET', `/api/library/table?page=${page}`, {
+                target: '#game-table-body',
+                swap: 'innerHTML',
+                values,
+            }).finally(() => { tableWrap.style.display = 'none'; restore(); });
+        } else {
+            restore();
+        }
+    };
+    if (window.requestIdleCallback) requestIdleCallback(run, { timeout: 3000 });
+    else setTimeout(run, 1200);
 }
 
 function setLibraryView(view) {
@@ -176,7 +219,7 @@ function initClickableRows() {
         if (!row) return;
         if (e.target.closest('select') || e.target.closest('a') || e.target.closest('button')) return;
         row.classList.add('row-click');
-        setTimeout(() => { startFullNav(row.dataset.href); }, 150);
+        startSpaNav(row.dataset.href);
     });
     document.body.addEventListener('keydown', (e) => {
         if (e.key !== 'Enter' && e.key !== ' ') return;
@@ -184,7 +227,7 @@ function initClickableRows() {
         if (!row) return;
         e.preventDefault();
         row.classList.add('row-click');
-        setTimeout(() => { startFullNav(row.dataset.href); }, 150);
+        startSpaNav(row.dataset.href);
     });
 }
 
@@ -360,13 +403,13 @@ document.body.addEventListener('htmx:afterSwap', (evt) => {
     if (evt.detail.target.id === 'library-grid-wrap') {
         _handleLibraryGridSwap(evt.detail.target);
     }
-    // Timeline stats OOB swap — re-trigger countup
-    if (evt.detail.target.id === 'timeline-stats') {
-        animateCountUp();
-    }
     // Achievements pagination + timeline load-more append new glass panels
     if (evt.detail.target.id === 'ach-grid-wrap' || evt.detail.target.id === 'timeline') {
         requestGlassPanelsUpdate();
+    }
+    // Timeline filter/load-more swap — fresh h3 nodes arrive via OOB; re-run countup
+    if (evt.detail.target.id === 'timeline') {
+        animateCountUp();
     }
     // Re-init reveal highlight, scroll animations, and blurhash on swapped content
     initRevealHighlight(evt.detail.target);

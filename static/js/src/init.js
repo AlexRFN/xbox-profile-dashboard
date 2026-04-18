@@ -23,6 +23,8 @@ document.addEventListener('DOMContentLoaded', () => {
     fireCompletionConfetti();
     // Restore saved library view
     restoreLibraryView();
+    // Idle-prewarm captures off-view so first toggle is instant
+    if (typeof prewarmCapturesOffView === 'function') prewarmCapturesOffView();
     // Auto-fetch friends on first visit when DB is empty
     if (document.body.classList.contains('auto-fetch-friends')) fetchFriends();
 });

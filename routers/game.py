@@ -44,21 +44,25 @@ async def timeline_events(request: Request, page: int = 2, event_type: str = "",
 
 @router.get("/api/heatmap", response_class=HTMLResponse)
 async def heatmap_partial(request: Request, year: str = "rolling"):
-    if year == "rolling":
-        heatmap_rows = await db.get_heatmap_data()
-        heatmap = build_heatmap_grid(heatmap_rows)
-        heatmap_year = None
-        heatmap_mode = "rolling"
-    else:
+    # Validate year param up front so we can fire both queries concurrently below.
+    y: int | None = None
+    if year != "rolling":
         try:
             y = int(year)
         except (ValueError, TypeError):
             return JSONResponse({"error": "Invalid year parameter"}, status_code=400)
-        heatmap_rows = await db.get_heatmap_data(y)
+    heatmap_rows, year_range = await asyncio.gather(
+        db.get_heatmap_data(y) if y is not None else db.get_heatmap_data(),
+        db.get_heatmap_year_range(),
+    )
+    if y is None:
+        heatmap = build_heatmap_grid(heatmap_rows)
+        heatmap_year = None
+        heatmap_mode = "rolling"
+    else:
         heatmap = build_heatmap_grid(heatmap_rows, y)
         heatmap_year = y
         heatmap_mode = "year"
-    year_range = await db.get_heatmap_year_range()
     return templates.TemplateResponse(request, "heatmap_content.html", {
         "heatmap": heatmap,
         "heatmap_mode": heatmap_mode,

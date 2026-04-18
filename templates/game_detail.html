@@ -7,7 +7,9 @@
 {% endblock %}
 
 {% block content %}
-<a href="/library" class="back-link anim-drop">&larr; Back to Library</a>
+<a href="/library" class="back-link anim-drop"
+   hx-get="/library" hx-target="#main" hx-swap="innerHTML show:window:top"
+   hx-push-url="true" hx-headers='{"X-SPA-Nav":"true"}'>&larr; Back to Library</a>
 
 <!-- Hero -->
 <article class="game-hero anim-blur-scale">
@@ -188,7 +190,9 @@
         {% endfor %}
     </div>
     {% if screenshot_count > 8 %}
-    <a href="/captures" class="view-all-link">View all captures &rarr;</a>
+    <a href="/captures" class="view-all-link"
+       hx-get="/captures" hx-target="#main" hx-swap="innerHTML show:window:top"
+       hx-push-url="true" hx-headers='{"X-SPA-Nav":"true"}'>View all captures &rarr;</a>
     {% endif %}
 </article>
 {% endif %}

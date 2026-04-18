@@ -168,6 +168,13 @@ async def _run_migrations(conn) -> None:
          "ALTER TABLE games ADD COLUMN last_achievement_unlock TEXT"),
         (4, "Add rare_unlocks column to games",
          "ALTER TABLE games ADD COLUMN rare_unlocks TEXT"),
+        # Hot path: timeline UNION ALL + heatmap aggregations filter every achievement by
+        # (progress_state='Achieved' AND time_unlocked NOT LIKE '0001%'). The existing
+        # idx_achievements_title_progress_time leads on title_id, so it can't serve these
+        # table-wide scans. (progress_state, time_unlocked) lets SQLite range-scan directly.
+        (5, "Add (progress_state, time_unlocked) composite index",
+         "CREATE INDEX IF NOT EXISTS idx_achievements_progress_time "
+         "ON achievements(progress_state, time_unlocked)"),
     ]
     for version, description, sql in MIGRATIONS:
         if version not in applied:

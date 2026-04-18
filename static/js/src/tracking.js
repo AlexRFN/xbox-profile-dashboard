@@ -135,7 +135,7 @@ async function randomBacklogGame() {
         const resp = await fetch('/api/random-backlog');
         const data = await resp.json();
         if (data.found) {
-            startFullNav('/game/' + data.title_id);
+            startSpaNav('/game/' + data.title_id);
         } else {
             showToast('No backlog games found. Mark some games as "backlog" first.');
         }

@@ -87,7 +87,9 @@
         {% set kind = item[2] %}
         {% if ach %}
         {% set rarity_lc = ach.rarity_category | lower if ach.rarity_category else 'common' %}
-            <a href="/game/{{ ach.title_id }}" class="showcase-card showcase-card-{{ rarity_lc }} anim-blur-rise" style="--i: {{ loop.index0 }}">
+            <a href="/game/{{ ach.title_id }}" class="showcase-card showcase-card-{{ rarity_lc }} anim-blur-rise" style="--i: {{ loop.index0 }}"
+               hx-get="/game/{{ ach.title_id }}" hx-target="#main" hx-swap="innerHTML show:window:top"
+               hx-push-url="true" hx-headers='{"X-SPA-Nav":"true"}'>
                 {% if ach.game_image %}
                 <div class="showcase-card-art" style="background-image: url('{{ ach.game_image|thumb(240) }}')"></div>
                 {% endif %}
@@ -132,7 +134,9 @@
     </h4>
     <div class="near-completion-list anim-stagger">
         {% for game in near_completion %}
-        <a href="/game/{{ game.title_id }}" class="near-completion-row anim-blur-rise" style="--i: {{ loop.index0 }}">
+        <a href="/game/{{ game.title_id }}" class="near-completion-row anim-blur-rise" style="--i: {{ loop.index0 }}"
+           hx-get="/game/{{ game.title_id }}" hx-target="#main" hx-swap="innerHTML show:window:top"
+           hx-push-url="true" hx-headers='{"X-SPA-Nav":"true"}'>
             <img src="{{ game.display_image|thumb(48) }}" alt="" class="near-completion-img" loading="lazy" decoding="async" width="32" height="32">
             <span class="near-completion-name">{{ game.name }}</span>
             <div class="near-completion-progress">

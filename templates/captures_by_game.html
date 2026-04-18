@@ -2,7 +2,9 @@
 {% if by_game %}
 {% for group in by_game %}
 <div class="captures-game-group">
-    <a href="/game/{{ group.title_id }}" class="captures-game-header anim-blur-rise">
+    <a href="/game/{{ group.title_id }}" class="captures-game-header anim-blur-rise"
+       hx-get="/game/{{ group.title_id }}" hx-target="#main" hx-swap="innerHTML show:window:top"
+       hx-push-url="true" hx-headers='{"X-SPA-Nav":"true"}'>
         {% if group.game_image %}
         <img src="{{ group.game_image|thumb(48) }}" alt="{{ group.title_name }}" class="captures-game-icon" loading="lazy" decoding="async">
         {% endif %}

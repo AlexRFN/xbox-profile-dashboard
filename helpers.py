@@ -64,6 +64,7 @@ def get_bundle_url() -> str | None:
 _JS_SRC_FILES = [
     "js/src/utils.js", "js/src/theme.js", "js/src/toast.js",
     "js/src/reveal.js", "js/src/animations.js", "js/src/nav.js",
+    "js/src/preload.js",
     "js/src/charts.js", "js/src/blurhash.js", "js/src/library.js",
     "js/src/tracking.js", "js/src/sync.js", "js/src/timeline.js",
     "js/src/heatmap.js", "js/src/captures.js", "js/src/lightbox.js",
@@ -197,10 +198,12 @@ async def page_ctx(request: Request) -> dict:
     """Common template context for all full-page routes."""
     ctx = await db.get_page_context_data()
     ctx["gamertag"] = xbox_api.GAMERTAG
-    # True when htmx is doing a tab switch (targets <main>) — templates skip full re-renders
-    ctx["is_spa_nav"] = (
-        request.headers.get("hx-request") == "true"
-        and request.headers.get("hx-target") == "main"
+    # True when htmx is doing a tab switch (targets <main>) — templates skip full re-renders.
+    # Also true on history-restore XHR (back/forward cache miss): htmx's Gt() sends
+    # HX-History-Restore-Request but no HX-Target, and still needs the SPA partial.
+    ctx["is_spa_nav"] = request.headers.get("hx-request") == "true" and (
+        request.headers.get("hx-target") == "main"
+        or request.headers.get("hx-history-restore-request") == "true"
     )
     return ctx
 

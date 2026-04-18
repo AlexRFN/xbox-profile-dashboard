@@ -1,5 +1,7 @@
 {% for game in games %}
-<a href="/game/{{ game.title_id }}" class="lib-grid-card{% if loop.index0 < 12 %} reveal-item anim-pop{% endif %}"{% if loop.index0 < 12 %} style="--i: {{ loop.index0 }}; transition-delay: calc(var(--stagger, 60ms) * {{ loop.index0 }})"{% endif %}>
+<a href="/game/{{ game.title_id }}" class="lib-grid-card{% if loop.index0 < 12 %} reveal-item anim-pop{% endif %}"{% if loop.index0 < 12 %} style="--i: {{ loop.index0 }}; transition-delay: calc(var(--stagger, 60ms) * {{ loop.index0 }})"{% endif %}
+   hx-get="/game/{{ game.title_id }}" hx-target="#main" hx-swap="innerHTML show:window:top"
+   hx-push-url="true" hx-headers='{"X-SPA-Nav":"true"}'>
     <div class="lib-grid-art">
         <img src="{{ game.display_image|thumb(240) }}" alt=""
              {% if game.blurhash %}data-blurhash="{{ game.blurhash }}"{% endif %}
