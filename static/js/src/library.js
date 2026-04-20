@@ -122,10 +122,15 @@ function restoreLibraryView() {
         // initialized it (glass, animations, direction). Calling setLibraryView here
         // would reset and re-animate without the entrance direction.
         if (gridWrap && !_gridDirty && gridWrap.children.length > 0) {
+            const { filtersEl, paginationEl } = _libraryViewElements();
+            _syncLibraryRequestBindings('grid', filtersEl, paginationEl);
             prewarmLibraryOffView();
             return;
         }
         setLibraryView('grid');
+    } else {
+        const { filtersEl, paginationEl } = _libraryViewElements();
+        _syncLibraryRequestBindings(_currentLibView, filtersEl, paginationEl);
     }
     prewarmLibraryOffView();
 }
@@ -144,7 +149,14 @@ function prewarmLibraryOffView() {
         const values = _currentLibraryFilters();
         // Suppress dirty-flag cross-flip inside the swap handlers.
         _viewToggleSwap = true;
-        const restore = () => { _viewToggleSwap = false; };
+        // The prewarm fetch responds with an OOB-swapped #pagination block pointing
+        // at the off-view endpoint. Re-sync bindings to the currently visible view
+        // after the swap so pagination clicks hit the correct endpoint/target.
+        const restore = () => {
+            _viewToggleSwap = false;
+            const { filtersEl, paginationEl } = _libraryViewElements();
+            _syncLibraryRequestBindings(_currentLibView, filtersEl, paginationEl);
+        };
 
         if (_currentLibView === 'table' && _gridDirty) {
             // gridWrap is display:none at rest — htmx.ajax only updates innerHTML,
@@ -161,7 +173,7 @@ function prewarmLibraryOffView() {
                 values,
             }).finally(() => { tableWrap.style.display = 'none'; restore(); });
         } else {
-            restore();
+            _viewToggleSwap = false;
         }
     };
     if (window.requestIdleCallback) requestIdleCallback(run, { timeout: 3000 });
@@ -398,6 +410,8 @@ document.body.addEventListener('htmx:afterSwap', (evt) => {
     if (evt.detail.target.id === 'captures-grid') {
         initScrollAnimations(evt.detail.target);
         _lightboxDirty = true;
+        // New cards + OOB-swapped load-more button need glass panel registration
+        requestGlassPanelsUpdate();
     }
     // Grid view swap — reinit animations + glow + glass panels
     if (evt.detail.target.id === 'library-grid-wrap') {

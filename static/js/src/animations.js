@@ -230,7 +230,10 @@ window.addEventListener('resize', () => {
     clearTimeout(_rrResizeTimer);
     _rrResizeTimer = setTimeout(_refreshScrollRevealHeights, 120);
 }, { passive: true });
-document.addEventListener('DOMContentLoaded', _refreshScrollRevealHeights);
+// Defer the initial offsetHeight reads off the DCL critical path via rAF.
+document.addEventListener('DOMContentLoaded', () => {
+    requestAnimationFrame(_refreshScrollRevealHeights);
+});
 
 function initRowScrollReveal(scope) {
     // Disconnect before the early return so stale observers don't hold library DOM
@@ -332,20 +335,31 @@ function initEdgeScale() {
         }
     }
 
+    // Seed rowDocTop/rowHeight from IntersectionObserver entries instead of a
+    // separate getBoundingClientRect loop. The observer has to compute these
+    // rects anyway, so we piggyback on that work and avoid a ~90ms forced
+    // reflow pass. seedRowPositions() is kept only for the resize handler.
     if (_edgeScaleRowsObs) _edgeScaleRowsObs.disconnect();
     _edgeScaleRowsObs = new IntersectionObserver((entries) => {
+        const scrollY = window.scrollY;
         for (const entry of entries) {
+            const i = rowIdx.get(entry.target);
+            if (i !== undefined) {
+                const r = entry.boundingClientRect;
+                rowDocTop[i] = r.top + scrollY;
+                rowHeight[i] = r.height;
+            }
             if (entry.isIntersecting) activeRows.add(entry.target);
             else activeRows.delete(entry.target);
         }
+        // Apply initial/transition scale for rows that just crossed the boundary.
+        if (activeRows.size) onScroll();
     }, { threshold: 0, rootMargin: `${ACTIVE_MARGIN}px 0px ${ACTIVE_MARGIN}px 0px` });
 
     for (let i = 0; i < allRows.length; i++) {
         rowIdx.set(allRows[i], i);
         _edgeScaleRowsObs.observe(allRows[i]);
     }
-    seedRowPositions();
-    seedActiveRows();
 
     let ticking = false;
 
@@ -406,7 +420,11 @@ function initEdgeScale() {
 
     window.addEventListener('scroll', onScroll, { passive: true });
     window.addEventListener('resize', onResize, { passive: true });
-    update();
+
+    // Initial seeding is handled by the IntersectionObserver callback (which
+    // populates rowDocTop/rowHeight from entry.boundingClientRect). The first
+    // update() runs from onScroll once the user scrolls — no synchronous
+    // getBoundingClientRect pass at init time.
 
     _edgeScaleCleanup = () => {
         window.removeEventListener('scroll', onScroll);
@@ -492,7 +510,14 @@ function initCaptureGroupAnimations(scope) {
 // ─── Reset animations ─────────────────────────────────────────────────────────
 // Clears animate-in state before re-triggering (used by library view toggle).
 function _resetAnimations(scope) {
-    const els = Array.from(scope.querySelectorAll(ANIM_SEL));
+    // Narrow to elements actually IN a visible/triggered state — untouched
+    // hidden elements don't need class removal or a transition override,
+    // which shrinks the pending-style-invalidation batch the forced reflow
+    // must flush. On the grid toggle (477 panels) this moves ~50ms of layout
+    // work out of the INP window.
+    const els = Array.from(scope.querySelectorAll(
+        '.animate-in, .reveal-top, .tab-enter-forward, .tab-enter-back, [data-revealed]'
+    ));
     if (!els.length) return;
     els.forEach(el => {
         el.style.transition = 'none';

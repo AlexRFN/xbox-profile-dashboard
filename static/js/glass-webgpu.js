@@ -916,18 +916,132 @@ fn surfaceHeight(t: f32) -> f32 {
     var _rectHeight = new Float32Array(MAX_CACHED);
     var _rectScrollY = 0;
     var _rectValid = false;
-    var _rectAge = 0;          // frames since last full read
-    var _RECT_MAX_AGE = 8;     // force full re-read every N frames as safety net
+    // Per-panel freshness: 1 means this panel's rect was read by our own
+    // getBoundingClientRect() call (time-consistent with the frame's scrollY).
+    // 0 means "never read" or "invalidated" — forces a fresh read before first render,
+    // preventing the spawn-snap where a new panel renders one frame at stale/zero coords.
+    var _rectFresh = new Uint8Array(MAX_CACHED);
+
+    // Viewport culling: IntersectionObserver marks panels that are offscreen so
+    // collectPanels can skip their per-frame getBoundingClientRect entirely.
+    // Sticky/fixed panels bypass this check (they always stay visible).
+    var _inViewport = new Uint8Array(MAX_CACHED);
+    // Transition tracking: set on transitionrun/start, cleared on transitionend/cancel.
+    // Lets collectPanels skip per-frame getComputedStyle(opacity) reads when no fade is in flight.
+    var _transitionActive = new Uint8Array(MAX_CACHED);
+    // Per-panel keyframe-animation flag. Set when @keyframes runs on the panel
+    // (or on an ancestor that wraps it). Forces per-frame rect re-read ONLY for
+    // panels whose visual position is actually moving.
+    var _animActive = new Uint8Array(MAX_CACHED);
+    var _elIndex = new Map(); // element → current index in _cachedEls
+    var _ancestorToIdx = new Map(); // ancestor el → Array<idx> of panels nested under it
+    function _markAnim(target, val) {
+        var idx = _elIndex.get(target);
+        if (idx !== undefined) {
+            _animActive[idx] = val;
+            if (val) { _fullyOpaque[idx] = 0; _anyAnimating = true; }
+            else _fullyOpaque[idx] = 1;
+            return;
+        }
+        var arr = _ancestorToIdx.get(target);
+        if (arr) {
+            for (var ai = 0; ai < arr.length; ai++) {
+                _animActive[arr[ai]] = val;
+                if (val) _fullyOpaque[arr[ai]] = 0;
+                else _fullyOpaque[arr[ai]] = 1;
+            }
+            if (val) _anyAnimating = true;
+            return;
+        }
+        // Fallback: target is an unregistered ancestor (e.g. <main> running
+        // tab-switch keyframes). Walk cached panels and mark any that are
+        // descendants. Covers SPA navigation, reflow-inducing ancestor anims,
+        // and any wrapper not tracked in _ancestorToIdx.
+        if (!target || typeof target.contains !== 'function') return;
+        for (var i = 0; i < _cachedEls.length; i++) {
+            if (target.contains(_cachedEls[i])) {
+                _animActive[i] = val;
+                if (val) { _fullyOpaque[i] = 0; _rectFresh[i] = 0; }
+                else _fullyOpaque[i] = 1;
+            }
+        }
+        if (val) _anyAnimating = true;
+    }
+    function _onTransitionStart(e) {
+        if (e.propertyName && e.propertyName !== 'opacity') return;
+        var idx = _elIndex.get(e.target);
+        if (idx === undefined) return;
+        _transitionActive[idx] = 1;
+        _fullyOpaque[idx] = 0;
+        _anyAnimating = true;
+    }
+    function _onTransitionEnd(e) {
+        if (e.propertyName && e.propertyName !== 'opacity') return;
+        var idx = _elIndex.get(e.target);
+        if (idx === undefined) return;
+        _transitionActive[idx] = 0;
+    }
+    function _onAnimStart(e) { _markAnim(e.target, 1); }
+    function _onAnimEnd(e) { _markAnim(e.target, 0); }
+    if (typeof document !== 'undefined') {
+        document.addEventListener('transitionrun', _onTransitionStart, true);
+        document.addEventListener('transitionstart', _onTransitionStart, true);
+        document.addEventListener('transitionend', _onTransitionEnd, true);
+        document.addEventListener('transitioncancel', _onTransitionEnd, true);
+        document.addEventListener('animationstart', _onAnimStart, true);
+        document.addEventListener('animationend', _onAnimEnd, true);
+        document.addEventListener('animationcancel', _onAnimEnd, true);
+    }
+    var _glassIO = (typeof IntersectionObserver !== 'undefined')
+        ? new IntersectionObserver(function (entries) {
+            for (var e = 0; e < entries.length; e++) {
+                var entry = entries[e];
+                var i = _elIndex.get(entry.target);
+                if (i === undefined) continue;
+                _inViewport[i] = entry.isIntersecting ? 1 : 0;
+                // Do NOT prime from entry.boundingClientRect: that rect is captured when
+                // the intersection state changed (past), while window.scrollY is "now" —
+                // combining them yields a time-desynced doc-relative top. collectPanels
+                // will read a fresh rect via _rectFresh[i] = 0 on first eligible frame.
+                if (!entry.isIntersecting) _rectFresh[i] = 0;
+            }
+        }, { rootMargin: '200px 0px', threshold: 0 })
+        : null;
+
+    // Panel-level ResizeObserver: catches layout changes not covered by
+    // animation / transition / scroll events — e.g. a glass button whose
+    // text content changes (sync button: "Sync" -> "Updating 5/100 games…"),
+    // reflowing itself and shifting its flex siblings. Any panel resize
+    // invalidates ALL _rectFresh: a single flex reflow can shift every
+    // sibling's position without resizing them, so own-resize alone isn't
+    // enough. Uint8Array.fill is effectively free.
+    var _glassRO = (typeof ResizeObserver !== 'undefined')
+        ? new ResizeObserver(function () {
+            if (_cachedEls.length === 0) return;
+            _rectFresh.fill(0);
+            _anyAnimating = true;  // wake the render loop for one frame
+        })
+        : null;
 
     function cacheElements() {
         _anyAnimating = true;         // DOM changed — stay awake until collectPanels confirms idle
         _layoutDirty = false;
         _rectValid = false;           // invalidate rect cache on layout change
+        _rectFresh.fill(0);           // every panel must be re-read before first render
         _cachedEls = [];
         _cachedTierValues = [];
         _fullyOpaque.fill(0);
         _revealAnim.fill(0);
         _cachedAnimAncestor = [];
+        if (_glassIO) _glassIO.disconnect();
+        if (_glassRO) _glassRO.disconnect();
+        _elIndex.clear();
+        _ancestorToIdx.clear();
+        // Default to visible so cold-start first frame renders all panels before
+        // IO callback fires. IO will downgrade offscreen panels to 0 shortly after.
+        _inViewport.fill(1);
+        _transitionActive.fill(0);
+        _animActive.fill(0);
         if (_isMobile) { panelCount = 0; return; }
         if (!_mainEl) _mainEl = document.querySelector('main');
 
@@ -957,6 +1071,52 @@ fn surfaceHeight(t: f32) -> f32 {
                 : el.parentElement && el.parentElement.closest('.anim-blur-rise,.anim-drop,.anim-pop,.anim-blur-scale,.anim-slide-blur,.anim-grow');
             _cachedInMain[idx] = (_mainEl && _mainEl.contains(el)) ? 1 : 0;
             _cachedEls.push(el);
+            _elIndex.set(el, idx);
+            if (_cachedAnimAncestor[idx]) {
+                var anc = _cachedAnimAncestor[idx];
+                var alist = _ancestorToIdx.get(anc);
+                if (!alist) { alist = []; _ancestorToIdx.set(anc, alist); }
+                alist.push(idx);
+            }
+            if (_glassIO) _glassIO.observe(el);
+            if (_glassRO) _glassRO.observe(el);
+        }
+        // Observe layout container(s) too: catches content that appears/disappears
+        // BETWEEN glass panels (e.g. sync-progress text span filling in during a
+        // running sync). No glass panel resizes, but its siblings shift — only a
+        // container-height change reveals that. Prefer <main>; fall back to body.
+        if (_glassRO) {
+            var _layoutRoot = _mainEl || document.body;
+            if (_layoutRoot) _glassRO.observe(_layoutRoot);
+        }
+        // Cold start: CSS animations can begin before this module evaluates, so
+        // animationstart events were missed. Seed per-panel _animActive from
+        // currently-running animations; animationend events drain it naturally.
+        if (document.getAnimations) {
+            try {
+                var running = document.getAnimations();
+                for (var ga = 0; ga < running.length; ga++) {
+                    var anim = running[ga];
+                    var ps = anim.playState;
+                    if (ps !== 'running' && ps !== 'pending') continue;
+                    var eff = anim.effect;
+                    var tgt = eff && eff.target;
+                    if (!tgt) continue;
+                    var ti = _elIndex.get(tgt);
+                    if (ti !== undefined) {
+                        _animActive[ti] = 1;
+                        _fullyOpaque[ti] = 0;
+                        continue;
+                    }
+                    var alist2 = _ancestorToIdx.get(tgt);
+                    if (alist2) {
+                        for (var aj = 0; aj < alist2.length; aj++) {
+                            _animActive[alist2[aj]] = 1;
+                            _fullyOpaque[alist2[aj]] = 0;
+                        }
+                    }
+                }
+            } catch (e) { /* ignore */ }
         }
     }
 
@@ -971,11 +1131,15 @@ fn surfaceHeight(t: f32) -> f32 {
     function collectPanels() {
         var visCount = 0;
 
-        var mainSlideExiting = _mainEl && (
+        var mainSlideAnimating = _mainEl && (
             _mainEl.classList.contains('tab-exit-forward') ||
-            _mainEl.classList.contains('tab-exit-back'));
-        var mainFadeExiting = _mainEl && !mainSlideExiting && _mainEl.style.opacity === '0';
-        var mainExiting = mainSlideExiting || mainFadeExiting;
+            _mainEl.classList.contains('tab-exit-back') ||
+            _mainEl.classList.contains('tab-switch-forward') ||
+            _mainEl.classList.contains('tab-switch-back'));
+        var mainFadeExiting = _mainEl && !mainSlideAnimating && _mainEl.style.opacity === '0';
+        // "Exiting" here means any main-level animation where child panel rects need
+        // fresh per-frame reads (main is transforming, so children's visual position moves).
+        var mainExiting = mainSlideAnimating || mainFadeExiting;
         // Tab-exit is a pure transform animation — opacity stays 1.0 throughout.
         // Only call getComputedStyle for fade-exit (opacity transition) so we don't
         // pay a forced style recalculation on every frame during the common directional
@@ -983,24 +1147,12 @@ fn surfaceHeight(t: f32) -> f32 {
         var mainOpacity = mainFadeExiting ? parseFloat(getComputedStyle(_mainEl).opacity) : 1.0;
 
         // Rect cache: reuse cached document-relative rects when only scroll changed.
-        // Force full re-read on layout change, active animations, or every _RECT_MAX_AGE frames.
+        // Global freshRead only for main-element fade/slide or cache invalidation.
+        // Per-panel animation tracking (_animActive) handles entrance cascades, and
+        // _rectFresh[i]=0 invalidation covers spawns, IO-driven visibility changes,
+        // and ancestor-anim fallbacks — so no periodic safety-net re-read is needed.
         var curScrollY = window.scrollY;
-        var hasActiveAnim = mainExiting;
-        if (!hasActiveAnim) {
-            for (var ai = 0; ai < _cachedEls.length; ai++) {
-                var maybeAnimating = (_cachedHasAnim[ai] && !_cachedAnimIn[ai]) || !_fullyOpaque[ai];
-                if (!maybeAnimating) continue;
-                // Offscreen anim candidates don't require full fresh rect reads each frame.
-                if (!_rectValid) { hasActiveAnim = true; break; }
-                var atop = _rectDocTop[ai] - curScrollY;
-                var ah = _rectHeight[ai];
-                if (atop + ah < -80 || atop > vpH + 80) continue;
-                hasActiveAnim = true;
-                break;
-            }
-        }
-        var freshRead = !_rectValid || hasActiveAnim || (++_rectAge >= _RECT_MAX_AGE);
-        if (freshRead) _rectAge = 0;
+        var freshRead = !_rectValid || mainExiting;
 
         for (var i = 0; i < _cachedEls.length; i++) {
             if (visCount >= MAX_PANELS) break;
@@ -1008,23 +1160,41 @@ fn surfaceHeight(t: f32) -> f32 {
                 var hasAnimIn = _cachedEls[i].classList.contains('animate-in');
                 if (!_cachedAnimIn[i]) {
                     // Not yet revealed — skip until animate-in appears
-                    if (hasAnimIn) { _cachedAnimIn[i] = 1; _fullyOpaque[i] = 0; }
-                    else continue;
+                    if (hasAnimIn) {
+                        _cachedAnimIn[i] = 1; _fullyOpaque[i] = 0;
+                        // CSS animation is about to run but `animationstart` fires async
+                        // (next frame). Mark active + invalidate rect NOW so every frame of
+                        // the entrance keyframes re-reads the moving rect. Without this,
+                        // subsequent frames read stale cache until animationstart lands,
+                        // producing the spawn-snap.
+                        _animActive[i] = 1; _rectFresh[i] = 0; _anyAnimating = true;
+                    } else continue;
                 } else if (!hasAnimIn) {
                     // Was revealed, now exiting — force opacity read so glass fades with CSS
                     _fullyOpaque[i] = 0;
                 }
             }
-            if (_cachedAnimAncestor[i] && !_cachedAnimAncestor[i].classList.contains('animate-in')) continue;
+            if (_cachedAnimAncestor[i]) {
+                var ancHasAnimIn = _cachedAnimAncestor[i].classList.contains('animate-in');
+                if (!ancHasAnimIn) continue;
+                // Ancestor just revealed — same async-animationstart race as above.
+                // Mark child panel active so its rect is re-read every frame while
+                // the ancestor's entrance keyframes play.
+                if (!_animActive[i]) { _animActive[i] = 1; _rectFresh[i] = 0; _anyAnimating = true; }
+            }
             // Skip main children only when fully invisible (opacity ≈ 0)
             if (mainExiting && _cachedInMain[i] && mainOpacity < 0.01) continue;
+
+            // Viewport cull: IntersectionObserver has marked this panel offscreen.
+            // Sticky/fixed panels bypass — their rects must still update on scroll.
+            if (!_inViewport[i] && !_cachedSticky[i]) continue;
 
             // Exiting elements (e.g. toast dismiss): read computed opacity so glass fades with CSS transition
             var isExiting = _cachedEls[i].classList.contains('exit');
 
             // Use cached rects when scroll-only; always re-read for sticky/fixed or fresh frames
             var rLeft, rTop, rWidth, rHeight;
-            if (freshRead || isExiting || _cachedSticky[i]) {
+            if (freshRead || isExiting || _cachedSticky[i] || _animActive[i] || !_rectFresh[i]) {
                 var rect = _cachedEls[i].getBoundingClientRect();
                 rLeft = rect.left; rTop = rect.top; rWidth = rect.width; rHeight = rect.height;
                 // Store as document-relative for future scroll-delta offset
@@ -1032,6 +1202,7 @@ fn surfaceHeight(t: f32) -> f32 {
                 _rectDocTop[i] = rTop + curScrollY;
                 _rectWidth[i]  = rWidth;
                 _rectHeight[i] = rHeight;
+                _rectFresh[i]  = 1;   // time-consistent rect/scrollY pair now cached
             } else {
                 rLeft   = _rectLeft[i];
                 rTop    = _rectDocTop[i] - curScrollY;
@@ -1467,7 +1638,7 @@ fn surfaceHeight(t: f32) -> f32 {
     };
     // Lightweight rect-only invalidation — use for show/hide toggles where the
     // element list hasn't changed. Avoids the expensive cacheElements re-scan.
-    window.invalidateGlassRects = function () { _rectValid = false; _rectAge = _RECT_MAX_AGE; };
+    window.invalidateGlassRects = function () { _rectValid = false; };
 
     // ====================================================================
     // Mobile toggle

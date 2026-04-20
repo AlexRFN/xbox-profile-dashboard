@@ -122,13 +122,6 @@
         var activeLink = pill.querySelector('.nav-link[href="' + currentPath + '"]');
         if (!activeLink) return;
 
-        pill.querySelectorAll('.nav-link').forEach(function(link) {
-            var isActive = link === activeLink;
-            link.classList.toggle('active', isActive);
-            if (isActive) link.setAttribute('aria-current', 'page');
-            else link.removeAttribute('aria-current');
-        });
-
         var parkLink = activeLink;
         try {
             var fromPath = sessionStorage.getItem('pill-from-path');
@@ -138,8 +131,21 @@
             }
         } catch (e) {}
 
-        track.style.setProperty('--pill-x', parkLink.offsetLeft + 'px');
-        track.style.setProperty('--pill-w', parkLink.offsetWidth + 'px');
+        // Read layout BEFORE writing classes to avoid a forced reflow.
+        // `.nav-link.active` only changes background — no layout impact — so
+        // the measured offsetLeft/offsetWidth are identical either way.
+        var parkX = parkLink.offsetLeft;
+        var parkW = parkLink.offsetWidth;
+
+        pill.querySelectorAll('.nav-link').forEach(function(link) {
+            var isActive = link === activeLink;
+            link.classList.toggle('active', isActive);
+            if (isActive) link.setAttribute('aria-current', 'page');
+            else link.removeAttribute('aria-current');
+        });
+
+        track.style.setProperty('--pill-x', parkX + 'px');
+        track.style.setProperty('--pill-w', parkW + 'px');
     })();
     </script>
 

@@ -502,7 +502,9 @@ function initScrollNav() {
         }
     }
 
-    check(window.scrollY);
+    // Defer initial scrollY read off the critical path; reading window.scrollY
+    // synchronously at init time forces layout if styles are dirty.
+    requestAnimationFrame(() => check(window.scrollY));
 
     if (window.lenis) {
         window.lenis.on('scroll', ({ scroll }) => check(scroll));

@@ -5,7 +5,7 @@
 
 {% if has_more %}
 <div id="captures-load-more" hx-swap-oob="true" class="load-more-wrap">
-    <button class="outline"
+    <button class="outline anim-blur-rise animate-in"
             hx-get="/api/captures/grid?page={{ page + 1 }}"
             hx-target="#captures-grid"
             hx-swap="beforeend"

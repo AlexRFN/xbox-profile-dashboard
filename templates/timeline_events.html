@@ -38,7 +38,7 @@
 <!-- OOB swap: update the load-more button -->
 <div id="timeline-load-more" hx-swap-oob="true" class="timeline-load-more">
     {% if has_more %}
-    <button class="outline"
+    <button class="outline anim-blur-rise animate-in"
             hx-get="/api/timeline/events?page={{ page + 1 }}"
             hx-target="#timeline"
             hx-swap="beforeend"
