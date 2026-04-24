@@ -1,0 +1,104 @@
+{% from "macros.html" import icon %}
+    </main>
+
+    <!-- Command Palette (Ctrl+K) -->
+    <div class="cmd-palette" id="cmd-palette" role="dialog" aria-modal="true" aria-label="Command palette" style="display:none">
+        <div class="cmd-backdrop" onclick="closeCmdPalette()"></div>
+        <div class="cmd-panel">
+            <div class="cmd-search-wrap">
+                {{ icon('search', 18, 'cmd-search-icon') }}
+                <input type="search" id="cmd-input" class="cmd-input" placeholder="Search games or jump to..." autocomplete="off" spellcheck="false">
+                <kbd class="cmd-esc-hint">ESC</kbd>
+            </div>
+            <div class="cmd-results" id="cmd-results"></div>
+            <div class="cmd-footer">
+                <span><kbd>↑↓</kbd> Navigate</span>
+                <span><kbd>↵</kbd> Go</span>
+                <span><kbd>ESC</kbd> Close</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Keyboard shortcuts overlay -->
+    <div class="shortcuts-overlay" id="shortcuts-overlay" style="display:none">
+        <div class="cmd-backdrop" onclick="closeShortcuts()"></div>
+        <div class="shortcuts-panel">
+            <h3>Keyboard Shortcuts</h3>
+            <div class="shortcuts-grid">
+                <div class="shortcut-row"><kbd>Ctrl</kbd>+<kbd>K</kbd><span>Command palette</span></div>
+                <div class="shortcut-row"><kbd>/</kbd><span>Focus library search</span></div>
+                <div class="shortcut-row"><kbd>?</kbd><span>Show this help</span></div>
+                <div class="shortcut-row"><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd><span>Sync library</span></div>
+                <div class="shortcut-row"><kbd>↑</kbd><kbd>↓</kbd><span>Navigate palette results</span></div>
+                <div class="shortcut-row"><kbd>Enter</kbd><span>Select palette result</span></div>
+                <div class="shortcut-row"><kbd>Esc</kbd><span>Close overlay</span></div>
+            </div>
+            <button class="outline" onclick="closeShortcuts()" style="margin-top:1rem">Close</button>
+        </div>
+    </div>
+
+    <!-- Overlay container (lightbox etc.) -->
+    <div id="spa-overlay-container">{{ overlay_html|safe }}</div>
+
+    <footer class="container">
+        <small>
+            {{ gamertag | default('Xbox User') }} &middot;
+            {% if last_sync %}
+                Last sync: {{ last_sync.completed_at | shortdate if last_sync.completed_at else 'In progress...' }}
+            {% else %}
+                Never synced
+            {% endif %}
+        </small>
+    </footer>
+
+    <!-- Lenis smooth scroll (sync — must init before deferred scripts for stable layout timing) -->
+    <script src="{{ static_url('js/vendor/lenis.min.js') }}"></script>
+    <script>
+    (function() {
+        var reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        window.lenis = new Lenis({
+            smoothWheel: !reduced,
+            syncTouch: false,
+            lerp: reduced ? 1 : 0.1,
+            duration: 1.0,
+            easing: function(t) {
+                return 1 - Math.pow(1 - t, 3.5);
+            },
+            autoRaf: false,
+            prevent: function(node) {
+                return node.closest && (
+                    node.closest('.cmd-palette') ||
+                    node.closest('.shortcuts-overlay') ||
+                    node.closest('.lightbox')
+                );
+            }
+        });
+        window.__lenisOwnRaf = false;
+        setTimeout(function() {
+            if (!document.documentElement.classList.contains('glass-refract')) {
+                window.__lenisOwnRaf = true;
+                (function tick(t) {
+                    window.lenis.raf(t);
+                    var q = window.__rowMutationQueue;
+                    if (q && q.length) {
+                        for (var mi = 0; mi < q.length; mi++) { try { q[mi](); } catch (_) {} }
+                        q.length = 0;
+                    }
+                    requestAnimationFrame(tick);
+                })(performance.now());
+            }
+        }, 3000);
+    })();
+    </script>
+
+    <!-- Glass renderer: WebGPU preferred, WebGL2 fallback loaded dynamically if needed -->
+    <script defer src="{{ static_url('js/glass-webgpu.js') }}"></script>
+
+    <script defer src="{{ static_url('js/vendor/minisearch.min.js') }}"></script>
+    <script defer src="{{ static_url('js/vendor/hotkeys.min.js') }}"></script>
+
+    <script defer src="{{ static_url('js/app.js') }}"></script>
+    <script>if('serviceWorker' in navigator)navigator.serviceWorker.register('/sw.js')</script>
+    {{ extra_scripts_html|safe }}
+</body>
+</html>

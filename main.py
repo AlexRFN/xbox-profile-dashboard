@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import mimetypes
 import os
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -11,7 +12,9 @@ from fastapi.responses import FileResponse, JSONResponse, ORJSONResponse
 from fastapi.staticfiles import StaticFiles
 from sentry_sdk.integrations.fastapi import FastApiIntegration
 from sentry_sdk.integrations.logging import LoggingIntegration
+from starlette.datastructures import Headers
 from starlette.responses import Response
+from starlette.staticfiles import NotModifiedResponse
 
 import database as db
 import xbox_api
@@ -138,9 +141,44 @@ _CSP = (
     "font-src 'self'"
 )
 
+class PrecompressedStaticFiles(StaticFiles):
+    """Serve a pre-generated `<path>.br` companion when the client advertises
+    `Accept-Encoding: br`, otherwise fall back to the uncompressed file.
+
+    BrotliMiddleware already skips responses whose headers carry a
+    Content-Encoding, so the `.br` body flows through untouched and we save
+    the per-request Brotli CPU on the two largest static assets
+    (bundle.css + app.js). The companions are produced at startup by
+    helpers._build_bundle at quality 11.
+    """
+
+    def file_response(self, full_path, stat_result, scope, status_code=200):
+        request_headers = Headers(scope=scope)
+        if "br" in request_headers.get("accept-encoding", "").lower():
+            br_path = f"{full_path}.br"
+            try:
+                br_stat = os.stat(br_path)
+            except OSError:
+                br_stat = None
+            if br_stat is not None:
+                content_type, _ = mimetypes.guess_type(str(full_path))
+                response = FileResponse(
+                    br_path,
+                    status_code=status_code,
+                    stat_result=br_stat,
+                    media_type=content_type,
+                )
+                response.headers["Content-Encoding"] = "br"
+                response.headers["Vary"] = "Accept-Encoding"
+                if self.is_not_modified(response.headers, request_headers):
+                    return NotModifiedResponse(response.headers)
+                return response
+        return super().file_response(full_path, stat_result, scope, status_code)
+
+
 app = FastAPI(lifespan=lifespan, default_response_class=ORJSONResponse)
 app.add_middleware(BrotliMiddleware, minimum_size=500)  # skip tiny responses where header overhead > savings
-app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
+app.mount("/static", PrecompressedStaticFiles(directory=str(BASE_DIR / "static")), name="static")
 register_filters()
 
 

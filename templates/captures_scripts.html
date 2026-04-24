@@ -1,0 +1,34 @@
+<script>
+    // Restore saved captures view immediately (not on DOMContentLoaded) to prevent flash
+    (function() {
+        const saved = localStorage.getItem('capturesView');
+        const capToggle = document.querySelector('.view-toggle-captures');
+        if (saved === 'by-game') {
+            const allWrap = document.getElementById('captures-all-wrap');
+            const byGameWrap = document.getElementById('captures-by-game-wrap');
+            if (allWrap && byGameWrap) {
+                allWrap.style.display = 'none';
+                byGameWrap.style.display = '';
+                if (capToggle) capToggle.querySelectorAll('.view-btn').forEach(function(b) {
+                    b.classList.toggle('active', b.dataset.view === saved);
+                });
+                // Lazy-load by-game content
+                fetch('/api/captures/by-game').then(function(r) { return r.text(); }).then(function(html) {
+                    byGameWrap.innerHTML = html;
+                    if (typeof _lightboxDirty !== 'undefined') _lightboxDirty = true;
+                    if (typeof initRevealHighlight === 'function') initRevealHighlight(byGameWrap);
+                    requestAnimationFrame(function() {
+                        if (typeof initCaptureGroupAnimations === 'function') initCaptureGroupAnimations(byGameWrap);
+                        if (window.updateGlassPanels) window.updateGlassPanels();
+                    });
+                });
+            }
+        }
+        // Init slider position (no transition on first paint)
+        if (capToggle && typeof updateToggleSlider === 'function') {
+            updateToggleSlider(capToggle);
+        } else if (capToggle) {
+            document.addEventListener('DOMContentLoaded', function() { updateToggleSlider(capToggle); });
+        }
+    })();
+</script>

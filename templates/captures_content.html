@@ -1,0 +1,77 @@
+{% from "macros.html" import capture_card %}
+<div class="page-header-actions">
+    <hgroup class="anim-drop">
+        <h1>Captures</h1>
+        <p>{{ total_screenshots }} screenshots</p>
+    </hgroup>
+    <div class="library-actions captures-actions anim-stagger">
+            <div class="view-toggle-captures anim-drop" style="--i: 0">
+                <button class="view-btn {% if view == 'all' %}active{% endif %}" data-view="all"
+                        onclick="setCapturesView('all')">All</button>
+                <button class="view-btn {% if view == 'by-game' %}active{% endif %}" data-view="by-game"
+                        onclick="setCapturesView('by-game')">By Game</button>
+            </div>
+            <button id="select-mode-btn" class="outline anim-drop" style="--i: 1" onclick="toggleSelectMode()">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" class="icon-inline">
+                    <rect x="3" y="3" width="18" height="18" rx="2"/><polyline points="9 11 12 14 22 4"/>
+                </svg>
+                Select
+            </button>
+            <button id="download-selected-top" class="download-selected-btn" onclick="downloadSelectedCaptures()" disabled style="display:none">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" class="icon-inline">
+                    <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+                </svg>
+                Download <span class="dl-count"></span>
+            </button>
+            <button id="sync-captures-btn" class="outline anim-drop" style="--i: 2" onclick="syncCaptures()">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" class="icon-inline">
+                    <path d="M23 4v6h-6"/><path d="M1 20v-6h6"/>
+                    <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
+                </svg>
+                Sync Captures
+            </button>
+    </div>
+</div>
+
+
+<!-- All view (chronological) -->
+<div id="captures-all-wrap" {% if view != 'all' %}style="display:none"{% endif %}>
+    {% if screenshots %}
+    <div class="captures-grid reveal-container anim-stagger" id="captures-grid">
+        {% for s in screenshots %}
+            {{ capture_card(s, i=loop.index0) }}
+        {% endfor %}
+    </div>
+    {% if has_more %}
+    <div id="captures-load-more" class="load-more-wrap">
+        <button class="outline anim-blur-rise"
+                hx-get="/api/captures/grid?page=2"
+                hx-target="#captures-grid"
+                hx-swap="beforeend"
+                hx-indicator="#captures-load-more-spinner">
+            Load More
+        </button>
+        <span id="captures-load-more-spinner" class="htmx-indicator" aria-busy="true"></span>
+    </div>
+    {% endif %}
+    {% else %}
+    <div class="empty-state">
+        <p>No captures yet. Click "Sync Captures" to fetch your Xbox screenshots.</p>
+    </div>
+    {% endif %}
+</div>
+
+<!-- By Game view (lazy-loaded on first toggle) -->
+<div id="captures-by-game-wrap" style="display:none"></div>
+
+<div id="captures-select-bar" class="captures-select-bar" style="display:none">
+    <span id="select-count">0 selected</span>
+    <button class="outline" onclick="selectAllCaptures()">Select All</button>
+    <button class="outline" onclick="clearCaptureSelection()">Clear</button>
+    <button id="download-selected-btn" onclick="downloadSelectedCaptures()" disabled>
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" class="icon-inline">
+            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+        </svg>
+        Download
+    </button>
+</div>

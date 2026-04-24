@@ -52,22 +52,29 @@ function _setLibraryToggleState(toggle, view) {
 }
 
 function _syncLibraryRequestBindings(view, filtersEl, paginationEl) {
+    // Bail on non-library pages. `.library-filter-input` is the shared chrome class
+    // for any filter control (timeline/achievements reuse it); the library's own
+    // filter container is `#filters` (aliased to filtersEl). If it's missing we're
+    // on a different page and must not touch inputs that look similar.
+    if (!filtersEl) return;
     const { endpoint, target } = _libraryViewConfig(view);
-    document.querySelectorAll('.library-filter-input').forEach(el => {
+    filtersEl.querySelectorAll('.library-filter-input').forEach(el => {
         el.setAttribute('hx-get', endpoint);
         el.setAttribute('hx-target', target);
     });
 
-    document.querySelectorAll('#pagination a[hx-get]').forEach(a => {
-        const page = a.getAttribute('hx-get').match(/page=(\d+)/);
-        if (page) {
-            a.setAttribute('hx-get', endpoint + '?page=' + page[1]);
-            a.setAttribute('hx-target', target);
-        }
-    });
+    if (paginationEl) {
+        paginationEl.querySelectorAll('a[hx-get]').forEach(a => {
+            const page = a.getAttribute('hx-get').match(/page=(\d+)/);
+            if (page) {
+                a.setAttribute('hx-get', endpoint + '?page=' + page[1]);
+                a.setAttribute('hx-target', target);
+            }
+        });
+    }
 
     requestAnimationFrame(() => {
-        if (filtersEl) htmx.process(filtersEl);
+        htmx.process(filtersEl);
         if (paginationEl) htmx.process(paginationEl);
     });
 }
@@ -290,29 +297,33 @@ function _handleLibraryTableBeforeRequest(target) {
 }
 
 function _showCachedGridView(gridWrap) {
-    _resetAnimations(gridWrap);
-    initAmbientGlow(gridWrap);
-    updateExportLinks();
-    if (window.invalidateGlassRects) window.invalidateGlassRects();
-    initRevealHighlight(gridWrap);
-    _reapplyEntranceDir(gridWrap);
-    initBlurhash(gridWrap);
+    _resetAnimations(gridWrap, () => {
+        if (_currentLibView !== 'grid' || !gridWrap.isConnected || gridWrap.style.display === 'none') return;
+        initAmbientGlow(gridWrap);
+        updateExportLinks();
+        if (window.invalidateGlassRects) window.invalidateGlassRects();
+        initRevealHighlight(gridWrap);
+        _reapplyEntranceDir(gridWrap);
+        initBlurhash(gridWrap);
+    });
 }
 
 function _showCachedTableView(tableWrap) {
     const tbody = document.getElementById('game-table-body');
     if (!tbody) return;
-    _resetAnimations(tbody);
-    initClickableRows();
-    initScrollAnimations(tbody, true);
-    initRowScrollReveal(tbody);
-    initEdgeScale();
-    _syncLibraryResultCount(tbody);
-    updateExportLinks();
-    if (window.invalidateGlassRects) window.invalidateGlassRects();
-    _scrollToTopAfterLibrarySwap();
-    initRevealHighlight(tbody);
-    initBlurhash(tbody);
+    _resetAnimations(tbody, () => {
+        if (_currentLibView !== 'table' || !tbody.isConnected || tableWrap.style.display === 'none') return;
+        initClickableRows();
+        initScrollAnimations(tbody, true);
+        initRowScrollReveal(tbody);
+        initEdgeScale();
+        _syncLibraryResultCount(tbody);
+        updateExportLinks();
+        if (window.invalidateGlassRects) window.invalidateGlassRects();
+        _scrollToTopAfterLibrarySwap();
+        initRevealHighlight(tbody);
+        initBlurhash(tbody);
+    });
 }
 
 function _handleLibraryTableSwap(target) {

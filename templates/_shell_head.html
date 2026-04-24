@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark" class="scroll-ready">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ page_title }}</title>
+    <link rel="icon" href="/static/img/Xbox_one_logo.svg.png">
+    <link rel="manifest" href="/static/manifest.json">
+    <meta name="theme-color" content="#107c10">
+    <meta name="mobile-web-app-capable" content="yes">
+    <link rel="preconnect" href="https://store-images.s-microsoft.com">
+    <link rel="dns-prefetch" href="https://images-eds-ssl.xboxlive.com">
+    <link rel="dns-prefetch" href="https://screenshotscontent-t2001.media.xboxlive.com">
+    <link rel="dns-prefetch" href="https://screenshotscontent-t3001.media.xboxlive.com">
+    <link rel="dns-prefetch" href="https://screenshotscontent-t4001.media.xboxlive.com">
+    <link rel="preload" href="{{ static_url('js/vendor/lenis.min.js') }}" as="script">
+    <link rel="preload" href="{{ static_url('js/glass-webgpu.js') }}" as="script">
+    <link rel="preload" href="{{ static_url('js/app.js') }}" as="script">
+    <link rel="preload" href="{{ static_url('js/vendor/minisearch.min.js') }}" as="script">
+    <link rel="preload" href="{{ static_url('js/vendor/hotkeys.min.js') }}" as="script">
+    <link rel="stylesheet" href="{{ css_bundle_url() }}">
+    <script defer src="{{ static_url('js/vendor/htmx.min.js') }}"></script>
+    <!-- Canvas starts hidden; fades in after first render so the CSS aurora is never interrupted -->
+    <style id="aurora-canvas-hide">#aurora-canvas{opacity:0}</style>
+    {{ head_html|safe }}
+</head>
+<body class="{{ body_class_html }}">

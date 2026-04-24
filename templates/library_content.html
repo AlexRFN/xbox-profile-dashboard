@@ -1,0 +1,187 @@
+{% from "macros.html" import pagination %}
+<div class="page-header-actions">
+    <hgroup class="anim-drop">
+        <h1>Game Library</h1>
+        <p><span id="result-count">{{ total }}</span> games</p>
+    </hgroup>
+    <div class="library-actions anim-stagger">
+        <div class="view-toggle anim-drop" style="--i: 0" id="view-toggle">
+            <button class="view-btn active" data-view="table" onclick="setLibraryView('table')" title="Table view">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M3 6h18M3 12h18M3 18h18"/>
+                </svg>
+            </button>
+            <button class="view-btn" data-view="grid" onclick="setLibraryView('grid')" title="Grid view">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/>
+                    <rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>
+                </svg>
+            </button>
+        </div>
+        <div class="export-btns">
+            <a href="/api/export/csv" role="button" class="outline secondary anim-drop" style="--i: 1" id="export-csv">CSV</a>
+            <a href="/api/export/json" role="button" class="outline secondary anim-drop" style="--i: 1" id="export-json">JSON</a>
+        </div>
+        <button id="sync-btn"
+                onclick="syncAll()"
+                class="outline anim-drop" style="--i: 2"
+                aria-busy="false">
+            Sync
+        </button>
+        <span id="sync-progress" class="bulk-progress"></span>
+    </div>
+</div>
+
+<!-- Filters -->
+<div class="filters-inline anim-stagger" id="filters">
+    <input type="search" name="q" placeholder="Search games..."
+           value="{{ q }}"
+           class="library-filter-input anim-drop" style="--i: 0"
+           hx-get="/api/library/table"
+           hx-trigger="keyup changed delay:300ms"
+           hx-target="#game-table-body"
+           hx-include="#filters">
+    <select name="status"
+            class="library-filter-input anim-drop" style="--i: 1"
+            hx-get="/api/library/table"
+            hx-trigger="change"
+            hx-target="#game-table-body"
+            hx-include="#filters">
+        <option value="">All Statuses</option>
+        {% for s in ['unset', 'backlog', 'playing', 'finished', 'dropped'] %}
+        <option value="{{ s }}" {% if status_filter == s %}selected{% endif %}>{{ s | capitalize }}{% if status_counts and status_counts[s] %} ({{ status_counts[s] }}){% endif %}</option>
+        {% endfor %}
+    </select>
+    <select name="completion"
+            class="library-filter-input anim-drop" style="--i: 2"
+            hx-get="/api/library/table"
+            hx-trigger="change"
+            hx-target="#game-table-body"
+            hx-include="#filters">
+        <option value="">Completion</option>
+        <option value="0" {% if completion == "0" %}selected{% endif %}>0%</option>
+        <option value="1-50" {% if completion == "1-50" %}selected{% endif %}>1-50%</option>
+        <option value="51-99" {% if completion == "51-99" %}selected{% endif %}>51-99%</option>
+        <option value="100" {% if completion == "100" %}selected{% endif %}>100%</option>
+    </select>
+    <select name="platform"
+            class="library-filter-input anim-drop" style="--i: 3"
+            hx-get="/api/library/table"
+            hx-trigger="change"
+            hx-target="#game-table-body"
+            hx-include="#filters">
+        <option value="">Platform</option>
+        <option value="XboxSeries" {% if platform == "XboxSeries" %}selected{% endif %}>Xbox Series</option>
+        <option value="XboxOne" {% if platform == "XboxOne" %}selected{% endif %}>Xbox One</option>
+        <option value="PC" {% if platform == "PC" %}selected{% endif %}>PC</option>
+    </select>
+    <select name="gamepass"
+            class="library-filter-input anim-drop" style="--i: 4"
+            hx-get="/api/library/table"
+            hx-trigger="change"
+            hx-target="#game-table-body"
+            hx-include="#filters">
+        <option value="">Game Pass</option>
+        <option value="yes" {% if gamepass == "yes" %}selected{% endif %}>On Game Pass</option>
+        <option value="no" {% if gamepass == "no" %}selected{% endif %}>Not on Game Pass</option>
+    </select>
+    <select name="sort_by"
+            class="library-filter-input anim-drop" style="--i: 5"
+            hx-get="/api/library/table"
+            hx-trigger="change"
+            hx-target="#game-table-body"
+            hx-include="#filters">
+        <option value="last_played" {% if sort_by == "last_played" %}selected{% endif %}>Last Played</option>
+        <option value="name" {% if sort_by == "name" %}selected{% endif %}>Name</option>
+        <option value="gamerscore" {% if sort_by == "gamerscore" %}selected{% endif %}>Gamerscore</option>
+        <option value="completion" {% if sort_by == "completion" %}selected{% endif %}>Completion %</option>
+        <option value="playtime" {% if sort_by == "playtime" %}selected{% endif %}>Playtime</option>
+    </select>
+    <select name="sort_dir"
+            class="library-filter-input anim-drop" style="--i: 6"
+            hx-get="/api/library/table"
+            hx-trigger="change"
+            hx-target="#game-table-body"
+            hx-include="#filters">
+        <option value="desc" {% if sort_dir == "desc" %}selected{% endif %}>Desc</option>
+        <option value="asc" {% if sort_dir == "asc" %}selected{% endif %}>Asc</option>
+    </select>
+</div>
+
+<!-- Shared SVG defs for diamond gradient (single instance, outside table for htmx compatibility) -->
+<svg width="0" height="0" style="position:absolute">
+    <defs>
+        <linearGradient id="dgrad" x1="12" y1="2" x2="12" y2="22" gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stop-color="#67e8f9"/><stop offset="100%" stop-color="#06b6d4"/>
+        </linearGradient>
+    </defs>
+</svg>
+
+<!-- Table View (default) -->
+<div id="library-table-wrap" class="grid-rows">
+    <table class="game-table">
+        <thead>
+            <tr class="anim-drop">
+                <th></th>
+                <th>Game</th>
+                <th class="center">Gamerscore</th>
+                <th class="center">Completion</th>
+                <th class="center">Status</th>
+                <th class="center">Last Played</th>
+                <th>Playtime</th>
+            </tr>
+        </thead>
+        <tbody id="game-table-body" class="anim-stagger">
+            {% include "library_table.html" %}
+        </tbody>
+    </table>
+</div>
+
+<!-- Grid View (hidden by default, toggled by inline script below) -->
+<div id="library-grid-wrap" class="lib-grid reveal-container anim-stagger" style="display: none">
+</div>
+<script>
+// Immediately restore saved view to prevent flash of wrong view during page entrance
+(function() {
+    var toggle = document.getElementById('view-toggle');
+    if (localStorage.getItem('libraryView') === 'grid') {
+        document.getElementById('library-table-wrap').style.display = 'none';
+        var gw = document.getElementById('library-grid-wrap');
+        var pg = document.getElementById('pagination');
+        gw.style.display = '';
+        gw.style.minHeight = '100vh';
+        if (pg) pg.style.display = 'none';
+        if (toggle) toggle.querySelectorAll('.view-btn').forEach(function(b) {
+            b.classList.toggle('active', b.dataset.view === 'grid');
+        });
+        // Pre-fetch grid content immediately so it's ready before app.js loads
+        if (!gw.children.length) {
+            var params = new URLSearchParams();
+            document.querySelectorAll('#filters [name]').forEach(function(el) {
+                if (el.name && el.value) params.set(el.name, el.value);
+            });
+            var qs = params.toString();
+            fetch('/api/library/grid' + (qs ? '?' + qs : '')).then(function(r) { return r.text(); }).then(function(html) {
+                if (gw.children.length) return; // htmx beat us — don't overwrite
+                gw.innerHTML = html;
+                gw.style.minHeight = '';
+                if (pg) pg.style.display = '';
+                if (typeof htmx !== 'undefined') htmx.process(gw);
+                // onInlineGridLoad syncs dirty flags, glass, entrance direction, and animations
+                // exactly like an htmx grid swap would — defined in app.js.
+                if (typeof onInlineGridLoad === 'function') onInlineGridLoad(gw);
+            });
+        }
+    }
+    // Init slider position (no transition on first paint)
+    if (toggle && typeof updateToggleSlider === 'function') {
+        updateToggleSlider(toggle);
+    } else if (toggle) {
+        // app.js not loaded yet — defer to DOMContentLoaded
+        document.addEventListener('DOMContentLoaded', function() { updateToggleSlider(toggle); });
+    }
+})();
+</script>
+
+<!-- Pagination -->
+{{ pagination(page, total, per_page, "/api/library/table", "#game-table-body") }}

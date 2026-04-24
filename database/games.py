@@ -122,8 +122,11 @@ async def get_all_games(
     sort_col = allowed_sorts.get(sort_by, "last_played")
     direction = "ASC" if sort_dir == "asc" else "DESC"
 
-    # Push NULLs to the bottom regardless of sort direction (e.g. unplayed games at end of last_played sort)
-    null_handling = f"CASE WHEN {sort_col} IS NULL THEN 1 ELSE 0 END"
+    # SQLite sorts NULLs first on ASC and last on DESC. We want unplayed games at the
+    # bottom either way, so DESC is already correct and ASC needs explicit NULLS LAST.
+    # (Dropping the CASE-prefix sort lets idx_games_last_played / idx_games_name /
+    # idx_games_status_last_played serve the ORDER BY directly — no temp b-tree.)
+    order_sql = f"{sort_col} ASC NULLS LAST" if direction == "ASC" else f"{sort_col} DESC"
 
     cursor = await conn.execute(
         f"SELECT COUNT(*) as cnt FROM games {where_sql}", params
@@ -138,7 +141,7 @@ async def get_all_games(
                    status, last_played, minutes_played, is_gamepass,
                    stats_last_fetched, notes, rating
             FROM games {where_sql}
-            ORDER BY {null_handling}, {sort_col} {direction}
+            ORDER BY {order_sql}
             LIMIT ? OFFSET ?""",
         [*params, per_page, offset],
     )
@@ -232,12 +235,13 @@ async def recalc_all_games_from_achievements():
 
 async def get_games_needing_details(limit: int = 0) -> list[dict]:
     conn = await get_connection()
+    # SQLite sorts NULLs last on DESC, so unplayed games land at the bottom
+    # naturally — the explicit CASE prefix isn't needed and blocks idx_games_last_played.
     sql = """
         SELECT title_id, name
         FROM games
         WHERE stats_last_fetched IS NULL
-        ORDER BY CASE WHEN last_played IS NULL THEN 1 ELSE 0 END,
-                 last_played DESC
+        ORDER BY last_played DESC
     """
     params: list = []
     if limit > 0:

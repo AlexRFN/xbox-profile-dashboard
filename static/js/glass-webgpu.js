@@ -853,6 +853,7 @@ fn surfaceHeight(t: f32) -> f32 {
         _mouseY = -9999;
     });
 
+
     // ====================================================================
     // Panel position tracking (identical to WebGL2 version)
     // ====================================================================
@@ -902,14 +903,16 @@ fn surfaceHeight(t: f32) -> f32 {
     var _cachedReveal = new Uint8Array(MAX_CACHED);
     var _revealAnim = new Float32Array(MAX_CACHED);   // smooth 0→1 reveal intensity per panel
     var _cachedZIndex = new Float32Array(MAX_CACHED);
-    var _cachedSticky = new Uint8Array(MAX_CACHED);   // 1 = sticky/fixed, always re-read rect
+    var _cachedSticky = new Uint8Array(MAX_CACHED);   // 1 = sticky, re-read rect on scroll
+    var _cachedFixed  = new Uint8Array(MAX_CACHED);   // 1 = fixed, viewport rect is scroll-invariant
     var _mainEl = null;
     var _layoutDirty = true;
     var _anyAnimating = false; // true while any panel is mid-entrance or reveal-fading
     var panelCount = 0;
 
     // Rect cache: avoid getBoundingClientRect on every frame during scroll-only updates.
-    // Rects stored as document-relative (top += scrollY) so scroll-delta offset works.
+    // Normal-flow + sticky panels store doc-relative top (top += scrollY); fixed panels
+    // store viewport top because their visual position does not track scroll.
     var _rectDocTop = new Float32Array(MAX_CACHED);
     var _rectLeft   = new Float32Array(MAX_CACHED);
     var _rectWidth  = new Float32Array(MAX_CACHED);
@@ -926,9 +929,6 @@ fn surfaceHeight(t: f32) -> f32 {
     // collectPanels can skip their per-frame getBoundingClientRect entirely.
     // Sticky/fixed panels bypass this check (they always stay visible).
     var _inViewport = new Uint8Array(MAX_CACHED);
-    // Transition tracking: set on transitionrun/start, cleared on transitionend/cancel.
-    // Lets collectPanels skip per-frame getComputedStyle(opacity) reads when no fade is in flight.
-    var _transitionActive = new Uint8Array(MAX_CACHED);
     // Per-panel keyframe-animation flag. Set when @keyframes runs on the panel
     // (or on an ancestor that wraps it). Forces per-frame rect re-read ONLY for
     // panels whose visual position is actually moving.
@@ -971,23 +971,17 @@ fn surfaceHeight(t: f32) -> f32 {
         if (e.propertyName && e.propertyName !== 'opacity') return;
         var idx = _elIndex.get(e.target);
         if (idx === undefined) return;
-        _transitionActive[idx] = 1;
         _fullyOpaque[idx] = 0;
         _anyAnimating = true;
-    }
-    function _onTransitionEnd(e) {
-        if (e.propertyName && e.propertyName !== 'opacity') return;
-        var idx = _elIndex.get(e.target);
-        if (idx === undefined) return;
-        _transitionActive[idx] = 0;
     }
     function _onAnimStart(e) { _markAnim(e.target, 1); }
     function _onAnimEnd(e) { _markAnim(e.target, 0); }
     if (typeof document !== 'undefined') {
+        // transitionend/transitioncancel are not observed — collectPanels lazily
+        // detects the fully-opaque state from getComputedStyle on the trailing
+        // frame and sets _fullyOpaque[i], so a listener here adds no signal.
         document.addEventListener('transitionrun', _onTransitionStart, true);
         document.addEventListener('transitionstart', _onTransitionStart, true);
-        document.addEventListener('transitionend', _onTransitionEnd, true);
-        document.addEventListener('transitioncancel', _onTransitionEnd, true);
         document.addEventListener('animationstart', _onAnimStart, true);
         document.addEventListener('animationend', _onAnimEnd, true);
         document.addEventListener('animationcancel', _onAnimEnd, true);
@@ -1040,7 +1034,6 @@ fn surfaceHeight(t: f32) -> f32 {
         // Default to visible so cold-start first frame renders all panels before
         // IO callback fires. IO will downgrade offscreen panels to 0 shortly after.
         _inViewport.fill(1);
-        _transitionActive.fill(0);
         _animActive.fill(0);
         if (_isMobile) { panelCount = 0; return; }
         if (!_mainEl) _mainEl = document.querySelector('main');
@@ -1061,7 +1054,8 @@ fn surfaceHeight(t: f32) -> f32 {
             _cachedReveal[idx] = el.matches(REVEAL_SEL) ? 1 : 0;
             _cachedZIndex[idx] = parseFloat(style.zIndex) || 0;
             var pos = style.position;
-            _cachedSticky[idx] = (pos === 'sticky' || pos === 'fixed') ? 1 : 0;
+            _cachedSticky[idx] = pos === 'sticky' ? 1 : 0;
+            _cachedFixed[idx] = pos === 'fixed' ? 1 : 0;
             var cl = el.classList;
             _cachedHasAnim[idx] = (cl.contains('anim-blur-rise') || cl.contains('anim-drop') ||
                 cl.contains('anim-pop') || cl.contains('anim-blur-scale') ||
@@ -1128,7 +1122,13 @@ fn surfaceHeight(t: f32) -> f32 {
     var _sortExtra = new Float32Array(MAX_PANELS * 4);
     var _sortOR = new Float32Array(MAX_PANELS * 2);
 
-    function collectPanels() {
+    function collectPanels(curScrollY) {
+        // Six non-frame() call sites (initial render, visibilitychange, prewarmGlassPanels
+        // in both renderers) invoke this bare. Without a default, curScrollY is undefined
+        // and `rTop + undefined = NaN` poisons _rectDocTop — next frame reads back NaN,
+        // which survives the viewport cull (all NaN comparisons are false) and uploads
+        // to the GPU as garbage rect coords.
+        if (curScrollY === undefined) curScrollY = window.scrollY;
         var visCount = 0;
 
         var mainSlideAnimating = _mainEl && (
@@ -1151,7 +1151,6 @@ fn surfaceHeight(t: f32) -> f32 {
         // Per-panel animation tracking (_animActive) handles entrance cascades, and
         // _rectFresh[i]=0 invalidation covers spawns, IO-driven visibility changes,
         // and ancestor-anim fallbacks — so no periodic safety-net re-read is needed.
-        var curScrollY = window.scrollY;
         var freshRead = !_rectValid || mainExiting;
 
         for (var i = 0; i < _cachedEls.length; i++) {
@@ -1186,26 +1185,30 @@ fn surfaceHeight(t: f32) -> f32 {
             if (mainExiting && _cachedInMain[i] && mainOpacity < 0.01) continue;
 
             // Viewport cull: IntersectionObserver has marked this panel offscreen.
-            // Sticky/fixed panels bypass — their rects must still update on scroll.
+            // Sticky panels bypass because their viewport position can change on scroll
+            // even when the intersection state is stale between callbacks.
             if (!_inViewport[i] && !_cachedSticky[i]) continue;
 
             // Exiting elements (e.g. toast dismiss): read computed opacity so glass fades with CSS transition
             var isExiting = _cachedEls[i].classList.contains('exit');
 
-            // Use cached rects when scroll-only; always re-read for sticky/fixed or fresh frames
+            // Use cached rects when scroll-only; always re-read for sticky or fresh frames.
+            // Fixed panels keep the same viewport rect across scroll, so their cached
+            // viewport-space top can be reused until some other invalidation lands.
             var rLeft, rTop, rWidth, rHeight;
             if (freshRead || isExiting || _cachedSticky[i] || _animActive[i] || !_rectFresh[i]) {
                 var rect = _cachedEls[i].getBoundingClientRect();
                 rLeft = rect.left; rTop = rect.top; rWidth = rect.width; rHeight = rect.height;
-                // Store as document-relative for future scroll-delta offset
+                // Normal flow + sticky panels cache doc-relative top so scroll-only frames
+                // can derive viewport top cheaply. Fixed panels cache viewport top directly.
                 _rectLeft[i]   = rLeft;
-                _rectDocTop[i] = rTop + curScrollY;
+                _rectDocTop[i] = _cachedFixed[i] ? rTop : (rTop + curScrollY);
                 _rectWidth[i]  = rWidth;
                 _rectHeight[i] = rHeight;
                 _rectFresh[i]  = 1;   // time-consistent rect/scrollY pair now cached
             } else {
                 rLeft   = _rectLeft[i];
-                rTop    = _rectDocTop[i] - curScrollY;
+                rTop    = _cachedFixed[i] ? _rectDocTop[i] : (_rectDocTop[i] - curScrollY);
                 rWidth  = _rectWidth[i];
                 rHeight = _rectHeight[i];
             }
@@ -1464,6 +1467,18 @@ fn surfaceHeight(t: f32) -> f32 {
 
         if (window.lenis && !window.__lenisOwnRaf) window.lenis.raf(t);
 
+        // Drain queued row-reveal DOM mutations AFTER lenis.raf. IntersectionObserver
+        // callbacks fire between frames and push their class/style writes into this
+        // queue instead of applying directly. Running them before lenis.raf would
+        // leave invalidations pending when scrollTo reads layout, forcing a sync
+        // style recalc. Running them after means the invalidations flush during the
+        // browser's natural post-rAF layout phase — no forced reflow.
+        var q = window.__rowMutationQueue;
+        if (q && q.length) {
+            for (var mi = 0; mi < q.length; mi++) { try { q[mi](); } catch (_) {} }
+            q.length = 0;
+        }
+
         resizeTargets();
         updatePhysics(_simTime);
 
@@ -1474,15 +1489,19 @@ fn surfaceHeight(t: f32) -> f32 {
         if (_layoutCooldown > 0) { _layoutCooldown--; render(doAurora); return; }
         if (_layoutDirty) cacheElements();
 
+        // Sample scroll once per frame after lenis.raf so every hot-loop comparison
+        // reuses the same value instead of repeatedly reading window.scrollY.
+        var frameScrollY = window.scrollY;
+
         // Fast-path idle skip: if no animations are running, scroll/mouse are unchanged,
         // and this isn't an aurora frame, skip collectPanels + render entirely.
         // collectPanels is the bulk of per-frame CPU work; skipping it on truly static
         // frames reduces iGPU memory bus pressure beyond what the render-only skip achieves.
         if (!doAurora && !_anyAnimating &&
-            window.scrollY === _lastRenderScrollY &&
+            frameScrollY === _lastRenderScrollY &&
             _mouseX === _lastRenderMouseX && _mouseY === _lastRenderMouseY) return;
 
-        collectPanels();
+        collectPanels(frameScrollY);
 
         // Update idle flag: false once all visible panels confirm fully opaque and no reveals.
         _anyAnimating = false;
@@ -1496,7 +1515,7 @@ fn surfaceHeight(t: f32) -> f32 {
             // Compare against scroll at last render, not at last rect-read — _rectScrollY
             // is updated inside collectPanels() so it would match window.scrollY on the
             // same frame, masking the position change and skipping visible scroll updates.
-            var canSkip = window.scrollY === _lastRenderScrollY;
+            var canSkip = frameScrollY === _lastRenderScrollY;
             if (canSkip) {
                 for (var _sci = 0; _sci < _cachedEls.length; _sci++) {
                     if (_revealAnim[_sci] > 0.002) { canSkip = false; break; }
@@ -1508,7 +1527,7 @@ fn surfaceHeight(t: f32) -> f32 {
         }
 
         render(doAurora);
-        _lastRenderScrollY = window.scrollY;
+        _lastRenderScrollY = frameScrollY;
         _lastRenderMouseX = _mouseX;
         _lastRenderMouseY = _mouseY;
     }

@@ -175,6 +175,16 @@ async def _run_migrations(conn) -> None:
         (5, "Add (progress_state, time_unlocked) composite index",
          "CREATE INDEX IF NOT EXISTS idx_achievements_progress_time "
          "ON achievements(progress_state, time_unlocked)"),
+        # get_achievement_stats() sorts 'Achieved' achievements by rarity_percentage ASC
+        # and gamerscore DESC for the profile showcase. Both used to fall back to a temp
+        # b-tree sort over ~8k rows on every cache-miss. The composite indexes below let
+        # SQLite scan the index in the required order.
+        (6, "Add (progress_state, rarity_percentage) composite index",
+         "CREATE INDEX IF NOT EXISTS idx_achievements_progress_rarity "
+         "ON achievements(progress_state, rarity_percentage)"),
+        (7, "Add (progress_state, gamerscore DESC) composite index",
+         "CREATE INDEX IF NOT EXISTS idx_achievements_progress_gs "
+         "ON achievements(progress_state, gamerscore DESC)"),
     ]
     for version, description, sql in MIGRATIONS:
         if version not in applied:

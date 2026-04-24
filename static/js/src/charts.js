@@ -146,11 +146,21 @@ function _spawnWorkerChart(kind, canvas, stats, theme) {
     ro.observe(canvas);
 
     // Pointer events: main thread captures position, worker updates tooltip.
-    const onMove = function (e) {
+    // rAF-batch the getBoundingClientRect read so pointermove events don't
+    // force layout on every fire (can be many per frame).
+    let pendingX = 0, pendingY = 0, pendingRaf = 0;
+    const flushPointer = function () {
+        pendingRaf = 0;
         const r = canvas.getBoundingClientRect();
-        worker.postMessage({ type: 'pointer', id, x: e.clientX - r.left, y: e.clientY - r.top });
+        worker.postMessage({ type: 'pointer', id, x: pendingX - r.left, y: pendingY - r.top });
+    };
+    const onMove = function (e) {
+        pendingX = e.clientX;
+        pendingY = e.clientY;
+        if (!pendingRaf) pendingRaf = requestAnimationFrame(flushPointer);
     };
     const onLeave = function () {
+        if (pendingRaf) { cancelAnimationFrame(pendingRaf); pendingRaf = 0; }
         worker.postMessage({ type: 'pointer', id, x: null, y: null });
     };
     canvas.addEventListener('pointermove', onMove, { passive: true });

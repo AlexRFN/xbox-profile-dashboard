@@ -1,9 +1,10 @@
 import logging
-from collections.abc import Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
+import brotli
 import orjson
 from fastapi import Request
 from fastapi.responses import StreamingResponse
@@ -28,7 +29,15 @@ templates.env.auto_reload = True
 # --- Asset bundling ---
 
 def _build_bundle(files: list[str], out_path: Path, file_header: str) -> str:
-    """Concatenate source files into a bundle and return a versioned URL."""
+    """Concatenate source files into a bundle, write the bundle + a pre-compressed
+    Brotli companion (quality 11) alongside it, and return a versioned URL.
+
+    The .br companion is served by PrecompressedStaticFiles when the client
+    advertises `Accept-Encoding: br` — removes per-request Brotli CPU cost
+    (BrotliMiddleware passes through when Content-Encoding is already set)
+    and the max-quality setting gives smaller bytes than the middleware's
+    default streaming-grade quality.
+    """
     static_dir = BASE_DIR / "static"
     parts, max_mtime = [], 0
     for f in files:
@@ -36,9 +45,20 @@ def _build_bundle(files: list[str], out_path: Path, file_header: str) -> str:
         if p.exists():
             parts.append(file_header.format(f) + "\n" + p.read_text(encoding="utf-8"))
             max_mtime = max(max_mtime, int(p.stat().st_mtime))
-    out_path.write_text("\n".join(parts), encoding="utf-8")
+    body = "\n".join(parts)
+    out_path.write_text(body, encoding="utf-8")
+    br_path = out_path.with_suffix(out_path.suffix + ".br")
+    compressed = brotli.compress(body.encode("utf-8"), quality=11)
+    br_path.write_bytes(compressed)
+    # Match mtime so the .br and the original share a ctag — prevents the
+    # server from holding a stale .br when the bundle is rebuilt.
+    import os as _os
+    _os.utime(br_path, (out_path.stat().st_atime, out_path.stat().st_mtime))
     url = f"/static/{out_path.relative_to(static_dir).as_posix()}?v={max_mtime}"
-    log.info("Bundle built: %s (%d files, %d bytes)", url, len(parts), out_path.stat().st_size)
+    log.info(
+        "Bundle built: %s (%d files, %d bytes raw, %d bytes br)",
+        url, len(parts), out_path.stat().st_size, br_path.stat().st_size,
+    )
     return url
 
 
@@ -194,18 +214,116 @@ def normalize_image_url(url: str) -> str:
     return url
 
 
+def is_spa_nav(request: Request) -> bool:
+    """True when the request is an htmx inner-main swap or history-restore XHR.
+
+    Both cases want the SPA fragment from base.html, not a full-page render —
+    so streaming routes fall back to a conventional TemplateResponse.
+    """
+    h = request.headers
+    return h.get("hx-request") == "true" and (
+        h.get("hx-target") == "main"
+        or h.get("hx-history-restore-request") == "true"
+    )
+
+
 async def page_ctx(request: Request) -> dict:
     """Common template context for all full-page routes."""
     ctx = await db.get_page_context_data()
     ctx["gamertag"] = xbox_api.GAMERTAG
-    # True when htmx is doing a tab switch (targets <main>) — templates skip full re-renders.
-    # Also true on history-restore XHR (back/forward cache miss): htmx's Gt() sends
-    # HX-History-Restore-Request but no HX-Target, and still needs the SPA partial.
-    ctx["is_spa_nav"] = request.headers.get("hx-request") == "true" and (
-        request.headers.get("hx-target") == "main"
-        or request.headers.get("hx-history-restore-request") == "true"
-    )
+    ctx["is_spa_nav"] = is_spa_nav(request)
     return ctx
+
+
+def stream_shell_response(
+    request: Request,
+    *,
+    title: str,
+    content_template: str,
+    data_factory: Callable[[], Awaitable[dict]],
+    body_class: str = "",
+    head_extra: str = "",
+    overlay_template: str | None = None,
+    extra_scripts_template: str | None = None,
+    status_code: int = 200,
+) -> StreamingResponse:
+    """Render a full page in three streamed phases to shave FCP.
+
+    Phase 1 — yields _shell_head.html (DOCTYPE, <head>, open <body>). No DB
+    work runs here, so the browser starts fetching CSS/JS preloads while the
+    server does the DB round-trips.
+
+    Phase 2 — awaits `data_factory()` for the full template context (expected
+    to already include page_ctx keys: gamertag, gamerpic, rate_used, last_sync).
+    The caller runs all DB queries in parallel inside the factory.
+
+    Phase 3 — yields _shell_nav_open.html, the content template, and
+    _shell_main_close.html with the awaited context. overlay_template and
+    extra_scripts_template (if set) are rendered with the same ctx and
+    injected into the shell close.
+
+    `head_extra` is a pre-rendered string (no ctx access) flushed in phase 1.
+    Use it for static preload/script tags that don't depend on DB data —
+    e.g. `<script defer src="{static_url('chart.umd.min.js')}"></script>`.
+
+    Callers MUST check `is_spa_nav(request)` first and return a conventional
+    TemplateResponse for SPA partials — streaming has no benefit on an inner
+    #main fragment and would produce a broken shell.
+
+    If the data factory raises, the head has already been flushed, so we can't
+    redirect to an error page. The error is logged and the stream terminates;
+    the browser sees a truncated document that the user can refresh.
+    """
+    head_template = templates.get_template("_shell_head.html")
+    nav_template = templates.get_template("_shell_nav_open.html")
+    content_tpl = templates.get_template(content_template)
+    overlay_tpl = templates.get_template(overlay_template) if overlay_template else None
+    scripts_tpl = templates.get_template(extra_scripts_template) if extra_scripts_template else None
+    close_template = templates.get_template("_shell_main_close.html")
+
+    async def generate() -> AsyncIterator[bytes]:
+        # Phase 1: head (synchronous, no DB). Globals like static_url and
+        # css_bundle_url are already registered on the Jinja env.
+        head_ctx = {
+            "request": request,
+            "page_title": title,
+            "body_class_html": body_class,
+            "head_html": head_extra,
+        }
+        yield head_template.render(head_ctx).encode("utf-8")
+
+        # Phase 2: DB work. Run inside try so we log any failure before the
+        # generator unwinds — the head is already on the wire, so we can't
+        # serve a proper 500 page, but we can at least record the failure.
+        try:
+            ctx = await data_factory()
+        except Exception:
+            log.exception("Stream data_factory failed for %s", request.url.path)
+            yield b"<!-- stream: data fetch failed -->\n</body></html>"
+            return
+
+        # Phase 3: body. Overlay / extra_scripts templates (if provided) are
+        # rendered with the same ctx so child-template blocks can reference
+        # data like stats or static_url.
+        ctx = {**ctx, "request": request}
+        try:
+            yield nav_template.render(ctx).encode("utf-8")
+            yield content_tpl.render(ctx).encode("utf-8")
+            close_ctx = {
+                **ctx,
+                "overlay_html": overlay_tpl.render(ctx) if overlay_tpl else "",
+                "extra_scripts_html": scripts_tpl.render(ctx) if scripts_tpl else "",
+            }
+            yield close_template.render(close_ctx).encode("utf-8")
+        except Exception:
+            log.exception("Stream body render failed for %s", request.url.path)
+            yield b"<!-- stream: body render failed -->\n</body></html>"
+
+    return StreamingResponse(
+        generate(),
+        status_code=status_code,
+        media_type="text/html; charset=utf-8",
+    )
 
 
 
@@ -233,6 +351,31 @@ def get_filters(
     return LibraryFilters(q=q, status=status, completion=completion,
                           platform=platform, gamepass=gamepass,
                           sort_by=sort_by, sort_dir=sort_dir)
+
+
+def timeline_active_preset(date_from: str, date_to: str) -> str:
+    """Match date_from/date_to to a preset range key for the quick-nav pills.
+
+    Returns one of 'all', 'this-month', 'last-month', 'this-year', or ''
+    (empty = a custom range that doesn't match a preset). Keeps parity with
+    the client-side logic in setTimelineRange() so refresh/SPA-restore
+    highlights the same pill the user originally clicked.
+    """
+    if not date_from and not date_to:
+        return "all"
+    today = date.today()
+    today_s = today.isoformat()
+    this_month_from = today.replace(day=1).isoformat()
+    if date_from == this_month_from and date_to == today_s:
+        return "this-month"
+    last_month_end = today.replace(day=1) - timedelta(days=1)
+    last_month_from = last_month_end.replace(day=1).isoformat()
+    if date_from == last_month_from and date_to == last_month_end.isoformat():
+        return "last-month"
+    this_year_from = today.replace(month=1, day=1).isoformat()
+    if date_from == this_year_from and date_to == today_s:
+        return "this-year"
+    return ""
 
 
 def _batch_events(events: list[dict], threshold: int = 3) -> list[dict]:

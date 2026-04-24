@@ -313,15 +313,20 @@
 
 
 /* ========== Game Table ========== */
+/* Container sits behind GPU-glass rows/cards — no CSS backdrop-filter here.
+   Fallback path (.glass-refract absent) restores the blur so browsers without
+   GPU glass still get a frosted wrapper. */
 #library-table-wrap {
     background: var(--glass-bg);
-    backdrop-filter: blur(var(--glass-blur-substrate)) saturate(var(--glass-sat-substrate)) brightness(var(--glass-brightness));
-    -webkit-backdrop-filter: blur(var(--glass-blur-substrate)) saturate(var(--glass-sat-substrate)) brightness(var(--glass-brightness));
     border: 1px solid var(--glass-border);
     border-top-color: var(--glass-border-top);
     border-radius: var(--radius-md);
     box-shadow: var(--shadow-4), inset 0 1px 0 var(--glass-bevel-highlight), inset 0 -1px 0 var(--glass-bevel-shadow);
     contain: layout style;
+}
+html:not(.glass-refract) #library-table-wrap {
+    backdrop-filter: blur(var(--glass-blur-substrate)) saturate(var(--glass-sat-substrate)) brightness(var(--glass-brightness));
+    -webkit-backdrop-filter: blur(var(--glass-blur-substrate)) saturate(var(--glass-sat-substrate)) brightness(var(--glass-brightness));
 }
 
 

@@ -42,6 +42,40 @@ function _reapplyEntranceDir(root) {
 let _scrollAnimObs = null;
 let _scrollAnimGen = 0;
 
+// rAF-coalesced reveal queue: setTimeout stagger produces time-separated firings, but
+// when the main thread is busy (lenis scroll rAF, htmx swap, etc.) multiple timers can
+// land in the same frame. Queuing the mutations and flushing them in one rAF collapses
+// N style-invalidation batches into 1 — the style recalc cost stays ~constant per frame
+// instead of scaling with the number of coincident reveals.
+let _revealQueue = null;
+let _revealFlushScheduled = false;
+const _REVEAL_FLUSH_CAP = 4; // cap mutations per frame to spread style-recalc cost
+function _flushRevealQueue() {
+    _revealFlushScheduled = false;
+    if (!_revealQueue || !_revealQueue.length) return;
+    const count = Math.min(_revealQueue.length, _REVEAL_FLUSH_CAP);
+    for (let i = 0; i < count; i++) {
+        const el = _revealQueue[i];
+        if (el.style.transitionDelay !== '0ms') el.style.transitionDelay = '0ms';
+        el.classList.add('animate-in');
+    }
+    _revealQueue.splice(0, count);
+    if (_revealQueue.length) {
+        _revealFlushScheduled = true;
+        requestAnimationFrame(_flushRevealQueue);
+    } else {
+        _revealQueue = null;
+    }
+}
+function _queueReveal(el) {
+    if (!_revealQueue) _revealQueue = [];
+    _revealQueue.push(el);
+    if (!_revealFlushScheduled) {
+        _revealFlushScheduled = true;
+        requestAnimationFrame(_flushRevealQueue);
+    }
+}
+
 function initScrollAnimations(root, forceStagger = false, keepGen = false) {
     if (_scrollAnimObs) { _scrollAnimObs.disconnect(); _scrollAnimObs = null; }
 
@@ -79,8 +113,7 @@ function initScrollAnimations(root, forceStagger = false, keepGen = false) {
                 obs.unobserve(entry.target); // captured local — never stale
                 setTimeout(() => {
                     if (_scrollAnimGen !== gen) return; // stale — discard
-                    entry.target.style.transitionDelay = '0ms';
-                    entry.target.classList.add('animate-in');
+                    _queueReveal(entry.target);
                 }, idx * unit);
             });
         }, { threshold: 0, rootMargin: '0px 0px -40px 0px' });
@@ -249,14 +282,42 @@ function initRowScrollReveal(scope) {
 
     // viewMid is read from the cache inside each callback rather than captured here —
     // this keeps it current after window resizes without recreating the observers.
+    // Guard every mutation so only real state transitions schedule invalidation.
+    const setRevealTop = (el, wantTop) => {
+        const has = el.classList.contains('reveal-top');
+        if (wantTop && !has) el.classList.add('reveal-top');
+        else if (!wantTop && has) el.classList.remove('reveal-top');
+    };
+
+    // Defer row class/style mutations out of the between-frames window and into
+    // the post-lenis phase of the next rAF. IntersectionObserver callbacks fire
+    // between frames (after layout, before next rAF); any DOM writes they perform
+    // leave invalidations pending when lenis.raf runs, which then force a
+    // synchronous style recalc via scrollTo. Queueing the mutations and draining
+    // them AFTER lenis.raf in glass-webgpu's frame (see __drainRowMutations below)
+    // lets the invalidations flush during the browser's natural post-rAF layout
+    // phase instead — no forced reflow.
+    const queue = (window.__rowMutationQueue = window.__rowMutationQueue || []);
+
     _rowEntryObs = new IntersectionObserver((entries) => {
+        // Read the viewport-dependent midpoint now (the entry has the rect already),
+        // but defer all writes. Capture rect locally since entry pools get reused.
         const viewMid = (_cachedNavH + _cachedTheadH + window.innerHeight) / 2;
         for (const entry of entries) {
             const el = entry.target;
             if (!entry.isIntersecting || !el.dataset.revealed) continue;
-            el.style.transitionDelay = '0ms';
-            el.classList.toggle('reveal-top', entry.boundingClientRect.top < viewMid);
-            el.classList.add('animate-in');
+            const wantTop = entry.boundingClientRect.top < viewMid;
+            // Skip the queue push when the closure would be a pure no-op —
+            // observer re-fires around stable states shouldn't add drain work.
+            const cl = el.classList;
+            if (cl.contains('animate-in') &&
+                cl.contains('reveal-top') === wantTop &&
+                el.style.transitionDelay === '0ms') continue;
+            queue.push(() => {
+                if (el.style.transitionDelay !== '0ms') el.style.transitionDelay = '0ms';
+                setRevealTop(el, wantTop);
+                if (!el.classList.contains('animate-in')) el.classList.add('animate-in');
+            });
         }
     }, { threshold: 0.05, rootMargin: `-${topInset}px 0px 0px 0px` });
 
@@ -264,17 +325,28 @@ function initRowScrollReveal(scope) {
         const viewMid = (_cachedNavH + _cachedTheadH + window.innerHeight) / 2;
         for (const entry of entries) {
             const el = entry.target;
+            const wantTop = entry.boundingClientRect.top < viewMid;
+            const cl = el.classList;
             if (entry.isIntersecting) {
-                if (el.dataset.revealed && !el.classList.contains('animate-in')) {
-                    el.style.transitionDelay = '0ms';
-                    el.classList.toggle('reveal-top', entry.boundingClientRect.top < viewMid);
-                    el.classList.add('animate-in');
+                if (el.dataset.revealed && !cl.contains('animate-in')) {
+                    // Push guard mirrors entry observer — the re-add branch runs
+                    // exactly when animate-in is missing, so no further coalescing.
+                    queue.push(() => {
+                        if (el.style.transitionDelay !== '0ms') el.style.transitionDelay = '0ms';
+                        setRevealTop(el, wantTop);
+                        if (!el.classList.contains('animate-in')) el.classList.add('animate-in');
+                    });
                 }
-            } else if (el.classList.contains('animate-in')) {
-                el.classList.remove('tab-enter-forward', 'tab-enter-back');
-                el.dataset.revealed = '1';
-                el.classList.toggle('reveal-top', entry.boundingClientRect.top < viewMid);
-                el.classList.remove('animate-in');
+            } else if (cl.contains('animate-in')) {
+                queue.push(() => {
+                    const cl = el.classList;
+                    if (cl.contains('tab-enter-forward') || cl.contains('tab-enter-back')) {
+                        cl.remove('tab-enter-forward', 'tab-enter-back');
+                    }
+                    if (el.dataset.revealed !== '1') el.dataset.revealed = '1';
+                    setRevealTop(el, wantTop);
+                    cl.remove('animate-in');
+                });
             }
         }
     }, { threshold: 0.05, rootMargin: `-${_scrollRevealTopExit}px 0px -60px 0px` });
@@ -400,10 +472,15 @@ function initEdgeScale() {
                 s = MIN_SCALE + (1 - MIN_SCALE) * (1 - (1 - t) * (1 - t));
             }
 
-            const nextScale = s.toFixed(4);
-            if (row.__edgeScale !== nextScale) {
-                row.__edgeScale = nextScale;
-                row.style.setProperty('--edge-scale', nextScale);
+            // Quantize to ~13 discrete levels across the 0.96→1.0 range.
+            // Visually seamless at 60fps but cuts per-frame style-property writes
+            // ~30× vs toFixed(4) — edge-scale writes were the bulk of library-scroll
+            // UpdateLayoutTree cost because Lenis's sub-pixel scroll made every
+            // in-zone row produce a fresh value every frame.
+            const quant = Math.round(s * 333) / 333;
+            if (row.__edgeScaleQ !== quant) {
+                row.__edgeScaleQ = quant;
+                row.style.setProperty('--edge-scale', quant.toFixed(4));
             }
         }
     }
@@ -509,22 +586,33 @@ function initCaptureGroupAnimations(scope) {
 
 // ─── Reset animations ─────────────────────────────────────────────────────────
 // Clears animate-in state before re-triggering (used by library view toggle).
-function _resetAnimations(scope) {
+// The hidden state is committed over two rAFs instead of a synchronous layout read,
+// which preserves the same replayed entrance animations without blocking the toggle.
+let _resetAnimGen = 0;
+function _resetAnimations(scope, onReady) {
     // Narrow to elements actually IN a visible/triggered state — untouched
     // hidden elements don't need class removal or a transition override,
-    // which shrinks the pending-style-invalidation batch the forced reflow
-    // must flush. On the grid toggle (477 panels) this moves ~50ms of layout
-    // work out of the INP window.
+    // which shrinks the pending-style-invalidation batch the staged reset must commit.
     const els = Array.from(scope.querySelectorAll(
         '.animate-in, .reveal-top, .tab-enter-forward, .tab-enter-back, [data-revealed]'
     ));
-    if (!els.length) return;
+    if (!els.length) {
+        if (typeof onReady === 'function') onReady();
+        return;
+    }
+    const gen = ++_resetAnimGen;
     els.forEach(el => {
         el.style.transition = 'none';
         el.classList.remove('animate-in', 'reveal-top', 'tab-enter-forward', 'tab-enter-back');
         el.style.transitionDelay = '';
         delete el.dataset.revealed;
     });
-    scope.offsetHeight; // forced reflow commits the hidden state before transitions restore
-    els.forEach(el => el.style.transition = '');
+    requestAnimationFrame(() => {
+        if (_resetAnimGen !== gen) return;
+        requestAnimationFrame(() => {
+            if (_resetAnimGen !== gen) return;
+            els.forEach(el => el.style.transition = '');
+            if (typeof onReady === 'function') onReady();
+        });
+    });
 }

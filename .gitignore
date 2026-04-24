@@ -18,7 +18,9 @@ data/*.db-wal
 data/*.db-journal
 data/jinja_cache/
 static/css/bundle.css
+static/css/bundle.css.br
 static/js/app.js
+static/js/app.js.br
 
 # IDE
 .vscode/
@@ -42,6 +44,10 @@ SANITIZATION_REPORT.md
 
 # Playwright CLI debug dumps
 .playwright-cli/
+
+# Chrome DevTools performance traces (local-only)
+trace-*.json.gz
+trace-*.json.json.gz
 
 # Local-only notes (keep on disk, not in repo)
 AGENTS.md

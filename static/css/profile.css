@@ -223,6 +223,7 @@
     box-shadow: var(--shadow-2);
     content-visibility: auto;
     contain-intrinsic-block-size: auto 72px;
+    contain: style;
 }
 
 .completed-game-card:hover {

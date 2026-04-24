@@ -11,14 +11,25 @@ function _revealRaf() {
     // Read rect at frame boundary — not during mousemove — so forced layout
     // only happens once per rAF cycle regardless of how many events coalesced.
     const rect = p.item.getBoundingClientRect();
-    const x = p.cx - rect.left;
-    const y = p.cy - rect.top;
-    p.item.style.setProperty('--reveal-x', x + 'px');
-    p.item.style.setProperty('--reveal-y', y + 'px');
-    const relX = (x / rect.width * 2 - 1) * 5;
-    const relY = (y / rect.height * 2 - 1) * 5;
-    p.item.style.setProperty('--rim-x', relX.toFixed(1) + 'px');
-    p.item.style.setProperty('--rim-y', relY.toFixed(1) + 'px');
+    // Integer px for the gradient center — the radial falloff spans 200+ pixels,
+    // so sub-pixel precision is visually invisible but costs a style invalidation
+    // on every sub-pixel mouse jitter.
+    const x = Math.round(p.cx - rect.left);
+    const y = Math.round(p.cy - rect.top);
+    // 0.5 px for the rim-light offset — offsets span [-5, +5] with a 28 px blur,
+    // so 0.5 px steps are indistinguishable from continuous motion.
+    const relX = Math.round((x / rect.width * 2 - 1) * 10) * 0.5;
+    const relY = Math.round((y / rect.height * 2 - 1) * 10) * 0.5;
+    // Push-site coalesce: skip the whole write batch when none of the four
+    // quantized values changed since the last frame. Common during stationary
+    // hover where mousemove still fires on sub-pixel jitter.
+    const item = p.item;
+    if (item._rvX === x && item._rvY === y && item._rmX === relX && item._rmY === relY) return;
+    item._rvX = x; item._rvY = y; item._rmX = relX; item._rmY = relY;
+    item.style.setProperty('--reveal-x', x + 'px');
+    item.style.setProperty('--reveal-y', y + 'px');
+    item.style.setProperty('--rim-x', relX + 'px');
+    item.style.setProperty('--rim-y', relY + 'px');
 }
 
 function initRevealHighlight(root) {

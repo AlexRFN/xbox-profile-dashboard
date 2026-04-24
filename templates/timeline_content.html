@@ -1,0 +1,233 @@
+{% from "macros.html" import stat_card, icon, timeline_event_card %}
+<div class="page-header-actions">
+    <hgroup class="anim-drop">
+        <h1>Timeline</h1>
+        <p>Your gaming journey</p>
+    </hgroup>
+</div>
+
+<!-- Summary Stat Cards -->
+{% set ts = timeline_stats %}
+<div class="stat-grid stat-grid-4 anim-stagger" id="timeline-stats">
+    {% call stat_card("{:,}".format(ts.achievement_count), "Achievements", "var(--xbox-green)", 0, "ts-achievement-count") %}
+    <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+    {% endcall %}
+    {% call stat_card("{:,}".format(ts.completion_count), "Completions", "var(--cyan)", 1, "ts-completion-count") %}
+    <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 21h8m-4-4v4m-5.2-4h10.4c1.68 0 2.52 0 3.16-.33a3 3 0 001.31-1.3C22 14.72 22 13.88 22 12.2V7.8c0-1.68 0-2.52-.33-3.16a3 3 0 00-1.3-1.31C19.72 3 18.88 3 17.2 3H6.8c-1.68 0-2.52 0-3.16.33a3 3 0 00-1.31 1.3C2 5.28 2 6.12 2 7.8v4.4c0 1.68 0 2.52.33 3.16a3 3 0 001.3 1.31C4.28 17 5.12 17 6.8 17z"/></svg>
+    {% endcall %}
+    {% call stat_card("{:,}".format(ts.first_played_count), "Games Started", "#3b82f6", 2, "ts-first-played-count") %}
+    <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 12h4m-2-2v4m6-3h.01m3 0h.01"/></svg>
+    {% endcall %}
+    {% call stat_card("{:,}".format(ts.total_gamerscore), "Gamerscore", "var(--gold)", 3, "ts-total-gamerscore") %}
+    <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+    {% endcall %}
+</div>
+
+<!-- Quick Nav Pills -->
+{% set _ar = active_range | default('all') %}
+<div class="quick-nav-pills anim-stagger">
+    <button class="quick-nav-pill anim-drop{% if _ar == 'all' %} active{% endif %}" style="--i: 0" data-range="all" onclick="setTimelineRange(this)">All Time</button>
+    <button class="quick-nav-pill anim-drop{% if _ar == 'this-month' %} active{% endif %}" style="--i: 1" data-range="this-month" onclick="setTimelineRange(this)">This Month</button>
+    <button class="quick-nav-pill anim-drop{% if _ar == 'last-month' %} active{% endif %}" style="--i: 2" data-range="last-month" onclick="setTimelineRange(this)">Last Month</button>
+    <button class="quick-nav-pill anim-drop{% if _ar == 'this-year' %} active{% endif %}" style="--i: 3" data-range="this-year" onclick="setTimelineRange(this)">This Year</button>
+</div>
+
+<!-- Timeline Filters -->
+<div class="filters-inline anim-stagger" id="timeline-filters">
+    <input type="hidden" name="date_from" id="timeline-date-from" value="{{ date_from }}">
+    <input type="hidden" name="date_to" id="timeline-date-to" value="{{ date_to }}">
+    <input type="search" name="game_search" placeholder="Search by game name..."
+           value="{{ game_search }}"
+           class="library-filter-input anim-drop" style="--i: 0"
+           hx-get="/api/timeline/events?page=1"
+           hx-trigger="keyup changed delay:300ms"
+           hx-target="#timeline"
+           hx-swap="innerHTML"
+           hx-include="#timeline-filters">
+    <select name="event_type"
+            class="library-filter-input anim-drop" style="--i: 1"
+            hx-get="/api/timeline/events?page=1"
+            hx-trigger="change"
+            hx-target="#timeline"
+            hx-swap="innerHTML"
+            hx-include="#timeline-filters">
+        <option value="">All Events</option>
+        <option value="achievement" {% if event_type == "achievement" %}selected{% endif %}>Achievements</option>
+        <option value="completion" {% if event_type == "completion" %}selected{% endif %}>Completions</option>
+        <option value="first_played" {% if event_type == "first_played" %}selected{% endif %}>Started</option>
+    </select>
+    <div class="calendar-picker" id="timeline-calendar">
+        {% if date_from %}
+        <div class="filter-pill anim-pop" style="--i: 2">
+            {% if date_from == date_to %}
+            <span>{{ date_from | shortdate }}</span>
+            {% else %}
+            <span>{{ date_from | shortdate }} &ndash; {{ date_to | shortdate }}</span>
+            {% endif %}
+            <button type="button" onclick="clearDateFilter()" title="Clear date filter">&times;</button>
+        </div>
+        {% endif %}
+        <button class="calendar-toggle-btn library-filter-input anim-drop" style="--i: 2" type="button" title="Pick date">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+            </svg>
+        </button>
+        <div class="calendar-dropdown" id="calendar-dropdown"></div>
+    </div>
+    <button class="outline secondary library-filter-input anim-drop" style="--i: 3" type="button" onclick="clearTimelineFilters()">Clear</button>
+</div>
+
+<!-- Event count -->
+<div class="timeline-result-count anim-drop" style="--i: 2" id="timeline-result-count">
+    {{ ts.total_events }} event{{ 's' if ts.total_events != 1 else '' }}
+</div>
+
+
+<div class="timeline-layout">
+
+{% if grouped_events | length == 0 %}
+<div class="timeline-main">
+    <div class="empty-state anim-blur-rise">
+        {% if event_type or game_search %}
+        <svg viewBox="0 0 64 64" width="56" height="56" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.3">
+            <circle cx="27" cy="27" r="18"/><path d="M49 49l-12-12"/><path d="M21 27h12M27 21v12" stroke-width="2"/>
+        </svg>
+        <p>No events match your filters.</p>
+        <small>Try clearing the search or date range.</small>
+        {% else %}
+        <svg viewBox="0 0 64 64" width="56" height="56" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.3">
+            <path d="M32 8v48M8 32h48" stroke-dasharray="4 3"/>
+            <circle cx="32" cy="16" r="4" fill="currentColor" opacity="0.5"/>
+            <circle cx="32" cy="32" r="4" fill="currentColor" opacity="0.4"/>
+            <circle cx="32" cy="48" r="4" fill="currentColor" opacity="0.3"/>
+        </svg>
+        <p>Your timeline is empty.</p>
+        <small>Sync your library and fetch game details to build your gaming history.</small>
+        {% endif %}
+    </div>
+</div>
+{% else %}
+<div class="timeline-main">
+    <div class="timeline" id="timeline">
+        <div class="timeline-line anim-blur-rise"></div>
+        {% for group in grouped_events %}
+        <div class="timeline-month">
+            <div class="timeline-month-header anim-drop">
+                <div class="timeline-month-header-top">
+                    <h3 class="timeline-month-label">{{ group.label }}</h3>
+                    <span class="timeline-month-count">{{ group.event_count }} event{{ 's' if group.event_count != 1 else '' }}</span>
+                </div>
+                <div class="timeline-month-summary">
+                    {% if group.achievement_count %}
+                    <span class="month-stat month-stat-ach">{{ group.achievement_count }} achievement{{ 's' if group.achievement_count != 1 else '' }}</span>
+                    {% endif %}
+                    {% if group.completion_count %}
+                    <span class="month-stat month-stat-comp">{{ group.completion_count }} completion{{ 's' if group.completion_count != 1 else '' }}</span>
+                    {% endif %}
+                    {% if group.first_played_count %}
+                    <span class="month-stat month-stat-start">{{ group.first_played_count }} started</span>
+                    {% endif %}
+                    {% if group.gamerscore %}
+                    <span class="month-stat month-stat-gs">{{ "{:,}".format(group.gamerscore) }}G earned</span>
+                    {% endif %}
+                </div>
+            </div>
+            {% for event in group.events %}
+            {{ timeline_event_card(event, loop.index0) }}
+            {% endfor %}
+        </div>
+        {% endfor %}
+    </div>
+
+    {% if has_more %}
+    <div id="timeline-load-more" class="timeline-load-more">
+        <button class="outline anim-blur-rise"
+                hx-get="/api/timeline/events?page={{ page + 1 }}"
+                hx-target="#timeline"
+                hx-swap="beforeend"
+                hx-include="#timeline-filters"
+                hx-indicator="#load-more-spinner">
+            Load More
+        </button>
+        <span id="load-more-spinner" class="htmx-indicator" aria-busy="true"></span>
+    </div>
+    {% endif %}
+</div>
+{% endif %}
+
+<!-- Sticky Sidebar -->
+<aside class="timeline-sidebar">
+
+    <!-- Heatmap Widget -->
+    {% if heatmap %}
+    <article class="sidebar-widget heatmap-card anim-blur-rise" style="--i: 0">
+        <div id="heatmap-content">
+            {% include "heatmap_content.html" %}
+        </div>
+    </article>
+    {% endif %}
+
+    <!-- Rarity Breakdown Widget -->
+    {% if ach_stats and ach_stats.rarity_breakdown %}
+    <article class="sidebar-widget sidebar-rarity anim-blur-rise" style="--i: 1">
+        <h4 class="sidebar-widget-title">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+            </svg>
+            Rarity Breakdown
+        </h4>
+        <div class="sidebar-rarity-bars">
+            {% for r in ach_stats.rarity_breakdown %}
+            <div class="sidebar-rarity-row">
+                <div class="sidebar-rarity-label">
+                    <span class="sidebar-rarity-dot rarity-dot-{{ r.category | lower }}"></span>
+                    <span>{{ r.category }}</span>
+                </div>
+                <div class="sidebar-rarity-track">
+                    <div class="sidebar-rarity-fill rarity-fill-{{ r.category | lower }}" style="width: {{ r.percentage }}%"></div>
+                </div>
+                <div class="sidebar-rarity-meta">
+                    <span class="sidebar-rarity-count">{{ r.count }}</span>
+                    <span class="sidebar-rarity-gs">{{ "{:,}".format(r.gamerscore or 0) }}G</span>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </article>
+    {% endif %}
+
+    <!-- Near Completions Widget -->
+    {% if near_completion %}
+    <article class="sidebar-widget sidebar-near anim-blur-rise" style="--i: 2">
+        <h4 class="sidebar-widget-title">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M8 21h8m-4-4v4m-5.2-4h10.4c1.68 0 2.52 0 3.16-.33a3 3 0 001.31-1.3C22 14.72 22 13.88 22 12.2V7.8c0-1.68 0-2.52-.33-3.16a3 3 0 00-1.3-1.31C19.72 3 18.88 3 17.2 3H6.8c-1.68 0-2.52 0-3.16.33a3 3 0 00-1.31 1.3C2 5.28 2 6.12 2 7.8v4.4c0 1.68 0 2.52.33 3.16a3 3 0 001.3 1.31C4.28 17 5.12 17 6.8 17z"/>
+            </svg>
+            Almost There
+        </h4>
+        <div class="sidebar-near-list">
+            {% for g in near_completion %}
+            <a href="/game/{{ g.title_id }}" class="sidebar-near-item"
+               hx-get="/game/{{ g.title_id }}" hx-target="#main" hx-swap="innerHTML show:window:top"
+               hx-push-url="true" hx-headers='{"X-SPA-Nav":"true"}'>
+                <img src="{{ g.display_image|thumb(48) }}" alt="" class="sidebar-near-img"
+                     {% if g.blurhash %}data-blurhash="{{ g.blurhash }}"{% endif %}
+                     loading="lazy" decoding="async" onerror="this.style.display='none'">
+                <div class="sidebar-near-info">
+                    <span class="sidebar-near-name">{{ g.name }}</span>
+                    <div class="sidebar-near-progress">
+                        <div class="progress-bar-track">
+                            <div class="progress-bar-fill progress-bar-high" style="width: {{ g.progress_percentage }}%"></div>
+                        </div>
+                        <span class="sidebar-near-pct">{{ g.progress_percentage }}%</span>
+                    </div>
+                </div>
+            </a>
+            {% endfor %}
+        </div>
+    </article>
+    {% endif %}
+
+</aside>
+
+</div>{# /.timeline-layout #}

@@ -1,0 +1,40 @@
+<!-- Lightbox (outside <main> to avoid transform breaking position:fixed) -->
+<div id="lightbox" class="lightbox" onclick="closeLightboxOutside(event)">
+    <div class="lightbox-toolbar">
+        <button class="lightbox-tool-btn reveal-item" onclick="lightboxFullscreen()" title="Fullscreen">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M8 3H5a2 2 0 00-2 2v3m18 0V5a2 2 0 00-2-2h-3m0 18h3a2 2 0 002-2v-3M3 16v3a2 2 0 002 2h3"/>
+            </svg>
+        </button>
+        <button class="lightbox-tool-btn reveal-item" id="lightbox-download" onclick="downloadLightboxCapture()" title="Download">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+        </button>
+        <button class="lightbox-close reveal-item" onclick="closeLightbox()" title="Close"><span>&times;</span></button>
+    </div>
+    <button class="lightbox-prev reveal-item" id="lightbox-prev" onclick="lightboxPrev()" title="Previous"><span>&#10094;</span></button>
+    <button class="lightbox-next reveal-item" id="lightbox-next" onclick="lightboxNext()" title="Next"><span>&#10095;</span></button>
+    <div class="lightbox-content" onclick="closeLightboxOutside(event)">
+        <img id="lightbox-img" src="" alt="Screenshot">
+        <div class="lightbox-loading" id="lightbox-loading">
+            <div class="lightbox-spinner"></div>
+        </div>
+    </div>
+    <div class="lightbox-blur-bar">
+        <div class="blur-layer"></div>
+        <div class="blur-layer"></div>
+        <div class="blur-layer"></div>
+        <div class="blur-layer"></div>
+        <div class="blur-gradient"></div>
+    </div>
+    <div class="lightbox-info" id="lightbox-info">
+        <span id="lightbox-game"></span>
+        <span class="lightbox-info-sep">|</span>
+        <span id="lightbox-date"></span>
+        <span class="lightbox-info-sep">|</span>
+        <span id="lightbox-res"></span>
+        <span class="lightbox-info-sep" id="lightbox-size-sep">|</span>
+        <span id="lightbox-size"></span>
+    </div>
+</div>

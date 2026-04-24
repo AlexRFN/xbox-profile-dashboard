@@ -31,16 +31,19 @@ main.tab-exit-forward { --exit-x: calc(var(--slide-distance) * -1); }
 main.tab-exit-back    { --exit-x: var(--slide-distance); }
 
 /* Override animate-in state — forces elements to exit position.
-   .scroll-ready needed for specificity parity with the animate-in rules. */
-.scroll-ready main[class*="tab-exit"] .anim-blur-rise.animate-in,
-.scroll-ready main[class*="tab-exit"] .anim-blur-scale.animate-in,
-.scroll-ready main[class*="tab-exit"] .anim-slide-blur.animate-in,
-.scroll-ready main[class*="tab-exit"] .anim-drop.animate-in,
-.scroll-ready main[class*="tab-exit"] .anim-pop.animate-in {
+   .scroll-ready needed for specificity parity with the animate-in rules.
+   Explicit class selectors (not [class*=...]) so Chrome's rule classifier can
+   index these rules by class name — attribute substring selectors force a
+   re-scan on every class change anywhere in the ancestor chain. */
+.scroll-ready main:is(.tab-exit-forward, .tab-exit-back) .anim-blur-rise.animate-in,
+.scroll-ready main:is(.tab-exit-forward, .tab-exit-back) .anim-blur-scale.animate-in,
+.scroll-ready main:is(.tab-exit-forward, .tab-exit-back) .anim-slide-blur.animate-in,
+.scroll-ready main:is(.tab-exit-forward, .tab-exit-back) .anim-drop.animate-in,
+.scroll-ready main:is(.tab-exit-forward, .tab-exit-back) .anim-pop.animate-in {
     transform: translateX(var(--exit-x)) scale(var(--scale-rise));
     opacity: 0;
 }
-.scroll-ready main[class*="tab-exit"] .anim-grow.animate-in {
+.scroll-ready main:is(.tab-exit-forward, .tab-exit-back) .anim-grow.animate-in {
     transform: translateX(var(--exit-x)) scale(var(--scale-rise));
     clip-path: none;
     opacity: 0;
@@ -50,6 +53,32 @@ main.tab-exit-back    { --exit-x: var(--slide-distance); }
 /* Small elements (buttons): tight, intense → pop out */
 /* Medium elements (cards, rows): balanced */
 /* Large elements (friend cards, articles): wide, soft wash */
+
+/* Pointer-tracked cursor/rim offsets written from reveal.js every rAF during
+   hover. inherits:false confines style invalidation to the owning reveal-item
+   instead of cascading to every descendant — mirrors the --edge-scale pattern.
+   Initial values match the pre-hover fallback (-200px = off-screen gradient),
+   so the opacity:0 default state still renders identically. */
+@property --reveal-x {
+    syntax: '<length>';
+    inherits: false;
+    initial-value: -200px;
+}
+@property --reveal-y {
+    syntax: '<length>';
+    inherits: false;
+    initial-value: -200px;
+}
+@property --rim-x {
+    syntax: '<length>';
+    inherits: false;
+    initial-value: 0px;
+}
+@property --rim-y {
+    syntax: '<length>';
+    inherits: false;
+    initial-value: 0px;
+}
 
 .reveal-item {
     position: relative;
@@ -168,7 +197,15 @@ a.outline.reveal-item            { --reveal-intensity: 0.95; --reveal-mid: 0.55;
 }
 /* Proximity scale: game rows shrink as they approach exit edges.
    --edge-scale is set by JS scroll handler. Folded into transform so the
-   entrance animation lands directly at the edge-scaled size. */
+   entrance animation lands directly at the edge-scaled size.
+   @property with inherits:false confines invalidation to the row itself
+   instead of cascading to every descendant cell (cuts ~80% of elements
+   affected by per-frame style recalc). */
+@property --edge-scale {
+    syntax: '<number>';
+    inherits: false;
+    initial-value: 1;
+}
 .scroll-ready .game-row.anim-blur-rise.animate-in {
     transform: scale(var(--edge-scale, 1));
 }

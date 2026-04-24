@@ -1,0 +1,113 @@
+{% from "macros.html" import icon %}
+    <!-- Aurora background — animated gradient blobs with hard-light blending -->
+    <div class="aurora" aria-hidden="true">
+        <svg class="aurora__grain"><filter id="aurora-grain"><feTurbulence type="fractalNoise" baseFrequency="0.65" numOctaves="3" stitchTiles="stitch"/></filter><rect width="100%" height="100%" filter="url(#aurora-grain)"/></svg>
+    </div>
+    <canvas id="aurora-canvas" data-fallback-src="{{ static_url('js/glass.js') }}" aria-hidden="true"></canvas>
+    <a href="#main" class="skip-link">Skip to content</a>
+    <nav class="xbox-nav" id="xbox-nav">
+        <div class="nav-inner">
+            <!-- Left zone: Logo -->
+            <a href="/" class="nav-brand" aria-label="Xbox Profile"
+               hx-get="/" hx-target="#main" hx-swap="innerHTML show:window:top"
+               hx-push-url="true" hx-headers='{"X-SPA-Nav":"true"}'>
+                <img src="/static/img/Xbox_one_logo.svg.png" alt="" class="nav-xbox-logo" width="28" height="28">
+            </a>
+
+            <!-- Center zone: Segmented pill nav -->
+            {% set nav_links = [
+                ('/', 'Profile'),
+                ('/library', 'Library'),
+                ('/achievements', 'Achievements'),
+                ('/timeline', 'Timeline'),
+                ('/captures', 'Captures'),
+                ('/friends', 'Friends'),
+            ] %}
+            {% set nav_active_path = '/library' if request.url.path.startswith('/game/') else request.url.path %}
+            <div class="nav-pill" data-active-path="{{ nav_active_path }}">
+                <div class="nav-pill-track" id="nav-pill-track">
+                    <div class="nav-pill-glow" aria-hidden="true">
+                        {% for href, label in nav_links %}<span>{{ label }}</span>{% endfor %}
+                    </div>
+                </div>
+                {% for href, label in nav_links %}
+                <a href="{{ href }}" class="nav-link {% if nav_active_path == href %}active{% endif %}" data-nav-idx="{{ loop.index0 }}"{% if nav_active_path == href %} aria-current="page"{% endif %}
+                   hx-get="{{ href }}" hx-target="#main" hx-swap="innerHTML show:window:top"
+                   hx-push-url="true" hx-headers='{"X-SPA-Nav":"true"}'>{{ label }}</a>
+                {% endfor %}
+            </div>
+
+            <!-- Right zone: Utilities + profile chip -->
+            <div class="nav-right">
+                <span class="rate-limit-badge" title="API calls used this hour">
+                    {{ icon('clock', 12) }}
+                    {{ rate_used | default(0) }}/150
+                </span>
+                <button class="nav-search-btn" onclick="openCmdPalette()" title="Search (Ctrl+K)" aria-label="Open command palette">
+                    {{ icon('search', 15) }}
+                    <kbd class="nav-search-hint">⌘K</kbd>
+                </button>
+                <a href="/" class="nav-profile-chip" title="{{ gamertag | default('Xbox User') }}"
+                   hx-get="/" hx-target="#main" hx-swap="innerHTML show:window:top"
+                   hx-push-url="true" hx-headers='{"X-SPA-Nav":"true"}'>
+                    {% if gamerpic %}
+                    <img src="{{ gamerpic }}" alt="" class="nav-avatar" width="26" height="26" fetchpriority="high" decoding="async">
+                    {% else %}
+                    <div class="nav-avatar nav-avatar-fallback">
+                        {{ icon('user', 16) }}
+                    </div>
+                    {% endif %}
+                    <span class="nav-gamertag">{{ gamertag | default('Xbox User') }}</span>
+                </a>
+            </div>
+        </div>
+        <!-- Edge light -->
+        <div class="nav-edge-light"></div>
+        <!-- Progressive blur below nav (lightbox-style multi-layer) -->
+        <div class="nav-blur-down"><span></span><span></span><span></span><span></span><span class="nav-blur-gradient"></span></div>
+    </nav>
+    <script>
+    // First-paint pill positioning — snap to active link before app.js loads.
+    // Sets CSS vars (no .pill-animate class) so the track appears instantly
+    // without a slide from 0. Glow counter-slide handled by CSS calc in layout.css.
+    //
+    // Cross-tab full-nav: if sessionStorage has 'pill-from-path' (written by
+    // startFullNav), park the track at the FROM link instead. initNavPillTrack
+    // then slides it to the real active link so the animation crosses tabs.
+    (function() {
+        var pill = document.querySelector('.nav-pill');
+        var track = document.getElementById('nav-pill-track');
+        if (!pill || !track) return;
+
+        var currentPath = pill.dataset.activePath || window.location.pathname;
+        var activeLink = pill.querySelector('.nav-link[href="' + currentPath + '"]');
+        if (!activeLink) return;
+
+        var parkLink = activeLink;
+        try {
+            var fromPath = sessionStorage.getItem('pill-from-path');
+            if (fromPath && fromPath !== currentPath) {
+                var fromLink = pill.querySelector('.nav-link[href="' + fromPath + '"]');
+                if (fromLink) parkLink = fromLink;
+            }
+        } catch (e) {}
+
+        // Read layout BEFORE writing classes to avoid a forced reflow.
+        // `.nav-link.active` only changes background — no layout impact — so
+        // the measured offsetLeft/offsetWidth are identical either way.
+        var parkX = parkLink.offsetLeft;
+        var parkW = parkLink.offsetWidth;
+
+        pill.querySelectorAll('.nav-link').forEach(function(link) {
+            var isActive = link === activeLink;
+            link.classList.toggle('active', isActive);
+            if (isActive) link.setAttribute('aria-current', 'page');
+            else link.removeAttribute('aria-current');
+        });
+
+        track.style.setProperty('--pill-x', parkX + 'px');
+        track.style.setProperty('--pill-w', parkW + 'px');
+    })();
+    </script>
+
+    <main class="container" id="main" hx-history-elt>

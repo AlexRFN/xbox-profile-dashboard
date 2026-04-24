@@ -162,10 +162,10 @@ function initBlurhash(scope) {
         }
 
         // Clear placeholder styles once the real image arrives.
+        // Single cssText write collapses 3 inline-style mutations into 1 style invalidation.
+        // Safe because blurhash.js is the only writer of inline styles on these images.
         img.addEventListener('load', () => {
-            img.style.backgroundImage  = '';
-            img.style.backgroundColor  = '';
-            img.style.backgroundSize   = '';
+            img.style.cssText = '';
         }, { once: true });
 
         // Phase 2: full blur — worker does the math when image is near viewport.
