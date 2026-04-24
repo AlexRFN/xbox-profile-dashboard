@@ -35,4 +35,7 @@ jobs:
       - name: Dependency vulnerability scan (pip-audit)
         run: |
           pip install pip-audit
-          pip-audit --skip-editable
+          # CVE-2026-3219 (pip 26.0.1, no fix published as of 2026-04-24) is
+          # against the runner-preinstalled pip itself, not a project dep.
+          # Drop the --ignore-vuln once pip publishes a patched release.
+          pip-audit --skip-editable --ignore-vuln CVE-2026-3219
