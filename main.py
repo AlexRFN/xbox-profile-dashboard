@@ -127,6 +127,8 @@ async def lifespan(app: FastAPI):
         _css_watcher.cancel()
     scheduler.shutdown(wait=False)
     await close_client()
+    from routers.img import close_http_client as close_img_client
+    await close_img_client()
     await db.close_connection()
     log.info("Shutting down")
 
@@ -230,7 +232,7 @@ async def service_worker():
 
 
 # Routers imported after app creation to avoid circular import (routers → helpers → app)
-from routers import captures, friends, game, library, pages, stats, sync_routes  # noqa: E402
+from routers import captures, friends, game, img, library, pages, stats, sync_routes  # noqa: E402
 
 app.include_router(pages.router)
 app.include_router(library.router)
@@ -239,3 +241,4 @@ app.include_router(sync_routes.router)
 app.include_router(stats.router)
 app.include_router(captures.router)
 app.include_router(friends.router)
+app.include_router(img.router)

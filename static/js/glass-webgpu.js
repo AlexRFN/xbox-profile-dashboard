@@ -1201,6 +1201,8 @@ fn surfaceHeight(t: f32) -> f32 {
                 rLeft = rect.left; rTop = rect.top; rWidth = rect.width; rHeight = rect.height;
                 // Normal flow + sticky panels cache doc-relative top so scroll-only frames
                 // can derive viewport top cheaply. Fixed panels cache viewport top directly.
+                // curScrollY here is live window.scrollY (read at top of render path) so
+                // it's frame-consistent with rect.top above — no cache pollution.
                 _rectLeft[i]   = rLeft;
                 _rectDocTop[i] = _cachedFixed[i] ? rTop : (rTop + curScrollY);
                 _rectWidth[i]  = rWidth;
@@ -1487,19 +1489,34 @@ fn surfaceHeight(t: f32) -> f32 {
 
         // Cooldown: skip heavy layout work for a few frames after DOM changes
         if (_layoutCooldown > 0) { _layoutCooldown--; render(doAurora); return; }
-        if (_layoutDirty) cacheElements();
 
-        // Sample scroll once per frame after lenis.raf so every hot-loop comparison
-        // reuses the same value instead of repeatedly reading window.scrollY.
-        var frameScrollY = window.scrollY;
+        // Idle-skip uses the scroll-event cache: a plain JS variable, no layout
+        // query. Approximate equality is fine — at worst one extra render frame.
+        var frameScrollY = _cachedScrollY;
 
         // Fast-path idle skip: if no animations are running, scroll/mouse are unchanged,
         // and this isn't an aurora frame, skip collectPanels + render entirely.
-        // collectPanels is the bulk of per-frame CPU work; skipping it on truly static
-        // frames reduces iGPU memory bus pressure beyond what the render-only skip achieves.
+        // Done BEFORE cacheElements() so idle frames don't pay the layout-flush cost
+        // of getComputedStyle on every cached panel — they aren't going to render anyway.
         if (!doAurora && !_anyAnimating &&
             frameScrollY === _lastRenderScrollY &&
             _mouseX === _lastRenderMouseX && _mouseY === _lastRenderMouseY) return;
+
+        // Render path — live window.scrollY for frame-consistent positioning.
+        // Both cache *writes* (rect.top + scrollY → _rectDocTop) AND draw-math
+        // (rTop = _rectDocTop - scrollY) MUST use the same scrollY: the actual
+        // value the next paint will commit. _cachedScrollY can lag during fast
+        // scroll because passive scroll events are batched ~1 frame behind the
+        // browser's running scroll position, which makes the canvas glass
+        // overlay visibly trail the CSS DOM during scroll. The reflow this
+        // forces is intrinsic on most pages anyway — the sticky nav panel
+        // re-reads its rect every render frame, which already flushes layout.
+        frameScrollY = window.scrollY;
+
+        // Rebuild the panel cache only on frames that will actually render. Aurora
+        // frames bypass the early-return above, so cache stays in sync within ≤16ms
+        // of any DOM mutation that flipped _layoutDirty.
+        if (_layoutDirty) cacheElements();
 
         collectPanels(frameScrollY);
 
@@ -1592,6 +1609,20 @@ fn surfaceHeight(t: f32) -> f32 {
     // ====================================================================
     window.addEventListener('resize', function () { _layoutDirty = true; });
 
+    // Cache scroll position from the scroll event so the idle-skip equality
+    // check in frame() doesn't have to query layout. Render-path math reads
+    // window.scrollY live for frame-consistency.
+    var _cachedScrollY = window.scrollY;
+    window.addEventListener('scroll', function () { _cachedScrollY = window.scrollY; }, { passive: true });
+    // htmx SPA nav often resets scroll via `show:window:top` or
+    // `lenis.scrollTo(0, { immediate: true })`, but the resulting scroll event
+    // can fire after the next rAF runs. Re-seed synchronously on afterSwap so
+    // the idle-skip check doesn't compare a stale cached value against the
+    // (newly reset) _lastRenderScrollY and false-positive into skipping a
+    // render that should have happened.
+    document.body.addEventListener('htmx:afterSwap', function () { _cachedScrollY = window.scrollY; });
+    window.addEventListener('pageshow', function () { _cachedScrollY = window.scrollY; });
+
     document.addEventListener('visibilitychange', function () {
         if (!document.hidden && glassPipeline) {
             resizeTargets();
@@ -1603,6 +1634,9 @@ fn surfaceHeight(t: f32) -> f32 {
             cacheElements();
             collectPanels();
             render(true); // force aurora on visibility resume for a fresh frame
+            // Re-seed scroll cache: scroll events don't fire while the tab is hidden,
+            // so the cache may be stale across a long visibility switch.
+            _cachedScrollY = window.scrollY;
         }
     });
 

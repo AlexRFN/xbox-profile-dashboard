@@ -184,11 +184,14 @@
 }
 
 .showcase-icon {
-    width: 64px;
+    /* Xbox achievement icons are 1920x1080 (16:9) — keep the source aspect ratio
+       so banner art isn't squished into a square. Width auto-derives from height. */
     height: 64px;
+    aspect-ratio: 16 / 9;
     border-radius: var(--radius-lg);
     flex-shrink: 0;
     box-shadow: var(--shadow-4);
+    object-fit: cover;
 }
 
 .showcase-info {
@@ -358,9 +361,11 @@
 }
 
 .ach-grid-icon {
-    width: 48px;
+    /* Source icons are 1920x1080 (16:9) — keep that aspect, derive width. */
     height: 48px;
+    aspect-ratio: 16 / 9;
     border-radius: var(--radius-sm);
+    object-fit: cover;
 }
 
 .ach-grid-icon-locked {
@@ -557,10 +562,12 @@
 }
 
 .ach-icon {
-    width: 48px;
+    /* Source icons are 1920x1080 (16:9) — keep that aspect, derive width. */
     height: 48px;
+    aspect-ratio: 16 / 9;
     border-radius: var(--radius-sm);
     flex-shrink: 0;
+    object-fit: cover;
 }
 
 .ach-info {

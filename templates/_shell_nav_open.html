@@ -51,7 +51,7 @@
                    hx-get="/" hx-target="#main" hx-swap="innerHTML show:window:top"
                    hx-push-url="true" hx-headers='{"X-SPA-Nav":"true"}'>
                     {% if gamerpic %}
-                    <img src="{{ gamerpic }}" alt="" class="nav-avatar" width="26" height="26" fetchpriority="high" decoding="async">
+                    <img src="{{ gamerpic|thumb(26) }}" alt="" class="nav-avatar" width="26" height="26" fetchpriority="high" decoding="async">
                     {% else %}
                     <div class="nav-avatar nav-avatar-fallback">
                         {{ icon('user', 16) }}

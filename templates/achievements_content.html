@@ -93,8 +93,8 @@
                 <div class="showcase-card-body">
                     {% set media = ach.media_assets | fromjson if ach.media_assets is string else ach.media_assets %}
                     {% if media and media | length > 0 %}
-                    <img src="{{ media[0].url if media[0] is mapping else '' }}" alt="" class="showcase-icon"
-                         loading="lazy" decoding="async" width="64" height="64">
+                    <img src="{{ (media[0].url if media[0] is mapping else '')|thumb(64) }}" alt="" class="showcase-icon"
+                         loading="lazy" decoding="async" width="114" height="64">
                     {% endif %}
                     <div class="showcase-info">
                         <div class="showcase-name">{{ ach.name }}</div>
@@ -135,8 +135,8 @@
            hx-push-url="true" hx-headers='{"X-SPA-Nav":"true"}'>
             <img src="{{ game.display_image|thumb(48) }}" alt="" class="near-completion-img" loading="lazy" decoding="async" width="32" height="32">
             <span class="near-completion-name">{{ game.name }}</span>
-            <div class="near-completion-progress">
-                {{ progress_bar(game.progress_percentage, wrap_class="progress-cell") }}
+            <div class="near-completion-progress progress-cell">
+                {{ progress_bar(game.progress_percentage) }}
             </div>
             <span class="near-completion-remaining">
                 {{ game.total_achievements - game.current_achievements }} left

@@ -1,6 +1,26 @@
 // === utils.js ===
 // Shared utilities: htmx guards, perf guards, CSS duration helper, common helpers.
 
+// --- Browser-extension noise suppression ---------------------------------
+// Some Chrome extensions (Torrent Scanner, MetaMask, Honey, password managers,
+// etc.) attach `chrome.runtime.onMessage` listeners to page DOM, return `true`
+// to keep the channel open for an async response, and then never call
+// sendResponse — typically because the extension's popup or background context
+// closes before the listener finishes. Chrome surfaces the abandoned promise as
+// an `unhandledrejection` *attributed to the page* (e.g. `timeline:1`), even
+// though the page never called the chrome.runtime API. We can't fix the
+// extension, but we can stop it from polluting our own console output.
+//
+// Filter is targeted: matches the exact message string and nothing else, so
+// real errors from the page still surface normally.
+window.addEventListener('unhandledrejection', (e) => {
+    const r = e && e.reason;
+    const msg = r && (r.message || (typeof r === 'string' ? r : ''));
+    if (msg && msg.indexOf('A listener indicated an asynchronous response by returning true') !== -1) {
+        e.preventDefault();
+    }
+});
+
 // Add SPA header to all htmx requests targeting #main (including history restores)
 document.body.addEventListener('htmx:configRequest', (evt) => {
     if (evt.detail.target && evt.detail.target.id === 'main') {

@@ -3,6 +3,7 @@ from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
+from urllib.parse import quote
 
 import brotli
 import orjson
@@ -184,10 +185,22 @@ def from_json(value):
 
 
 def thumb(url, size=240):
-    """Append resize params to Microsoft Store image URLs for smaller downloads."""
-    if url and "store-images.s-microsoft.com" in url and "?" not in url:
+    """Resize Xbox-origin image URLs to the requested width.
+
+    - `store-images.s-microsoft.com` supports native resize → append `?w=&h=`.
+    - `images-eds-ssl.xboxlive.com` and `*.media.xboxlive.com` have no
+      native resize and serve raw 1+ MB PNGs → route through `/img` which
+      re-encodes to WebP at the requested width and caches to disk. We pass
+      `size * 2` for retina-quality source on standard 48-px icons.
+    - Anything else passes through unchanged.
+    """
+    if not url:
+        return ""
+    if "store-images.s-microsoft.com" in url and "?" not in url:
         return f"{url}?w={size}&h={size}"
-    return url or ""
+    if "images-eds-ssl.xboxlive.com" in url or ".media.xboxlive.com" in url:
+        return f"/img?u={quote(url, safe='')}&w={size * 2}"
+    return url
 
 
 def register_filters() -> None:

@@ -9,7 +9,7 @@
     <div class="hero-blur-bottom prog-blur prog-blur-down"><span></span><span></span><span></span><span></span></div>
     <div class="hero-content">
         <div class="hero-image-wrap" style="background: url('{{ game.display_image|thumb(480) }}') center/cover">
-            <img src="{{ game.display_image }}" alt="{{ game.name }}" class="hero-image"
+            <img src="{{ game.display_image|thumb(200) }}" alt="{{ game.name }}" class="hero-image"
                  {% if game.blurhash %}data-blurhash="{{ game.blurhash }}"{% endif %}
                  decoding="async" fetchpriority="high">
         </div>

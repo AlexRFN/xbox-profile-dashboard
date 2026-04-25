@@ -379,6 +379,8 @@ html:not(.glass-refract) #library-table-wrap {
 .game-row {
     cursor: pointer;
     transition: background var(--dur-micro) var(--ease-effect);
+    content-visibility: auto;
+    contain-intrinsic-size: auto 56px;
 }
 
 .recent-row {

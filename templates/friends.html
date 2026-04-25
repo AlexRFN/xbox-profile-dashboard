@@ -37,13 +37,13 @@
     {% for friend in online_friends %}
     <article class="friend-card friend-card-online reveal-item reveal-border anim-slide-blur" style="--i: {{ loop.index0 }}">
         <div class="friend-card-art">
-            <img src="{{ friend.displayPicRaw }}" alt="" class="friend-art-bg"
+            <img src="{{ friend.displayPicRaw|thumb(320) }}" alt="" class="friend-art-bg"
                  loading="lazy" decoding="async">
             <div class="friend-art-overlay"></div>
         </div>
         <div class="friend-card-content">
             <div class="friend-avatar-wrap">
-                <img src="{{ friend.displayPicRaw }}" alt="" class="friend-avatar"
+                <img src="{{ friend.displayPicRaw|thumb(48) }}" alt="" class="friend-avatar"
                      loading="lazy" decoding="async">
                 <span class="friend-status-ring online"></span>
             </div>
@@ -82,7 +82,7 @@
     {% for friend in offline_friends %}
     <article class="friend-card reveal-item reveal-border anim-slide-blur status-offline" style="--i: {{ loop.index0 }}">
         <div class="friend-avatar-wrap">
-            <img src="{{ friend.displayPicRaw }}" alt="" class="friend-avatar"
+            <img src="{{ friend.displayPicRaw|thumb(48) }}" alt="" class="friend-avatar"
                  loading="lazy" decoding="async">
             <span class="friend-status-ring offline"></span>
         </div>

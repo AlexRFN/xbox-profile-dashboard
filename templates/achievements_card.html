@@ -13,8 +13,8 @@
         {% set media = ach.media_assets | fromjson if ach.media_assets is string else ach.media_assets %}
         <div class="ach-grid-icon-wrap">
             {% if media and media | length > 0 %}
-            <img src="{{ media[0].url if media[0] is mapping else '' }}" alt="" class="ach-grid-icon{% if not is_unlocked %} ach-grid-icon-locked{% endif %}"
-                 loading="lazy" decoding="async" width="48" height="48">
+            <img src="{{ (media[0].url if media[0] is mapping else '')|thumb(48) }}" alt="" class="ach-grid-icon{% if not is_unlocked %} ach-grid-icon-locked{% endif %}"
+                 loading="lazy" decoding="async" width="85" height="48">
             {% else %}
             <div class="ach-grid-icon ach-grid-icon-placeholder">
                 <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.4">

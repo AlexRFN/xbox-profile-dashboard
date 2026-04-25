@@ -197,7 +197,7 @@
                            hx-get="/game/{{ game.title_id }}" hx-target="#main" hx-swap="innerHTML show:window:top"
                            hx-push-url="true" hx-headers='{"X-SPA-Nav":"true"}'>{{ game.name }}</a>
                     </td>
-                    <td>{{ progress_bar(game.progress_percentage) }}</td>
+                    <td class="progress-cell">{{ progress_bar(game.progress_percentage) }}</td>
                     <td class="gs-cell">{{ gamerscore_display(game.current_gamerscore, game.total_gamerscore) }}</td>
                     <td class="date-cell">{{ game.last_played | shortdate }}</td>
                 </tr>

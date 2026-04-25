@@ -39,16 +39,17 @@
 {% endif %}
 {% endmacro %}
 
-{# Progress bar — reusable across library table, profile, game detail #}
-{% macro progress_bar(percentage, wrap_class="progress-cell") %}
+{# Progress bar — reusable across library table, profile, game detail.
+   The caller is responsible for the flex container; emit the bar + percentage
+   directly so we don't add a wrapper div per row (50 rows × 1 div = 50 fewer
+   DOM nodes on the library page, and equivalent savings on every other call site). #}
+{% macro progress_bar(percentage) %}
 {% set pct = [percentage, 100] | min %}
 {% set pct_class = 'complete' if pct == 100 else 'high' if pct > 50 else 'low' if pct > 0 else 'zero' %}
-<div class="{{ wrap_class }}">
-    <div class="progress-bar-track">
-        <div class="progress-bar-fill progress-bar-{{ pct_class }}" style="width: {{ pct }}%"></div>
-    </div>
-    <span class="pct-{{ pct_class }}">{{ percentage }}%</span>
+<div class="progress-bar-track">
+    <div class="progress-bar-fill progress-bar-{{ pct_class }}" style="width: {{ pct }}%"></div>
 </div>
+<span class="pct-{{ pct_class }}">{{ percentage }}%</span>
 {% endmacro %}
 
 {# Timeline event card — used by timeline.html and timeline_events.html #}
@@ -85,7 +86,7 @@
                hx-push-url="true" hx-headers='{"X-SPA-Nav":"true"}'>
                 {% set media = b.achievement_media | fromjson if b.achievement_media is string else b.achievement_media %}
                 {% if media and media | length > 0 %}
-                <img src="{{ media[0].url if media[0] is mapping else '' }}" alt="" class="timeline-batch-icon"
+                <img src="{{ (media[0].url if media[0] is mapping else '')|thumb(28) }}" alt="" class="timeline-batch-icon"
                      loading="lazy" decoding="async" width="28" height="28">
                 {% else %}
                 <div class="timeline-batch-icon-placeholder"></div>
@@ -156,7 +157,7 @@
     <div class="timeline-event-card reveal-item anim-slide-blur" style="--i: {{ i }}">
         {% set media = event.achievement_media | fromjson if event.achievement_media is string else event.achievement_media %}
         {% if media and media | length > 0 %}
-        <img src="{{ media[0].url if media[0] is mapping else '' }}" alt="" class="timeline-event-img"
+        <img src="{{ (media[0].url if media[0] is mapping else '')|thumb(48) }}" alt="" class="timeline-event-img"
              loading="lazy" decoding="async" width="48" height="48">
         {% else %}
         <img src="{{ event.game_image|thumb(48) }}" alt="{{ event.game_name }}" class="timeline-event-img"
@@ -199,7 +200,7 @@
      data-size="{{ s.file_size or 0 }}"
      onclick="openLightboxFromCard(this)">
     <div class="capture-thumb">
-        <img src="{{ s.thumbnail_large_uri or s.thumbnail_small_uri or s.download_uri }}"
+        <img src="{{ (s.thumbnail_large_uri or s.thumbnail_small_uri or s.download_uri)|thumb(754) }}"
              alt="{{ s.title_name }}" width="754" height="424" {% if i < eager_count %}fetchpriority="high" decoding="async"{% else %}loading="lazy" decoding="async"{% endif %}>
         <div class="capture-select-check">
             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
@@ -253,8 +254,8 @@
    hx-push-url="true" hx-headers='{"X-SPA-Nav":"true"}'>
     {% set media = ach.media_assets | fromjson if ach.media_assets is string else ach.media_assets %}
     {% if media and media | length > 0 %}
-    <img src="{{ media[0].url if media[0] is mapping else '' }}" alt="" class="ach-icon"
-         loading="lazy" decoding="async" width="48" height="48">
+    <img src="{{ (media[0].url if media[0] is mapping else '')|thumb(48) }}" alt="" class="ach-icon"
+         loading="lazy" decoding="async" width="85" height="48">
     {% endif %}
     <div class="ach-info">
         <div class="ach-name">{{ ach.name }}</div>

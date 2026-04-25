@@ -62,9 +62,14 @@ let _spaNavInFlight = false;
 function _positionPill(el, animate) {
     const track = document.getElementById('nav-pill-track');
     if (!track || !el) return;
+    // Read geometry first, then write — toggling pill-animate invalidates layout,
+    // and reading offsetLeft/offsetWidth after the toggle forces a synchronous
+    // reflow. Reads first means a single layout pass for both values.
+    const x = el.offsetLeft;
+    const w = el.offsetWidth;
     track.classList.toggle('pill-animate', !!animate);
-    track.style.setProperty('--pill-x', el.offsetLeft + 'px');
-    track.style.setProperty('--pill-w', el.offsetWidth + 'px');
+    track.style.setProperty('--pill-x', x + 'px');
+    track.style.setProperty('--pill-w', w + 'px');
 }
 
 function _setNavClasses(path) {

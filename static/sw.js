@@ -1,7 +1,7 @@
 // Service Worker — caches app shell for instant repeat loads
 // Version is updated by the server via query param on registration
 
-const CACHE_NAME = 'xbox-v2';
+const CACHE_NAME = 'xbox-v4';
 
 // App shell — cached on install
 const APP_SHELL = [
@@ -44,6 +44,13 @@ self.addEventListener('fetch', (e) => {
   if (url.pathname.startsWith('/api/')) return;
   if (url.origin !== self.location.origin) return;
 
+  // /img is the image proxy. Responses are already served with
+  // Cache-Control: immutable + 1-year max-age, so the browser HTTP cache
+  // covers it. Intercepting in the SW adds nothing — and the proxy may
+  // return a placeholder on upstream errors that we don't want pinned in
+  // CacheStorage. Let it pass straight through.
+  if (url.pathname === '/img') return;
+
   // htmx SPA navigations must always hit the network — never serve stale cache.
   // htmx sends Accept: */* (not text/html), so the HTML block below won't match.
   if (e.request.headers.get('HX-Request') === 'true') return;
@@ -82,7 +89,11 @@ self.addEventListener('fetch', (e) => {
           }
           return resp;
         })
-        .catch(() => caches.match(e.request))
+        // If fetch fails AND there's no cached fallback, re-throw so the
+        // browser surfaces the real error (AbortError on nav teardown is
+        // silenced; genuine network errors show their actual type). Never
+        // synthesize a 504 — it produces a misleading "offline" console line.
+        .catch(err => caches.match(e.request).then(c => { if (c) return c; throw err; }))
     );
     return;
   }
@@ -96,7 +107,14 @@ self.addEventListener('fetch', (e) => {
           caches.open(CACHE_NAME).then(c => c.put(e.request, clone));
         }
         return resp;
-      }).catch(() => cached);
+      }).catch(err => {
+        // Prefer stale cache over a network error. If neither, re-throw —
+        // respondWith() resolves the rejection as a normal network failure
+        // (AbortError from htmx teardown is silenced; real failures show
+        // their actual error type instead of a synthetic 504/offline).
+        if (cached) return cached;
+        throw err;
+      });
       return cached || fetched;
     })
   );

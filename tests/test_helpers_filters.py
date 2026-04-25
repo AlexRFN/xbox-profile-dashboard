@@ -136,6 +136,18 @@ class TestThumb:
         url = "https://store-images.s-microsoft.com/image/abc?existing=1"
         assert thumb(url) == url
 
+    def test_xboxlive_image_routes_through_proxy(self):
+        url = "https://images-eds-ssl.xboxlive.com/image?url=ABC"
+        result = thumb(url, 48)
+        assert result.startswith("/img?u=")
+        assert "w=96" in result  # 2x retina
+
+    def test_screenshot_thumb_routes_through_proxy(self):
+        url = "https://screenshotscontent-t5001.media.xboxlive.com/xuid-1/abc_Thumbnail.PNG"
+        result = thumb(url, 754)
+        assert result.startswith("/img?u=")
+        assert "w=1508" in result
+
 
 # ---------------------------------------------------------------------------
 # normalize_image_url

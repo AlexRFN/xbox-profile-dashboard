@@ -17,6 +17,7 @@ data/*.db-shm
 data/*.db-wal
 data/*.db-journal
 data/jinja_cache/
+data/img_cache/
 static/css/bundle.css
 static/css/bundle.css.br
 static/js/app.js
