@@ -1263,7 +1263,7 @@
     var _lastRenderMouseX = -9999, _lastRenderMouseY = -9999;
     var _lastRenderScrollY = 0;
 
-    function render(doAurora) {
+    function render(doAurora, frameScrollY) {
         // Pass 1+2: Aurora + Blur — only every 2nd frame, controlled by frame()
         if (doAurora) {
             gl.bindFramebuffer(gl.FRAMEBUFFER, fboAurora);
@@ -1390,16 +1390,17 @@
         var doAurora = (_auroraFrame++ & 1) === 0;
 
         // Cooldown: skip heavy layout work for a few frames after DOM changes
-        if (_layoutCooldown > 0) { _layoutCooldown--; render(doAurora); return; }
+        if (_layoutCooldown > 0) { _layoutCooldown--; render(doAurora, _cachedScrollY); return; }
 
-        // Read live scroll once. Using _cachedScrollY here would let the idle-skip
-        // fire on non-aurora frames during smooth scroll: Lenis's scrollTo dispatches
-        // DOM scroll events asynchronously, so _cachedScrollY can lag a frame behind
-        // window.scrollY. When that lag matches _lastRenderScrollY the canvas freezes
-        // while the DOM keeps moving — visible as 30fps glass under 60fps scroll.
-        // window.scrollY is free here: layout is clean on idle frames, and lenis.raf
-        // above has already flushed it on active frames.
-        var frameScrollY = window.scrollY;
+        // Read scroll from Lenis's tracked value. Reading window.scrollY here forces
+        // a synchronous layout because lenis.raf above has dirtied style state with
+        // smooth-scroll writes. lenis.scroll is the animated scroll target Lenis just
+        // settled to in its rAF tick — a plain number property, no layout query, and
+        // bit-for-bit what the next paint will show. Fallback to window.scrollY only
+        // when Lenis isn't loaded yet.
+        var lenis = window.lenis;
+        var frameScrollY = lenis ? lenis.scroll : window.scrollY;
+        _cachedScrollY = frameScrollY;
 
         // Fast-path idle skip: if no animations are running, scroll/mouse are unchanged,
         // and this isn't an aurora frame, skip collectPanels + render entirely.
@@ -1437,7 +1438,7 @@
             if (canSkip) return;
         }
 
-        render(doAurora);
+        render(doAurora, frameScrollY);
         _lastRenderScrollY = frameScrollY;
         _lastRenderMouseX = _mouseX;
         _lastRenderMouseY = _mouseY;
@@ -1452,9 +1453,10 @@
         resizeFBOs();
         updatePhysics(0);
         cacheElements();
-        collectPanels();
+        var initScY = window.scrollY;
+        collectPanels(initScY);
         _auroraFrame = 0; // ensure first render includes aurora pass
-        render(true);
+        render(true, initScY);
 
         // First frame rendered — fade in canvas over the CSS aurora
         canvas.style.opacity = '1';
@@ -1469,15 +1471,12 @@
     // ====================================================================
     window.addEventListener('resize', function () { _layoutDirty = true; });
 
-    // Cache scroll position from the scroll event so the idle-skip equality
-    // check in frame() doesn't have to query layout. Render-path math reads
-    // window.scrollY live for frame-consistency.
+    // _cachedScrollY's only consumer today is the brief _layoutCooldown path. frame()
+    // updates it once per tick from the same window.scrollY read it does for itself,
+    // so the previous external listeners (scroll/htmx:afterSwap/pageshow) that used
+    // to keep this in sync are gone — they were reading window.scrollY during
+    // layout-dirty windows and forcing reflows.
     var _cachedScrollY = window.scrollY;
-    window.addEventListener('scroll', function () { _cachedScrollY = window.scrollY; }, { passive: true });
-    // htmx SPA nav can reset scroll without firing a scroll event before the
-    // next rAF — re-seed synchronously so idle-skip doesn't false-positive.
-    document.body.addEventListener('htmx:afterSwap', function () { _cachedScrollY = window.scrollY; });
-    window.addEventListener('pageshow', function () { _cachedScrollY = window.scrollY; });
 
     document.addEventListener('visibilitychange', function () {
         if (!document.hidden) {
@@ -1485,11 +1484,14 @@
             _layoutDirty = true;
             _prevFrameTime = 0;
             updatePhysics(_simTime);  // resume from where simulation left off — no jump
+            // One-time scroll read on visibility resume; pass through everywhere so
+            // render() gets a defined scrollY rather than implicitly relying on
+            // frame()'s closure.
+            var scY = window.scrollY;
             cacheElements();
-            collectPanels();
-            render(true); // force aurora on visibility resume for a fresh frame
-            // Re-seed scroll cache: scroll events don't fire while the tab is hidden.
-            _cachedScrollY = window.scrollY;
+            collectPanels(scY);
+            render(true, scY); // force aurora on visibility resume for a fresh frame
+            _cachedScrollY = scY;
         }
     });
 

@@ -25,12 +25,15 @@ function initHeatmapTooltip() {
         const count = parseInt(cell.dataset.count, 10) || 0;
         const d = new Date(cell.dataset.date + 'T00:00:00');
         const formatted = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+        // Batch writes-then-reads to take exactly one layout flush per hover.
+        // Old order interleaved (textContent → rects → classList → offsets) and
+        // forced two synchronous layouts per mouseover.
         tooltip.textContent = count === 0
             ? `No achievements on ${formatted}`
             : `${count} achievement${count !== 1 ? 's' : ''} on ${formatted}`;
+        tooltip.classList.add('visible');
         const cardRect = card.getBoundingClientRect();
         const cellRect = cell.getBoundingClientRect();
-        tooltip.classList.add('visible');
         const tipW = tooltip.offsetWidth;
         const tipH = tooltip.offsetHeight;
         let left = cellRect.left - cardRect.left + cellRect.width / 2 - tipW / 2;
