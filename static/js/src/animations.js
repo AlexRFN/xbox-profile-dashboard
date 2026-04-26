@@ -616,3 +616,33 @@ function _resetAnimations(scope, onReady) {
         });
     });
 }
+
+// ─── Off-screen animation pause ──────────────────────────────────────────────
+// Toggles `paused-offscreen` class on elements with infinite decorative animations
+// (liquid-sweep, bar-shine, online-pulse, legendary-glow, legendary-badge-pulse) so
+// the browser pauses their compositor work when they leave the viewport. CSS rule
+// in animations.css uses animation-play-state: paused on this class + its pseudos.
+// A single module-level observer is reused across SPA navigations; new elements are
+// observed on each init call (WeakSet guards against double-observe).
+const _PAUSE_OFFSCREEN_SEL = '.stat-card, .progress-bar-complete, .friend-status-ring.online, .ach-rarity-glow-legendary, .rarity-legendary';
+let _pauseOffscreenObs = null;
+const _pauseOffscreenSeen = (typeof WeakSet !== 'undefined') ? new WeakSet() : null;
+
+function initOffscreenAnimationPause(scope) {
+    if (typeof IntersectionObserver === 'undefined') return;
+    if (!_pauseOffscreenObs) {
+        _pauseOffscreenObs = new IntersectionObserver((entries) => {
+            for (const entry of entries) {
+                entry.target.classList.toggle('paused-offscreen', !entry.isIntersecting);
+            }
+        }, { rootMargin: '100px 0px' });
+    }
+    const root = scope || document;
+    const els = root.querySelectorAll(_PAUSE_OFFSCREEN_SEL);
+    for (let i = 0; i < els.length; i++) {
+        const el = els[i];
+        if (_pauseOffscreenSeen && _pauseOffscreenSeen.has(el)) continue;
+        if (_pauseOffscreenSeen) _pauseOffscreenSeen.add(el);
+        _pauseOffscreenObs.observe(el);
+    }
+}

@@ -438,6 +438,8 @@ document.body.addEventListener('htmx:afterSwap', (evt) => {
     }
     // Re-init reveal highlight, scroll animations, and blurhash on swapped content
     initRevealHighlight(evt.detail.target);
+    // Re-observe new long-list rows for off-screen animation pause
+    initOffscreenAnimationPause(evt.detail.target);
     if (evt.detail.target.id === 'library-grid-wrap') {
         const _gridTarget = evt.detail.target;
         if (_lastTabEnterClass && !_viewToggleSwap) {

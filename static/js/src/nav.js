@@ -360,6 +360,8 @@ function _reinitMain(main) {
         initBlurhash(main);
         // Ambient glow: O(1) per card via blurhash DC component (no canvas, no image decode).
         initAmbientGlow(main);
+        // Pause infinite decorative animations when off-screen (idempotent, scoped).
+        initOffscreenAnimationPause(main);
 
         // Delay truly CPU-heavy idle tasks until AFTER the entrance cascade completes.
         // Worst case: ≤8 above-fold leaders × 80ms/step = ~640ms. Without this guard,
@@ -511,11 +513,27 @@ function initScrollNav() {
     // synchronously at init time forces layout if styles are dirty.
     requestAnimationFrame(() => check(window.scrollY));
 
+    // Scroll-idle gate for always-visible nav animations (nav-liquid-sweep, nav-glow-pulse).
+    // Adds is-scrolling on <html> while scrolling; removes after 200ms idle. CSS pauses
+    // the persistent loops while present — the user's eye is on scrolling content, not the nav.
+    const html = document.documentElement;
+    let scrollIdleTimer = 0;
+    const SCROLL_IDLE_MS = 200;
+    function bumpScrollIdle() {
+        if (!html.classList.contains('is-scrolling')) html.classList.add('is-scrolling');
+        if (scrollIdleTimer) clearTimeout(scrollIdleTimer);
+        scrollIdleTimer = setTimeout(() => {
+            html.classList.remove('is-scrolling');
+            scrollIdleTimer = 0;
+        }, SCROLL_IDLE_MS);
+    }
+
     if (window.lenis) {
-        window.lenis.on('scroll', ({ scroll }) => check(scroll));
+        window.lenis.on('scroll', ({ scroll }) => { check(scroll); bumpScrollIdle(); });
     } else {
         let scrollRaf = false;
         window.addEventListener('scroll', () => {
+            bumpScrollIdle();
             if (!scrollRaf) {
                 scrollRaf = true;
                 requestAnimationFrame(() => { scrollRaf = false; check(window.scrollY); });

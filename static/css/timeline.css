@@ -164,6 +164,8 @@
     margin-bottom: 0.5rem;
     text-decoration: none;
     color: inherit;
+    content-visibility: auto;
+    contain-intrinsic-size: auto 110px;
 }
 
 .timeline-event:hover {

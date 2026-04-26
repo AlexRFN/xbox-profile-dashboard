@@ -321,6 +321,26 @@ a.outline.reveal-item            { --reveal-intensity: 0.95; --reveal-mid: 0.55;
     }
 }
 
+/* ========== Off-screen animation pause ========== */
+/* Class toggled by IntersectionObserver in animations.js. Pauses infinite decorative
+   animations (liquid-sweep, bar-shine, online-pulse, legendary-glow, legendary-badge-pulse)
+   when their host element is outside the viewport. Visually identical when on-screen;
+   removes idle paint cost off-screen. */
+.paused-offscreen,
+.paused-offscreen::before,
+.paused-offscreen::after {
+    animation-play-state: paused !important;
+}
+
+/* Scroll-idle gate for always-visible nav animations. is-scrolling is toggled by
+   initScrollNav() in nav.js (added on scroll, removed 200ms after last scroll event).
+   The animations remain frozen at their current phase while scrolling — eye is on
+   scrolling content, not the nav. */
+.is-scrolling .xbox-nav::before,
+.is-scrolling .nav-pill-glow span {
+    animation-play-state: paused;
+}
+
 /* ========== Loading States ========== */
 @keyframes skeleton-pulse {
     0%   { background-position: 200% 0; }

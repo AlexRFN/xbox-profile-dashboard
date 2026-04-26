@@ -20,6 +20,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initCmdPalette();
     initHotkeys();
     initBlurhash();
+    initOffscreenAnimationPause();
     fireCompletionConfetti();
     // Restore saved library view
     restoreLibraryView();

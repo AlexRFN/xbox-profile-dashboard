@@ -188,6 +188,7 @@
         'uniform vec2 uViewport;\n' +
         'uniform vec2 uMouse;\n' +       // screen-space mouse position (px)
         'uniform float uTime;\n' +
+        'uniform float uScrollY;\n' +    // doc-space scroll offset; reserved for Phase 1 doc-space y flip
         'out vec4 fragColor;\n' +
         // Rounded box SDF
         'float rboxSDF(vec2 p,vec2 b,float r){\n' +
@@ -407,7 +408,8 @@
         blurTex:   gl.getUniformLocation(glassProg, 'uBlurTex'),
         viewport:  gl.getUniformLocation(glassProg, 'uViewport'),
         mouse:     gl.getUniformLocation(glassProg, 'uMouse'),
-        time:      gl.getUniformLocation(glassProg, 'uTime')
+        time:      gl.getUniformLocation(glassProg, 'uTime'),
+        scrollY:   gl.getUniformLocation(glassProg, 'uScrollY')
     };
 
     // ====================================================================
@@ -756,8 +758,15 @@
     var _cachedReveal = new Uint8Array(MAX_CACHED);  // 1 = interactive (gets pointer reveal glow)
     var _revealAnim = new Float32Array(MAX_CACHED);   // smooth 0→1 reveal intensity per panel
     var _cachedZIndex = new Float32Array(MAX_CACHED); // z-index for draw order (painter's algorithm)
-    var _cachedSticky = new Uint8Array(MAX_CACHED);   // 1 = sticky, re-read rect on scroll
+    var _cachedSticky = new Uint8Array(MAX_CACHED);   // 1 = sticky, viewport top derived arithmetically each frame
     var _cachedFixed  = new Uint8Array(MAX_CACHED);   // 1 = fixed, viewport rect is scroll-invariant
+    // Sticky-specific cache: doc-relative geometry of the natural (un-stuck) position
+    // and the bottom of the containing block. Allows arithmetic per-frame viewport-top
+    // computation: clamp(stickyOffset, naturalDocTop - scrollY, parentDocBottom - h - scrollY).
+    // Avoids one getBoundingClientRect per sticky panel per frame.
+    var _stickyTopOffset      = new Float32Array(MAX_CACHED);
+    var _stickyNaturalDocTop  = new Float32Array(MAX_CACHED);
+    var _stickyParentDocBottom = new Float32Array(MAX_CACHED);
     var _mainEl = null;
     var _layoutDirty  = true;
     var _anyAnimating = false; // true while any panel is mid-entrance or reveal-fading
@@ -862,6 +871,21 @@
         })
         : null;
 
+    // Walks offsetParents to compute document-relative top. offsetTop is unaffected
+    // by sticky displacement (which is a paint-time effect), so this gives the
+    // panel's "at-rest" position regardless of current scroll.
+    function _refreshStickyDocGeom(idx, el) {
+        var top = 0;
+        var node = el;
+        while (node) { top += node.offsetTop || 0; node = node.offsetParent; }
+        _stickyNaturalDocTop[idx] = top;
+        var parent = el.parentElement || document.body;
+        var pTop = 0;
+        var pNode = parent;
+        while (pNode) { pTop += pNode.offsetTop || 0; pNode = pNode.offsetParent; }
+        _stickyParentDocBottom[idx] = pTop + (parent.offsetHeight || 0);
+    }
+
     function cacheElements() {
         _anyAnimating = true;         // DOM changed — stay awake until collectPanels confirms idle
         _layoutDirty = false;
@@ -899,6 +923,10 @@
             var pos = style.position;
             _cachedSticky[idx] = pos === 'sticky' ? 1 : 0;
             _cachedFixed[idx] = pos === 'fixed' ? 1 : 0;
+            if (_cachedSticky[idx]) {
+                _stickyTopOffset[idx] = parseFloat(style.top) || 0;
+                _refreshStickyDocGeom(idx, el);
+            }
             // Cache whether element participates in entrance animations
             var cl = el.classList;
             _cachedHasAnim[idx] = (cl.contains('anim-blur-rise') || cl.contains('anim-drop') ||
@@ -1024,11 +1052,14 @@
 
             var isExiting = _cachedEls[i].classList.contains('exit');
 
-            // Use cached rects when scroll-only; always re-read for sticky or fresh frames.
+            // Use cached rects when scroll-only; always re-read for fresh frames or animating panels.
             // Fixed panels keep the same viewport rect across scroll, so their cached
             // viewport-space top can be reused until some other invalidation lands.
+            // Sticky panels: refresh doc geometry on layout-dirty, then derive viewport-top
+            // arithmetically each frame (no per-frame getBoundingClientRect).
             var rLeft, rTop, rWidth, rHeight;
-            if (freshRead || isExiting || _cachedSticky[i] || _animActive[i] || !_rectFresh[i]) {
+            var stickyArith = _cachedSticky[i] && !_animActive[i] && !isExiting && !freshRead;
+            if (!stickyArith && (freshRead || isExiting || _animActive[i] || !_rectFresh[i])) {
                 var rect = _cachedEls[i].getBoundingClientRect();
                 rLeft = rect.left; rTop = rect.top; rWidth = rect.width; rHeight = rect.height;
                 _rectLeft[i]   = rLeft;
@@ -1036,6 +1067,25 @@
                 _rectWidth[i]  = rWidth;
                 _rectHeight[i] = rHeight;
                 _rectFresh[i]  = 1;   // time-consistent rect/scrollY pair now cached
+            } else if (stickyArith) {
+                // Refresh sticky doc geometry once after layout-dirty (also primes width/height/left).
+                if (!_rectFresh[i]) {
+                    _refreshStickyDocGeom(i, _cachedEls[i]);
+                    var sRect = _cachedEls[i].getBoundingClientRect();
+                    _rectLeft[i]   = sRect.left;
+                    _rectWidth[i]  = sRect.width;
+                    _rectHeight[i] = sRect.height;
+                    _rectFresh[i]  = 1;
+                }
+                rLeft   = _rectLeft[i];
+                rWidth  = _rectWidth[i];
+                rHeight = _rectHeight[i];
+                // viewportTop = clamp(stickyOffset, naturalDocTop - scrollY, parentDocBottom - h - scrollY)
+                var unstuckTop = _stickyNaturalDocTop[i] - curScrollY;
+                var pushedTop  = _stickyParentDocBottom[i] - rHeight - curScrollY;
+                var stuckTop   = _stickyTopOffset[i];
+                var capped     = stuckTop < pushedTop ? stuckTop : pushedTop;
+                rTop           = unstuckTop > capped ? unstuckTop : capped;
             } else {
                 rLeft   = _rectLeft[i];
                 rTop    = _cachedFixed[i] ? _rectDocTop[i] : (_rectDocTop[i] - curScrollY);
@@ -1213,6 +1263,7 @@
             gl.uniform2f(glassU.viewport, vpW, vpH);
             gl.uniform2f(glassU.mouse, _mouseX, _mouseY);
             gl.uniform1f(glassU.time, _time);
+            gl.uniform1f(glassU.scrollY, frameScrollY);   // Phase 1 plumbing — shader does not yet consume this
 
             // Bind blurred aurora texture (last blur pass output)
             var lastBlur = (BLUR_PASSES - 1) % 2;
