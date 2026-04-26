@@ -207,10 +207,10 @@ struct GlassUniforms {
 };
 
 struct PanelData {
-    rect: vec4f,        // x, y, w, h
+    rect: vec4f,        // x, docY-or-screenY, w, h. y is doc-relative when scrollMul=1, viewport-relative when scrollMul=0.
     extra: vec4f,       // radius, saturation, brightness, tintAlpha
     opacReveal: vec2f,  // opacity, reveal
-    _pad: vec2f,
+    scrollPad: vec2f,   // x = scrollMul (0 fixed/sticky/animating/exit, 1 stable), y = reserved
 };
 
 @group(0) @binding(0) var<uniform> uniforms: GlassUniforms;
@@ -236,8 +236,12 @@ struct VSOutput {
     let aPos = vec2f(x, y);
 
     let panel = panels[ii];
+    // Stable panels store doc-relative y; shader subtracts scrollY each frame so the
+    // CPU never repacks their rect on scroll. Non-stable (animating/sticky/fixed/exit)
+    // store viewport-y and ride with scrollMul=0.
+    let panelY = panel.rect.y - uniforms.scrollY * panel.scrollPad.x;
     let hs = panel.rect.zw * 0.5;
-    let ctr = panel.rect.xy + hs;
+    let ctr = vec2f(panel.rect.x, panelY) + hs;
     let hsExpanded = hs + ${SHADOW_MARGIN.toFixed(1)};
     let pos = ctr + aPos * hsExpanded;
 
@@ -916,6 +920,14 @@ fn surfaceHeight(t: f32) -> f32 {
     var _layoutDirty = true;
     var _anyAnimating = false; // true while any panel is mid-entrance or reveal-fading
     var panelCount = 0;
+    // Phase 1.2: panel storage buffer dirty tracking. Pack site uses conditional
+    // cell writes (only overwrite a cell when its new value differs from what's
+    // already in panelStorageData, which mirrors the GPU's current contents).
+    // Any difference flips _buffDirty=true; on render we upload only if dirty.
+    // Sticky-stuck panels write the same rTop frame after frame, so they cost
+    // 12 comparisons but no writes and no upload — exactly the win we want.
+    var _buffDirty = true;            // first frame must upload
+    var _lastBuffPanelCount = -1;
 
     // Rect cache: avoid getBoundingClientRect on every frame during scroll-only updates.
     // Normal-flow + sticky panels store doc-relative top (top += scrollY); fixed panels
@@ -1147,6 +1159,10 @@ fn surfaceHeight(t: f32) -> f32 {
     var _sortRects = new Float32Array(MAX_PANELS * 4);
     var _sortExtra = new Float32Array(MAX_PANELS * 4);
     var _sortOR = new Float32Array(MAX_PANELS * 2);
+    // scrollMul per visible panel — 1.0 for stable (rect.y stored as docTop, shader
+    // subtracts scrollY each frame), 0.0 for animating/sticky/fixed/exit (rect.y is
+    // viewport-relative). Phase 1.1: lets stable panels' buffer entries be scroll-invariant.
+    var _sortMul = new Float32Array(MAX_PANELS);
 
     function collectPanels(curScrollY) {
         // Six non-frame() call sites (initial render, visibilitychange, prewarmGlassPanels
@@ -1266,11 +1282,16 @@ fn surfaceHeight(t: f32) -> f32 {
             if (rTop + rHeight < -50 || rTop > vpH + 50) continue;
             if (rLeft + rWidth < -50 || rLeft > vpW + 50) continue;
 
+            // Stable = no per-frame rect drift on the CPU. Buffer entry stores doc-top
+            // and scrollMul=1; shader subtracts uScrollY each frame. Cull/hit-test still
+            // use viewport rTop locally on the CPU.
+            var stable = !_cachedSticky[i] && !_cachedFixed[i] && !_animActive[i] && !isExiting;
             var idx4 = visCount * 4;
             _sortRects[idx4]     = rLeft;
-            _sortRects[idx4 + 1] = rTop;
+            _sortRects[idx4 + 1] = stable ? _rectDocTop[i] : rTop;
             _sortRects[idx4 + 2] = rWidth;
             _sortRects[idx4 + 3] = rHeight;
+            _sortMul[visCount]   = stable ? 1.0 : 0.0;
 
             var tv = _cachedTierValues[i];
             _sortExtra[idx4]     = Math.min(_cachedRadius[i], rWidth * 0.5, rHeight * 0.5);
@@ -1326,8 +1347,15 @@ fn surfaceHeight(t: f32) -> f32 {
         }
 
         panelCount = visCount;
+        // Phase 1.2: cells beyond the previous upload boundary hold stale data that
+        // was never on the GPU. Conditional-compare would falsely register them as
+        // unchanged. Force-upload whenever panelCount grows.
+        if (panelCount > _lastBuffPanelCount) _buffDirty = true;
 
-        // Pack into storage buffer format: rect(4) + extra(4) + opacReveal(2) + pad(2) = 12 floats
+        // Pack into storage buffer format: rect(4) + extra(4) + opacReveal(2) + scrollPad(2) = 12 floats.
+        // CONTRACT: keep the cell list below in sync across BOTH branches here AND
+        // both branches in glass.js (4 mirror sites total). Also update PANEL_STRIDE,
+        // the WGSL PanelData struct, and panelStorageBuf size if cell count changes.
         if (needsSort) {
             for (var a = 1; a < visCount; a++) {
                 var keyIdx = _sortIndices[a];
@@ -1339,39 +1367,43 @@ fn surfaceHeight(t: f32) -> f32 {
                 }
                 _sortIndices[b + 1] = keyIdx;
             }
+            // Phase 1.2: conditional writes. Only overwrite a cell if its new value
+            // differs from the existing one (which mirrors the GPU's current contents).
+            // Any miss flips _buffDirty=true; render() uploads only if dirty.
             for (var s = 0; s < visCount; s++) {
                 var si = _sortIndices[s];
                 var dOff = s * PANEL_STRIDE;
                 var s4 = si * 4, s2 = si * 2;
-                panelStorageData[dOff]      = _sortRects[s4];
-                panelStorageData[dOff + 1]  = _sortRects[s4 + 1];
-                panelStorageData[dOff + 2]  = _sortRects[s4 + 2];
-                panelStorageData[dOff + 3]  = _sortRects[s4 + 3];
-                panelStorageData[dOff + 4]  = _sortExtra[s4];
-                panelStorageData[dOff + 5]  = _sortExtra[s4 + 1];
-                panelStorageData[dOff + 6]  = _sortExtra[s4 + 2];
-                panelStorageData[dOff + 7]  = _sortExtra[s4 + 3];
-                panelStorageData[dOff + 8]  = _sortOR[s2];
-                panelStorageData[dOff + 9]  = _sortOR[s2 + 1];
-                panelStorageData[dOff + 10] = 0; // pad
-                panelStorageData[dOff + 11] = 0; // pad
+                var nv;
+                nv = _sortRects[s4];      if (panelStorageData[dOff]      !== nv) { panelStorageData[dOff]      = nv; _buffDirty = true; }
+                nv = _sortRects[s4 + 1];  if (panelStorageData[dOff + 1]  !== nv) { panelStorageData[dOff + 1]  = nv; _buffDirty = true; }
+                nv = _sortRects[s4 + 2];  if (panelStorageData[dOff + 2]  !== nv) { panelStorageData[dOff + 2]  = nv; _buffDirty = true; }
+                nv = _sortRects[s4 + 3];  if (panelStorageData[dOff + 3]  !== nv) { panelStorageData[dOff + 3]  = nv; _buffDirty = true; }
+                nv = _sortExtra[s4];      if (panelStorageData[dOff + 4]  !== nv) { panelStorageData[dOff + 4]  = nv; _buffDirty = true; }
+                nv = _sortExtra[s4 + 1];  if (panelStorageData[dOff + 5]  !== nv) { panelStorageData[dOff + 5]  = nv; _buffDirty = true; }
+                nv = _sortExtra[s4 + 2];  if (panelStorageData[dOff + 6]  !== nv) { panelStorageData[dOff + 6]  = nv; _buffDirty = true; }
+                nv = _sortExtra[s4 + 3];  if (panelStorageData[dOff + 7]  !== nv) { panelStorageData[dOff + 7]  = nv; _buffDirty = true; }
+                nv = _sortOR[s2];         if (panelStorageData[dOff + 8]  !== nv) { panelStorageData[dOff + 8]  = nv; _buffDirty = true; }
+                nv = _sortOR[s2 + 1];     if (panelStorageData[dOff + 9]  !== nv) { panelStorageData[dOff + 9]  = nv; _buffDirty = true; }
+                nv = _sortMul[si];        if (panelStorageData[dOff + 10] !== nv) { panelStorageData[dOff + 10] = nv; _buffDirty = true; }
+                // slot 11 is reserved/zero and never changes — skip.
             }
         } else {
             for (var p = 0; p < visCount; p++) {
                 var pOff = p * PANEL_STRIDE;
                 var p4 = p * 4, p2 = p * 2;
-                panelStorageData[pOff]      = _sortRects[p4];
-                panelStorageData[pOff + 1]  = _sortRects[p4 + 1];
-                panelStorageData[pOff + 2]  = _sortRects[p4 + 2];
-                panelStorageData[pOff + 3]  = _sortRects[p4 + 3];
-                panelStorageData[pOff + 4]  = _sortExtra[p4];
-                panelStorageData[pOff + 5]  = _sortExtra[p4 + 1];
-                panelStorageData[pOff + 6]  = _sortExtra[p4 + 2];
-                panelStorageData[pOff + 7]  = _sortExtra[p4 + 3];
-                panelStorageData[pOff + 8]  = _sortOR[p2];
-                panelStorageData[pOff + 9]  = _sortOR[p2 + 1];
-                panelStorageData[pOff + 10] = 0;
-                panelStorageData[pOff + 11] = 0;
+                var nv2;
+                nv2 = _sortRects[p4];      if (panelStorageData[pOff]      !== nv2) { panelStorageData[pOff]      = nv2; _buffDirty = true; }
+                nv2 = _sortRects[p4 + 1];  if (panelStorageData[pOff + 1]  !== nv2) { panelStorageData[pOff + 1]  = nv2; _buffDirty = true; }
+                nv2 = _sortRects[p4 + 2];  if (panelStorageData[pOff + 2]  !== nv2) { panelStorageData[pOff + 2]  = nv2; _buffDirty = true; }
+                nv2 = _sortRects[p4 + 3];  if (panelStorageData[pOff + 3]  !== nv2) { panelStorageData[pOff + 3]  = nv2; _buffDirty = true; }
+                nv2 = _sortExtra[p4];      if (panelStorageData[pOff + 4]  !== nv2) { panelStorageData[pOff + 4]  = nv2; _buffDirty = true; }
+                nv2 = _sortExtra[p4 + 1];  if (panelStorageData[pOff + 5]  !== nv2) { panelStorageData[pOff + 5]  = nv2; _buffDirty = true; }
+                nv2 = _sortExtra[p4 + 2];  if (panelStorageData[pOff + 6]  !== nv2) { panelStorageData[pOff + 6]  = nv2; _buffDirty = true; }
+                nv2 = _sortExtra[p4 + 3];  if (panelStorageData[pOff + 7]  !== nv2) { panelStorageData[pOff + 7]  = nv2; _buffDirty = true; }
+                nv2 = _sortOR[p2];         if (panelStorageData[pOff + 8]  !== nv2) { panelStorageData[pOff + 8]  = nv2; _buffDirty = true; }
+                nv2 = _sortOR[p2 + 1];     if (panelStorageData[pOff + 9]  !== nv2) { panelStorageData[pOff + 9]  = nv2; _buffDirty = true; }
+                nv2 = _sortMul[p];         if (panelStorageData[pOff + 10] !== nv2) { panelStorageData[pOff + 10] = nv2; _buffDirty = true; }
             }
         }
     }
@@ -1476,12 +1508,17 @@ fn surfaceHeight(t: f32) -> f32 {
             glassUniformData[2] = _mouseX;
             glassUniformData[3] = _mouseY;
             glassUniformData[4] = _time;
-            glassUniformData[5] = frameScrollY;   // Phase 1 plumbing — shader does not yet consume this
+            glassUniformData[5] = frameScrollY;   // Phase 1.1: VS subtracts scrollY * scrollMul
             device.queue.writeBuffer(glassUniformBuf, 0, glassUniformData);
 
-            // Upload panel storage
-            device.queue.writeBuffer(panelStorageBuf, 0,
-                panelStorageData, 0, panelCount * PANEL_STRIDE);
+            // Phase 1.2: skip panel storage upload when contents are bit-identical to
+            // the last upload (only stable panels visible, no anim/reveal, mouse still).
+            if (_buffDirty) {
+                device.queue.writeBuffer(panelStorageBuf, 0,
+                    panelStorageData, 0, panelCount * PANEL_STRIDE);
+                _lastBuffPanelCount = panelCount;
+                _buffDirty = false;
+            }
 
             compositePass.setPipeline(glassPipeline);
             compositePass.setBindGroup(0, glassBindGroup);
@@ -1539,9 +1576,14 @@ fn surfaceHeight(t: f32) -> f32 {
         // Cooldown: skip heavy layout work for a few frames after DOM changes
         if (_layoutCooldown > 0) { _layoutCooldown--; render(doAurora, _cachedScrollY); return; }
 
-        // Idle-skip uses the scroll-event cache: a plain JS variable, no layout
-        // query. Approximate equality is fine — at worst one extra render frame.
-        var frameScrollY = _cachedScrollY;
+        // Read live scroll once. Using _cachedScrollY here would let the idle-skip
+        // fire on non-aurora frames during smooth scroll: Lenis's scrollTo dispatches
+        // DOM scroll events asynchronously, so _cachedScrollY can lag a frame behind
+        // window.scrollY. When that lag matches _lastRenderScrollY the canvas freezes
+        // while the DOM keeps moving — visible as 30fps glass under 60fps scroll.
+        // window.scrollY is free here: layout is clean on idle frames, and lenis.raf
+        // above has already flushed it on active frames.
+        var frameScrollY = window.scrollY;
 
         // Fast-path idle skip: if no animations are running, scroll/mouse are unchanged,
         // and this isn't an aurora frame, skip collectPanels + render entirely.
@@ -1550,17 +1592,6 @@ fn surfaceHeight(t: f32) -> f32 {
         if (!doAurora && !_anyAnimating &&
             frameScrollY === _lastRenderScrollY &&
             _mouseX === _lastRenderMouseX && _mouseY === _lastRenderMouseY) return;
-
-        // Render path — live window.scrollY for frame-consistent positioning.
-        // Both cache *writes* (rect.top + scrollY → _rectDocTop) AND draw-math
-        // (rTop = _rectDocTop - scrollY) MUST use the same scrollY: the actual
-        // value the next paint will commit. _cachedScrollY can lag during fast
-        // scroll because passive scroll events are batched ~1 frame behind the
-        // browser's running scroll position, which makes the canvas glass
-        // overlay visibly trail the CSS DOM during scroll. The reflow this
-        // forces is intrinsic on most pages anyway — the sticky nav panel
-        // re-reads its rect every render frame, which already flushes layout.
-        frameScrollY = window.scrollY;
 
         // Rebuild the panel cache only on frames that will actually render. Aurora
         // frames bypass the early-return above, so cache stays in sync within ≤16ms
@@ -1575,6 +1606,7 @@ fn surfaceHeight(t: f32) -> f32 {
             if (_cachedAnimIn[_ai] && !_fullyOpaque[_ai]) { _anyAnimating = true; break; }
             if (_revealAnim[_ai] > 0.002) { _anyAnimating = true; break; }
         }
+
 
         // Secondary render-skip: ran collectPanels but output would still be identical.
         if (!doAurora) {

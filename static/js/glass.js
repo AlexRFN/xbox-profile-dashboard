@@ -134,10 +134,13 @@
         '#version 300 es\n' +
         'precision mediump float;\n' +
         'in vec2 aPos;\n' +
-        'in vec4 aPanelRect;\n' +   // x,y,w,h in pixels (instanced)
+        'in vec4 aPanelRect;\n' +   // x,y,w,h in pixels (instanced). y is doc-top when aScrollMul=1, screen-top when aScrollMul=0.
         'in vec4 aPanelExtra;\n' +  // radius, saturation, brightness, tintAlpha (instanced)
         'in vec2 aOpacReveal;\n' +    // x=CSS opacity, y=reveal flag (instanced)
+        'in float aScrollMul;\n' +    // 0 fixed/sticky/animating/exit, 1 stable (instanced) — Phase 1.1
         'uniform vec2 uViewport;\n' +
+        'uniform float uScrollY;\n' +    // doc-space scroll (mirrors FS uniform)
+
         'out vec2 vLocalPos;\n' +
         'out vec2 vPanelSize;\n' +
         'out vec2 vBlurUV;\n' +
@@ -149,8 +152,12 @@
         'out float vOpacity;\n' +
         'out float vReveal;\n' +
         'void main(){\n' +
+        // Stable panels store doc-relative y; shader subtracts scrollY each frame so
+        // the buffer stays bit-identical during pure scroll. Non-stable panels have
+        // aScrollMul=0 and ride with their CPU-computed viewport y.
+        '  float panelY=aPanelRect.y - uScrollY * aScrollMul;\n' +
         '  vec2 hs=aPanelRect.zw*0.5;\n' +
-        '  vec2 ctr=aPanelRect.xy+hs;\n' +
+        '  vec2 ctr=vec2(aPanelRect.x, panelY)+hs;\n' +
         // Expand quad by shadow margin so exterior drop shadow has room to render
         '  vec2 hsExpanded=hs+' + SHADOW_MARGIN.toFixed(1) + ';\n' +
         '  vec2 pos=ctr+aPos*hsExpanded;\n' +
@@ -405,6 +412,7 @@
         panelRect: gl.getAttribLocation(glassProg, 'aPanelRect'),
         panelExtra:gl.getAttribLocation(glassProg, 'aPanelExtra'),
         opacReveal:gl.getAttribLocation(glassProg, 'aOpacReveal'),
+        scrollMul: gl.getAttribLocation(glassProg, 'aScrollMul'),
         blurTex:   gl.getUniformLocation(glassProg, 'uBlurTex'),
         viewport:  gl.getUniformLocation(glassProg, 'uViewport'),
         mouse:     gl.getUniformLocation(glassProg, 'uMouse'),
@@ -442,9 +450,11 @@
     var panelRectBuf  = gl.createBuffer();
     var panelExtraBuf = gl.createBuffer();
     var panelORBuf    = gl.createBuffer();  // opacity + reveal packed as vec2
+    var panelMulBuf   = gl.createBuffer();  // scrollMul (Phase 1.1) — float per panel
     var panelRectData  = new Float32Array(MAX_PANELS * 4);  // draw buffer (GPU)
     var panelExtraData = new Float32Array(MAX_PANELS * 4);  // draw buffer (GPU)
     var panelORData    = new Float32Array(MAX_PANELS * 2);  // [opacity, reveal] per panel
+    var panelMulData   = new Float32Array(MAX_PANELS);      // scrollMul per panel
     var panelCount = 0;
 
     var glassVAO = gl.createVertexArray();
@@ -471,6 +481,12 @@
     gl.enableVertexAttribArray(glassU.opacReveal);
     gl.vertexAttribPointer(glassU.opacReveal, 2, gl.FLOAT, false, 0, 0);
     gl.vertexAttribDivisor(glassU.opacReveal, 1);
+    // Per-panel scrollMul (float, instanced) — Phase 1.1
+    gl.bindBuffer(gl.ARRAY_BUFFER, panelMulBuf);
+    gl.bufferData(gl.ARRAY_BUFFER, panelMulData.byteLength, gl.DYNAMIC_DRAW);
+    gl.enableVertexAttribArray(glassU.scrollMul);
+    gl.vertexAttribPointer(glassU.scrollMul, 1, gl.FLOAT, false, 0, 0);
+    gl.vertexAttribDivisor(glassU.scrollMul, 1);
     gl.bindVertexArray(null);
 
     // ====================================================================
@@ -770,6 +786,13 @@
     var _mainEl = null;
     var _layoutDirty  = true;
     var _anyAnimating = false; // true while any panel is mid-entrance or reveal-fading
+    // Phase 1.2: panel buffer dirty tracking. Pack site uses conditional cell writes
+    // (only overwrite when the new value differs from the existing one); any write
+    // flips _buffDirty=true; render() then uploads all four panel buffers only if dirty.
+    // Sticky-stuck panels keep the same rTop frame after frame, so they cost a few
+    // comparisons but no writes and no GPU upload.
+    var _buffDirty = true;
+    var _lastBuffPanelCount = -1;
 
     // Rect cache: avoid getBoundingClientRect on every frame during scroll-only updates.
     // Normal-flow + sticky panels store doc-relative top (top += scrollY); fixed panels
@@ -992,6 +1015,8 @@
     var _sortRects   = new Float32Array(MAX_PANELS * 4);
     var _sortExtra   = new Float32Array(MAX_PANELS * 4);
     var _sortOR      = new Float32Array(MAX_PANELS * 2);
+    // Per-visible-panel scrollMul (Phase 1.1): 1.0 stable (rect.y is doc-top), 0.0 otherwise.
+    var _sortMul     = new Float32Array(MAX_PANELS);
 
     function collectPanels(curScrollY) {
         // Bare calls from initial render, visibilitychange, and prewarmGlassPanels
@@ -1096,11 +1121,15 @@
             if (rTop + rHeight < -50 || rTop > vpH + 50) continue;
             if (rLeft + rWidth < -50 || rLeft > vpW + 50) continue;
 
+            // Stable = no per-frame rect drift. Buffer stores doc-top, shader subtracts
+            // uScrollY each frame. Cull/hit-test still use the local viewport rTop.
+            var stable = !_cachedSticky[i] && !_cachedFixed[i] && !_animActive[i] && !isExiting;
             var idx4 = visCount * 4;
             _sortRects[idx4]     = rLeft;
-            _sortRects[idx4 + 1] = rTop;
+            _sortRects[idx4 + 1] = stable ? _rectDocTop[i] : rTop;
             _sortRects[idx4 + 2] = rWidth;
             _sortRects[idx4 + 3] = rHeight;
+            _sortMul[visCount]   = stable ? 1.0 : 0.0;
 
             var tv = _cachedTierValues[i];
             _sortExtra[idx4]     = Math.min(_cachedRadius[i], rWidth * 0.5, rHeight * 0.5);
@@ -1155,7 +1184,14 @@
         }
 
         panelCount = visCount;
+        // Phase 1.2: cells beyond the previous upload boundary hold stale data that
+        // was never on the GPU. Conditional-compare would falsely register them as
+        // unchanged. Force-upload whenever panelCount grows.
+        if (panelCount > _lastBuffPanelCount) _buffDirty = true;
 
+        // CONTRACT: the cell lists in both branches below mirror those in glass-webgpu.js
+        // (4 sites total). Adding/removing a panel field must update all four packs plus
+        // the matching attribute setup, vertex shader inputs, and instanced buffers.
         if (needsSort) {
             // Sort by z-index (painter's algorithm: low z drawn first, high z on top)
             // Simple insertion sort — fast for nearly-sorted small arrays (typically <100 panels)
@@ -1170,27 +1206,43 @@
                 _sortIndices[b + 1] = keyIdx;
             }
 
-            // Pack sorted data into GPU buffers
+            // Phase 1.2: conditional writes — only overwrite a cell if its new value
+            // differs from the existing one (which mirrors the GPU's current contents).
+            // Any miss flips _buffDirty=true; render() uploads only if dirty.
             for (var s = 0; s < visCount; s++) {
                 var si = _sortIndices[s];
                 var d4 = s * 4, s4 = si * 4;
-                panelRectData[d4]     = _sortRects[s4];
-                panelRectData[d4 + 1] = _sortRects[s4 + 1];
-                panelRectData[d4 + 2] = _sortRects[s4 + 2];
-                panelRectData[d4 + 3] = _sortRects[s4 + 3];
-                panelExtraData[d4]     = _sortExtra[s4];
-                panelExtraData[d4 + 1] = _sortExtra[s4 + 1];
-                panelExtraData[d4 + 2] = _sortExtra[s4 + 2];
-                panelExtraData[d4 + 3] = _sortExtra[s4 + 3];
                 var d2 = s * 2, s2 = si * 2;
-                panelORData[d2]     = _sortOR[s2];
-                panelORData[d2 + 1] = _sortOR[s2 + 1];
+                var nv;
+                nv = _sortRects[s4];      if (panelRectData[d4]      !== nv) { panelRectData[d4]      = nv; _buffDirty = true; }
+                nv = _sortRects[s4 + 1];  if (panelRectData[d4 + 1]  !== nv) { panelRectData[d4 + 1]  = nv; _buffDirty = true; }
+                nv = _sortRects[s4 + 2];  if (panelRectData[d4 + 2]  !== nv) { panelRectData[d4 + 2]  = nv; _buffDirty = true; }
+                nv = _sortRects[s4 + 3];  if (panelRectData[d4 + 3]  !== nv) { panelRectData[d4 + 3]  = nv; _buffDirty = true; }
+                nv = _sortExtra[s4];      if (panelExtraData[d4]     !== nv) { panelExtraData[d4]     = nv; _buffDirty = true; }
+                nv = _sortExtra[s4 + 1];  if (panelExtraData[d4 + 1] !== nv) { panelExtraData[d4 + 1] = nv; _buffDirty = true; }
+                nv = _sortExtra[s4 + 2];  if (panelExtraData[d4 + 2] !== nv) { panelExtraData[d4 + 2] = nv; _buffDirty = true; }
+                nv = _sortExtra[s4 + 3];  if (panelExtraData[d4 + 3] !== nv) { panelExtraData[d4 + 3] = nv; _buffDirty = true; }
+                nv = _sortOR[s2];         if (panelORData[d2]        !== nv) { panelORData[d2]        = nv; _buffDirty = true; }
+                nv = _sortOR[s2 + 1];     if (panelORData[d2 + 1]    !== nv) { panelORData[d2 + 1]    = nv; _buffDirty = true; }
+                nv = _sortMul[si];        if (panelMulData[s]        !== nv) { panelMulData[s]        = nv; _buffDirty = true; }
             }
         } else {
-            // No z-index variation — copy directly (no reorder needed)
-            panelRectData.set(_sortRects.subarray(0, visCount * 4));
-            panelExtraData.set(_sortExtra.subarray(0, visCount * 4));
-            panelORData.set(_sortOR.subarray(0, visCount * 2));
+            // No z-index variation — index in dest matches index in source.
+            for (var p = 0; p < visCount; p++) {
+                var pd4 = p * 4, pd2 = p * 2;
+                var nv2;
+                nv2 = _sortRects[pd4];      if (panelRectData[pd4]      !== nv2) { panelRectData[pd4]      = nv2; _buffDirty = true; }
+                nv2 = _sortRects[pd4 + 1];  if (panelRectData[pd4 + 1]  !== nv2) { panelRectData[pd4 + 1]  = nv2; _buffDirty = true; }
+                nv2 = _sortRects[pd4 + 2];  if (panelRectData[pd4 + 2]  !== nv2) { panelRectData[pd4 + 2]  = nv2; _buffDirty = true; }
+                nv2 = _sortRects[pd4 + 3];  if (panelRectData[pd4 + 3]  !== nv2) { panelRectData[pd4 + 3]  = nv2; _buffDirty = true; }
+                nv2 = _sortExtra[pd4];      if (panelExtraData[pd4]     !== nv2) { panelExtraData[pd4]     = nv2; _buffDirty = true; }
+                nv2 = _sortExtra[pd4 + 1];  if (panelExtraData[pd4 + 1] !== nv2) { panelExtraData[pd4 + 1] = nv2; _buffDirty = true; }
+                nv2 = _sortExtra[pd4 + 2];  if (panelExtraData[pd4 + 2] !== nv2) { panelExtraData[pd4 + 2] = nv2; _buffDirty = true; }
+                nv2 = _sortExtra[pd4 + 3];  if (panelExtraData[pd4 + 3] !== nv2) { panelExtraData[pd4 + 3] = nv2; _buffDirty = true; }
+                nv2 = _sortOR[pd2];         if (panelORData[pd2]        !== nv2) { panelORData[pd2]        = nv2; _buffDirty = true; }
+                nv2 = _sortOR[pd2 + 1];     if (panelORData[pd2 + 1]    !== nv2) { panelORData[pd2 + 1]    = nv2; _buffDirty = true; }
+                nv2 = _sortMul[p];          if (panelMulData[p]         !== nv2) { panelMulData[p]         = nv2; _buffDirty = true; }
+            }
         }
     }
 
@@ -1263,7 +1315,7 @@
             gl.uniform2f(glassU.viewport, vpW, vpH);
             gl.uniform2f(glassU.mouse, _mouseX, _mouseY);
             gl.uniform1f(glassU.time, _time);
-            gl.uniform1f(glassU.scrollY, frameScrollY);   // Phase 1 plumbing — shader does not yet consume this
+            gl.uniform1f(glassU.scrollY, frameScrollY);   // Phase 1.1: VS subtracts scrollY * scrollMul
 
             // Bind blurred aurora texture (last blur pass output)
             var lastBlur = (BLUR_PASSES - 1) % 2;
@@ -1271,13 +1323,20 @@
             gl.bindTexture(gl.TEXTURE_2D, texBlur[lastBlur]);
             gl.uniform1i(glassU.blurTex, 0);
 
-            // Upload instance data (3 buffers: rect, extra, opacity+reveal)
-            gl.bindBuffer(gl.ARRAY_BUFFER, panelRectBuf);
-            gl.bufferSubData(gl.ARRAY_BUFFER, 0, panelRectData.subarray(0, panelCount * 4));
-            gl.bindBuffer(gl.ARRAY_BUFFER, panelExtraBuf);
-            gl.bufferSubData(gl.ARRAY_BUFFER, 0, panelExtraData.subarray(0, panelCount * 4));
-            gl.bindBuffer(gl.ARRAY_BUFFER, panelORBuf);
-            gl.bufferSubData(gl.ARRAY_BUFFER, 0, panelORData.subarray(0, panelCount * 2));
+            // Phase 1.2: skip uploads when contents are bit-identical to the last
+            // upload (only stable / sticky-stuck panels visible, no anim/reveal).
+            if (_buffDirty) {
+                gl.bindBuffer(gl.ARRAY_BUFFER, panelRectBuf);
+                gl.bufferSubData(gl.ARRAY_BUFFER, 0, panelRectData.subarray(0, panelCount * 4));
+                gl.bindBuffer(gl.ARRAY_BUFFER, panelExtraBuf);
+                gl.bufferSubData(gl.ARRAY_BUFFER, 0, panelExtraData.subarray(0, panelCount * 4));
+                gl.bindBuffer(gl.ARRAY_BUFFER, panelORBuf);
+                gl.bufferSubData(gl.ARRAY_BUFFER, 0, panelORData.subarray(0, panelCount * 2));
+                gl.bindBuffer(gl.ARRAY_BUFFER, panelMulBuf);
+                gl.bufferSubData(gl.ARRAY_BUFFER, 0, panelMulData.subarray(0, panelCount));
+                _lastBuffPanelCount = panelCount;
+                _buffDirty = false;
+            }
 
             gl.bindVertexArray(glassVAO);
             gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, panelCount);
@@ -1333,21 +1392,20 @@
         // Cooldown: skip heavy layout work for a few frames after DOM changes
         if (_layoutCooldown > 0) { _layoutCooldown--; render(doAurora); return; }
 
-        // Idle-skip uses the scroll-event cache: a plain JS variable, no layout
-        // query. Approximate equality is fine — at worst one extra render frame.
-        var frameScrollY = _cachedScrollY;
+        // Read live scroll once. Using _cachedScrollY here would let the idle-skip
+        // fire on non-aurora frames during smooth scroll: Lenis's scrollTo dispatches
+        // DOM scroll events asynchronously, so _cachedScrollY can lag a frame behind
+        // window.scrollY. When that lag matches _lastRenderScrollY the canvas freezes
+        // while the DOM keeps moving — visible as 30fps glass under 60fps scroll.
+        // window.scrollY is free here: layout is clean on idle frames, and lenis.raf
+        // above has already flushed it on active frames.
+        var frameScrollY = window.scrollY;
 
         // Fast-path idle skip: if no animations are running, scroll/mouse are unchanged,
         // and this isn't an aurora frame, skip collectPanels + render entirely.
         if (!doAurora && !_anyAnimating &&
             frameScrollY === _lastRenderScrollY &&
             _mouseX === _lastRenderMouseX && _mouseY === _lastRenderMouseY) return;
-
-        // Render path — live window.scrollY (see glass-webgpu.js for the full
-        // explanation). Both cache writes and draw-math need to reflect the
-        // scroll position the next paint will use; _cachedScrollY can lag
-        // during fast scroll.
-        frameScrollY = window.scrollY;
 
         // Rebuild the panel cache only on frames that will actually render. Aurora
         // frames bypass the early-return above, so cache stays in sync within ≤16ms
