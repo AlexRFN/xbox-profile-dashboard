@@ -1694,6 +1694,18 @@ fn surfaceHeight(t: f32) -> f32 {
     // ====================================================================
     window.addEventListener('resize', function () { _layoutDirty = true; });
 
+    // Font-swap layout-dirty trigger. font-display:swap can repaint text after the
+    // ResizeObserver-on-<main> has settled — if main height stays constant but
+    // sibling widths shift, the RO fire is unreliable. fonts.ready settles after
+    // every font-loading round, so a one-shot rect invalidation here closes the
+    // gap. Re-arms via fonts.addEventListener('loadingdone') for late web fonts.
+    if (document.fonts) {
+        document.fonts.ready.then(function () { _rectValid = false; _rectFresh.fill(0); });
+        document.fonts.addEventListener('loadingdone', function () {
+            _rectValid = false; _rectFresh.fill(0);
+        });
+    }
+
     // _cachedScrollY's only consumer today is the brief _layoutCooldown path. frame()
     // updates it once per tick from the same window.scrollY read it does for itself,
     // so the previous external listeners (scroll/htmx:afterSwap/pageshow) that used

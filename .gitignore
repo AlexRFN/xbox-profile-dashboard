@@ -51,5 +51,4 @@ trace-*.json.gz
 trace-*.json.json.gz
 
 # Local-only notes (keep on disk, not in repo)
-AGENTS.md
 docs/
