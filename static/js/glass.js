@@ -1018,6 +1018,12 @@
     // Per-visible-panel scrollMul (Phase 1.1): 1.0 stable (rect.y is doc-top), 0.0 otherwise.
     var _sortMul     = new Float32Array(MAX_PANELS);
 
+    // Per-frame opacity cache. Mirrors glass-webgpu.js: when N glass panels share
+    // an animation ancestor (entrance cascade in a captures-game-group, dashboard
+    // region, etc.), the first panel pays the gCS cost and the rest reuse the
+    // parsed value instead of triggering N forced style recalcs on the same node.
+    var _opacityCache = new Map();
+
     function collectPanels(curScrollY) {
         // Bare calls from initial render, visibilitychange, and prewarmGlassPanels
         // need a real scroll sample — undefined propagates to _rectDocTop as NaN
@@ -1045,6 +1051,9 @@
         // Per-panel _animActive + _rectFresh invalidation cover entrance cascades,
         // spawns, IO visibility flips, and ancestor-anim fallbacks — no safety net needed.
         var freshRead = !_rectValid || mainExiting;
+
+        // Reset the per-frame opacity cache (.clear() retains capacity, no allocations).
+        _opacityCache.clear();
 
         for (var i = 0; i < _cachedEls.length; i++) {
             if (visCount >= MAX_PANELS) break;
@@ -1142,11 +1151,23 @@
             var or2 = visCount * 2;
             if (isExiting) {
                 _fullyOpaque[i] = 0;
-                _sortOR[or2] = parseFloat(getComputedStyle(_cachedEls[i]).opacity);
+                var exitEl = _cachedEls[i];
+                var cachedExit = _opacityCache.get(exitEl);
+                if (cachedExit === undefined) {
+                    cachedExit = parseFloat(getComputedStyle(exitEl).opacity);
+                    _opacityCache.set(exitEl, cachedExit);
+                }
+                _sortOR[or2] = cachedExit;
+            } else if (animTarget && !_fullyOpaque[i]) {
+                var cached = _opacityCache.get(animTarget);
+                if (cached === undefined) {
+                    cached = parseFloat(getComputedStyle(animTarget).opacity);
+                    _opacityCache.set(animTarget, cached);
+                }
+                _sortOR[or2] = cached;
+                if (cached >= 0.99) _fullyOpaque[i] = 1;
             } else {
-                _sortOR[or2] = animTarget && !_fullyOpaque[i]
-                    ? parseFloat(getComputedStyle(animTarget).opacity) : 1.0;
-                if (_sortOR[or2] >= 0.99) _fullyOpaque[i] = 1;
+                _sortOR[or2] = 1.0;
             }
             // Apply main's exit opacity so glass fades with page transition
             if (mainExiting && _cachedInMain[i]) {

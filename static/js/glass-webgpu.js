@@ -1164,6 +1164,12 @@ fn surfaceHeight(t: f32) -> f32 {
     // viewport-relative). Phase 1.1: lets stable panels' buffer entries be scroll-invariant.
     var _sortMul = new Float32Array(MAX_PANELS);
 
+    // Per-frame opacity cache. When N glass panels share the same animTarget (e.g.
+    // children of one animated parent during entrance), each previously paid its own
+    // getComputedStyle().opacity — N forced style recalcs on the same node per frame.
+    // Map<HTMLElement, number>; reused across frames, cleared each collectPanels call.
+    var _opacityCache = new Map();
+
     function collectPanels(curScrollY) {
         // Six non-frame() call sites (initial render, visibilitychange, prewarmGlassPanels
         // in both renderers) invoke this bare. Without a default, curScrollY is undefined
@@ -1194,6 +1200,10 @@ fn surfaceHeight(t: f32) -> f32 {
         // _rectFresh[i]=0 invalidation covers spawns, IO-driven visibility changes,
         // and ancestor-anim fallbacks — so no periodic safety-net re-read is needed.
         var freshRead = !_rectValid || mainExiting;
+
+        // Reset the per-frame opacity cache. .clear() retains the underlying hash
+        // table so we don't churn allocations every frame.
+        _opacityCache.clear();
 
         for (var i = 0; i < _cachedEls.length; i++) {
             if (visCount >= MAX_PANELS) break;
@@ -1305,11 +1315,31 @@ fn surfaceHeight(t: f32) -> f32 {
             if (isExiting) {
                 // Always read opacity during exit — element is fading out
                 _fullyOpaque[i] = 0;
-                _sortOR[or2] = parseFloat(getComputedStyle(_cachedEls[i]).opacity);
+                // Exit elements are unique targets per panel (the panel itself), so
+                // cache here is functionally a passthrough but keeps the lookup path
+                // uniform — no extra cost.
+                var exitEl = _cachedEls[i];
+                var cachedExit = _opacityCache.get(exitEl);
+                if (cachedExit === undefined) {
+                    cachedExit = parseFloat(getComputedStyle(exitEl).opacity);
+                    _opacityCache.set(exitEl, cachedExit);
+                }
+                _sortOR[or2] = cachedExit;
+            } else if (animTarget && !_fullyOpaque[i]) {
+                // Cached read: when N panels share an animation ancestor (entrance
+                // cascade in a captures-game-group, dashboard region, etc.), the
+                // first panel pays the gCS cost and the remaining N-1 panels reuse
+                // the parsed value. On idle frames _fullyOpaque[i] is 1 and we never
+                // enter this branch, so steady-state cost is unchanged.
+                var cached = _opacityCache.get(animTarget);
+                if (cached === undefined) {
+                    cached = parseFloat(getComputedStyle(animTarget).opacity);
+                    _opacityCache.set(animTarget, cached);
+                }
+                _sortOR[or2] = cached;
+                if (cached >= 0.99) _fullyOpaque[i] = 1;
             } else {
-                _sortOR[or2] = animTarget && !_fullyOpaque[i]
-                    ? parseFloat(getComputedStyle(animTarget).opacity) : 1.0;
-                if (_sortOR[or2] >= 0.99) _fullyOpaque[i] = 1;
+                _sortOR[or2] = 1.0;
             }
             // Apply main's exit opacity so glass fades with page transition
             if (mainExiting && _cachedInMain[i]) {

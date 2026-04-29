@@ -59,18 +59,48 @@ let _spaNavInFlight = false;
 // values, stable across font swaps) and sets CSS custom properties instead of inline
 // left/width. .pill-animate gates the transition so initial paint and ResizeObserver
 // updates snap while clicks animate.
+//
+// Geometry is cached per (element, animate-flag). Trace attribution showed ~272ms of
+// forced reflow accumulated across the trace from offsetLeft/offsetWidth reads after
+// nav-pill mutations had dirtied layout. ResizeObserver and focus paths repeatedly
+// fire for the same element with the same geometry — re-reading offsets walks the
+// box tree for no semantic change. The first read for a given element pays the
+// reflow once; subsequent calls with matching el+animate are pure no-ops. Cache is
+// invalidated on every mutation that can shift the pill layout (window resize,
+// font swap, nav DOM swap) via _invalidatePillCache().
+let _lastPillEl = null;
+let _lastPillX = -1;
+let _lastPillW = -1;
+let _lastPillAnimate = null;
+function _invalidatePillCache() { _lastPillEl = null; }
 function _positionPill(el, animate) {
     const track = document.getElementById('nav-pill-track');
     if (!track || !el) return;
+    const wantAnimate = !!animate;
+    // Same element + same animate flag → geometry is what we last wrote (cache
+    // is invalidated by resize/font/swap below, so a stale match means nothing
+    // moved). Skipping here avoids the offsetLeft/offsetWidth reads that would
+    // otherwise force a synchronous layout flush after the click handler's
+    // earlier DOM mutations.
+    if (el === _lastPillEl && wantAnimate === _lastPillAnimate) return;
     // Read geometry first, then write — toggling pill-animate invalidates layout,
     // and reading offsetLeft/offsetWidth after the toggle forces a synchronous
     // reflow. Reads first means a single layout pass for both values.
     const x = el.offsetLeft;
     const w = el.offsetWidth;
-    track.classList.toggle('pill-animate', !!animate);
-    track.style.setProperty('--pill-x', x + 'px');
-    track.style.setProperty('--pill-w', w + 'px');
+    track.classList.toggle('pill-animate', wantAnimate);
+    if (x !== _lastPillX) track.style.setProperty('--pill-x', x + 'px');
+    if (w !== _lastPillW) track.style.setProperty('--pill-w', w + 'px');
+    _lastPillEl = el;
+    _lastPillX = x;
+    _lastPillW = w;
+    _lastPillAnimate = wantAnimate;
 }
+window.addEventListener('resize', _invalidatePillCache, { passive: true });
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(_invalidatePillCache);
+document.addEventListener('htmx:afterSwap', (e) => {
+    if (e.target && e.target.id === 'main') _invalidatePillCache();
+});
 
 function _setNavClasses(path) {
     const pill = document.querySelector('.nav-pill');
