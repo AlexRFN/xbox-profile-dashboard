@@ -305,52 +305,6 @@ a.outline.reveal-item            { --reveal-intensity: 0.95; --reveal-mid: 0.55;
     transition-delay: calc(var(--i, 0) * var(--stagger));
 }
 
-/* ========== Phase 2 (groundwork) — animation-timeline: view() reveals ========== */
-/* Compositor-driven reveals: each entrance becomes a CSS animation whose progress
-   is bound to the element's view-timeline instead of wall-clock time. The browser
-   advances animation progress on the compositor as the element crosses the view-
-   range, so JS observers, rAF queues, and forced reflow reads can be retired
-   per-class once the consumer rules land.
-
-   Keyframes only — no consumer rules yet. The transition-driven path above stays
-   the source of truth until each class's view-range mapping is dialed in and
-   visually verified against the current cascade. Browsers without view-timeline
-   support skip this whole block via @supports and stay on the JS path. */
-@supports (animation-timeline: view()) {
-    @keyframes anim-blur-rise-in {
-        from { opacity: 0; transform: translateY(var(--rise-distance)) scale(var(--scale-rise)); }
-        to   { opacity: 1; transform: none; }
-    }
-    @keyframes anim-blur-scale-in {
-        from { opacity: 0; transform: scale(var(--scale-hero)); }
-        to   { opacity: 1; transform: none; }
-    }
-    @keyframes anim-slide-blur-in {
-        from { opacity: 0; transform: translateY(var(--push-distance)); }
-        to   { opacity: 1; transform: none; }
-    }
-    @keyframes anim-drop-in {
-        from { opacity: 0; transform: translateY(calc(var(--drop-distance) * -1)); }
-        to   { opacity: 1; transform: none; }
-    }
-    @keyframes anim-pop-in {
-        from { opacity: 0; transform: scale(var(--scale-pop)); }
-        to   { opacity: 1; transform: none; }
-    }
-    @keyframes anim-grow-in {
-        from { opacity: 0; clip-path: inset(0 100% 0 0); }
-        to   { opacity: 1; clip-path: inset(0 0 0 0); }
-    }
-    /* Edge-scale (game rows): same migration shape — once the consumer rule lands,
-       --edge-scale tracks the row's view-progress on the compositor and the JS
-       rAF + scroll handler in initEdgeScale can be retired. */
-    @keyframes anim-edge-scale {
-        from { --edge-scale: 0.96; }
-        50%  { --edge-scale: 1; }
-        to   { --edge-scale: 0.96; }
-    }
-}
-
 /* Reduce motion */
 @media (prefers-reduced-motion: reduce) {
     .scroll-ready .anim-blur-rise,

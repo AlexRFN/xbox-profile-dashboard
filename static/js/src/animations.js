@@ -7,18 +7,6 @@
 // ─── Shared selector ──────────────────────────────────────────────────────────
 const ANIM_SEL = '.anim-blur-rise, .anim-blur-scale, .anim-slide-blur, .anim-drop, .anim-pop, .anim-grow';
 
-// ─── Phase 2 feature detect — animation-timeline: view() ─────────────────────
-// Once a class's view-timeline rule lands in animations.css and is verified to
-// match the JS path's visual fidelity, the JS init for that class can short-
-// circuit when this is true: CSS handles the reveal on the compositor with no
-// IntersectionObserver, no rAF queue, and no per-frame work. Browsers without
-// support fall back to the existing transition-driven JS cascade automatically
-// via the matching @supports gate in animations.css. Computed once at module
-// load — feature support doesn't change at runtime.
-const _supportsViewTimeline = typeof CSS !== 'undefined'
-    && typeof CSS.supports === 'function'
-    && CSS.supports('animation-timeline: view()');
-
 // ─── Directional entrance state ───────────────────────────────────────────────
 // Written by initPageEntrance() (nav.js) before initScrollAnimations() runs.
 // _tabEnterClass     — consumed by the first initScrollAnimations call for above-fold leaders.
