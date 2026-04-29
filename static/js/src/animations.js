@@ -398,12 +398,27 @@ function initEdgeScale() {
     const rowHeight  = new Float32Array(allRows.length);
     const rowIdx     = new Map();
 
+    // offsetTop walks up the offsetParent chain. Critically, it returns the
+    // LAYOUT position — transforms (animate-in scale, hidden translateY+48,
+    // mid-transition states) are ignored. getBoundingClientRect bakes the
+    // current transform into rect.top, so caching r.top + scrollY produced
+    // a stale value of (layout_top + 48) for any row first observed while
+    // hidden — never refreshed once the row finished its entrance transition.
+    // That stale +48 propagated as a constant offset on every animate-in row's
+    // computed midpoint, miscalibrating both edge fades by 48px.
+    function _layoutDocTop(el) {
+        let top = 0;
+        let cur = el;
+        while (cur) {
+            top += cur.offsetTop;
+            cur = cur.offsetParent;
+        }
+        return top;
+    }
     function seedRowPositions() {
-        const scrollY = window.scrollY;
         for (let i = 0; i < allRows.length; i++) {
-            const r = allRows[i].getBoundingClientRect();
-            rowDocTop[i] = r.top + scrollY;
-            rowHeight[i] = r.height;
+            rowDocTop[i] = _layoutDocTop(allRows[i]);
+            rowHeight[i] = allRows[i].offsetHeight;
         }
     }
 
@@ -419,29 +434,38 @@ function initEdgeScale() {
         }
     }
 
-    // Seed rowDocTop/rowHeight from IntersectionObserver entries instead of a
-    // separate getBoundingClientRect loop. The observer has to compute these
-    // rects anyway, so we piggyback on that work and avoid a ~90ms forced
-    // reflow pass. seedRowPositions() is kept only for the resize handler.
+    // Seed positions once via offsetTop (transform-independent). The IO entries
+    // are no longer trusted for rect data — they only manage activeRows membership.
+    for (let i = 0; i < allRows.length; i++) {
+        rowIdx.set(allRows[i], i);
+    }
+    seedRowPositions();
+
     if (_edgeScaleRowsObs) _edgeScaleRowsObs.disconnect();
     _edgeScaleRowsObs = new IntersectionObserver((entries) => {
-        const scrollY = window.scrollY;
+        // IO callbacks run AFTER the frame's layout step, so reading offsetTop
+        // here costs nothing (layout is already clean — no forced reflow). This
+        // is the right moment to re-seed a row's cached position: at init,
+        // rows below the fold use the contain-intrinsic-size placeholder for
+        // their offsetTop computation, so their cached values can be off by
+        // (actualHeight - 56)*N. Reading the row's live offsetTop the moment
+        // it enters the active set replaces the stale init value with the
+        // correct post-layout one before update() ever consumes it.
         for (const entry of entries) {
-            const i = rowIdx.get(entry.target);
-            if (i !== undefined) {
-                const r = entry.boundingClientRect;
-                rowDocTop[i] = r.top + scrollY;
-                rowHeight[i] = r.height;
+            const row = entry.target;
+            if (entry.isIntersecting) {
+                activeRows.add(row);
+                const i = rowIdx.get(row);
+                rowDocTop[i] = _layoutDocTop(row);
+                rowHeight[i] = row.offsetHeight;
+            } else {
+                activeRows.delete(row);
             }
-            if (entry.isIntersecting) activeRows.add(entry.target);
-            else activeRows.delete(entry.target);
         }
-        // Apply initial/transition scale for rows that just crossed the boundary.
         if (activeRows.size) onScroll();
     }, { threshold: 0, rootMargin: `${ACTIVE_MARGIN}px 0px ${ACTIVE_MARGIN}px 0px` });
 
     for (let i = 0; i < allRows.length; i++) {
-        rowIdx.set(allRows[i], i);
         _edgeScaleRowsObs.observe(allRows[i]);
     }
 
@@ -455,20 +479,42 @@ function initEdgeScale() {
         const scrollY = window.scrollY;
         const botBound = vpH - 60;
 
+        // Re-seed every frame for active rows. content-visibility: auto means
+        // sizes can shift unpredictably as rows render for the first time, and
+        // RO-based shift detection is unreliable enough across browsers that
+        // gating on it brought back visible drift. The IO callback already
+        // pre-seeds rows the moment they join the active set (which is the
+        // free path — IO callbacks run post-layout), so this loop is mostly
+        // confirming positions and catching the rare case of layout shifting
+        // beneath rows that stayed in the active set.
+        //
+        // All game-rows share the same offsetParent chain (the <table> and
+        // everything above it), so walk it ONCE per frame instead of per row.
+        // Same single layout flush, but ~3× fewer property reads after the
+        // flush. row.offsetTop alone gives the row's offset within the table.
+        let ancestorOffset = 0;
+        const sharedParent = allRows[0].offsetParent;
+        for (let cur = sharedParent; cur; cur = cur.offsetParent) {
+            ancestorOffset += cur.offsetTop;
+        }
         for (const row of activeRows) {
             if (!row.isConnected) { activeRows.delete(row); continue; }
+            const i = rowIdx.get(row);
+            rowDocTop[i] = ancestorOffset + row.offsetTop;
+            rowHeight[i] = row.offsetHeight;
+        }
 
+        for (const row of activeRows) {
             const i = rowIdx.get(row);
             const rTop = rowDocTop[i] - scrollY;
             const rHeight = rowHeight[i];
 
-            // Compensate for the entrance transform offset on hidden rows so the
-            // scale pivot tracks the row's visual midpoint, not its layout midpoint.
-            let compensate = 0;
-            if (!row.classList.contains('animate-in')) {
-                compensate = row.classList.contains('reveal-top') ? 48 : -48;
-            }
-            const rowMid = rTop + compensate + rHeight * 0.5;
+            // rowDocTop is layout-relative (via offsetTop), so rowMid is the
+            // row's layout midpoint in viewport coords — independent of any
+            // active transform. The previous ±48 compensate existed only to
+            // undo a stale getBoundingClientRect-based cache and is no longer
+            // needed.
+            const rowMid = rTop + rHeight * 0.5;
 
             const distFromTop = rowMid - topBound;
             const distFromBot = botBound - rowMid;
