@@ -45,6 +45,7 @@ SANITIZATION_REPORT.md
 
 # Playwright CLI debug dumps
 .playwright-cli/
+.playwright-cli-debug/
 
 # Chrome DevTools performance traces (local-only)
 trace-*.json.gz
@@ -52,3 +53,7 @@ trace-*.json.json.gz
 
 # Local-only notes (keep on disk, not in repo)
 docs/
+*_PLAN.md
+*_BASELINE.md
+PERF_*.md
+FRONTEND_PERF_*.md
