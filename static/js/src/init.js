@@ -3,29 +3,46 @@
 // Must be the last file in the concat order.
 
 document.addEventListener('DOMContentLoaded', () => {
-    initPageEntrance();
-    initScrollAnimations();
-    initCaptureGroupAnimations();
-    initRevealHighlight();
-    initAmbientGlow();
-    initClickableRows();
-    initRowScrollReveal();
-    initEdgeScale();
-    animateCountUp();
+    // Match the SPA re-init priority split on full page loads:
+    // shell + entrance now, visual helpers next frame, heavier page utilities
+    // after the entrance cascade has had room to breathe.
+    const idle = window.requestIdleCallback || ((cb) => setTimeout(cb, 16));
+    const CASCADE_WAIT = 680;
+
     initNavPillTrack();
     initScrollNav();
-    initHeatmapTooltip();
-    initTimelineCalendar();
-    initTimelineContinuationFix();
     initCmdPalette();
     initHotkeys();
-    initBlurhash();
-    initOffscreenAnimationPause();
-    fireCompletionConfetti();
-    // Restore saved library view
+
+    if (window.resumeGlass) window.resumeGlass();
+    if (window.prewarmGlassPanels) window.prewarmGlassPanels();
+
+    initPageEntrance();
+    // Restore saved table/grid state before entrance classes are applied so the
+    // first visible library view is the user's chosen view.
     restoreLibraryView();
-    // Idle-prewarm captures off-view so first toggle is instant
-    if (typeof prewarmCapturesOffView === 'function') prewarmCapturesOffView();
-    // Auto-fetch friends on first visit when DB is empty
-    if (document.body.classList.contains('auto-fetch-friends')) fetchFriends();
+    initScrollAnimations();
+    initCaptureGroupAnimations();
+
+    requestAnimationFrame(() => {
+        initRevealHighlight();
+        fireCompletionConfetti();
+
+        animateCountUp();
+        initHeatmapTooltip();
+        initClickableRows();
+        initBlurhash();
+        initAmbientGlow();
+        initOffscreenAnimationPause();
+
+        setTimeout(() => idle(() => {
+            initRowScrollReveal();
+            initEdgeScale();
+            initTimelineCalendar();
+            initTimelineContinuationFix();
+            if (typeof prewarmCapturesOffView === 'function') prewarmCapturesOffView();
+            if (typeof updateExportLinks === 'function') updateExportLinks();
+            if (document.body.classList.contains('auto-fetch-friends')) fetchFriends();
+        }), CASCADE_WAIT);
+    });
 });

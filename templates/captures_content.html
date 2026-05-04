@@ -44,7 +44,7 @@
     </div>
     {% if has_more %}
     <div id="captures-load-more" class="load-more-wrap">
-        <button class="outline anim-blur-rise"
+        <button class="outline anim-blur-rise animate-in anim-persist"
                 hx-get="/api/captures/grid?page=2"
                 hx-target="#captures-grid"
                 hx-swap="beforeend"

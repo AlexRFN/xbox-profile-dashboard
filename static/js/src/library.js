@@ -121,6 +121,53 @@ function _loadLibraryTableView(tableWrap, gridWrap) {
     });
 }
 
+// Synchronous early-restore for the saved view. Mirrors the inline <script> in
+// library_content.html so the SSR and SPA-nav paths behave identically: hide the
+// table wrap, show the (empty) grid wrap with reserved height, and kick off the
+// /api/library/grid prefetch. Call this BEFORE entrance animations run so the
+// user never sees the table flash on SPA navigation back to /library when grid
+// is the saved preference. Idempotent: bails if grid is already populated.
+function applyEarlyLibraryView() {
+    if (localStorage.getItem('libraryView') !== 'grid') return;
+    const tableWrap = document.getElementById('library-table-wrap');
+    const gw = document.getElementById('library-grid-wrap');
+    if (!tableWrap || !gw) return;  // not on /library
+    const pg = document.getElementById('pagination');
+    const toggle = document.getElementById('view-toggle');
+
+    tableWrap.style.display = 'none';
+    gw.style.display = '';
+    if (pg) pg.style.display = 'none';
+    if (toggle) {
+        toggle.querySelectorAll('.view-btn').forEach(b => {
+            b.classList.toggle('active', b.dataset.view === 'grid');
+        });
+        // Reposition the sliding indicator over the grid button — without this
+        // the slider stays parked over Table from the SSR-rendered active class.
+        if (typeof updateToggleSlider === 'function') updateToggleSlider(toggle);
+    }
+
+    // Already populated (e.g. cached restore via history) — no fetch needed.
+    if (gw.children.length) return;
+
+    gw.style.minHeight = '100vh';
+    const params = new URLSearchParams();
+    document.querySelectorAll('#filters [name]').forEach(el => {
+        if (el.name && el.value) params.set(el.name, el.value);
+    });
+    const qs = params.toString();
+    fetch('/api/library/grid' + (qs ? '?' + qs : ''))
+        .then(r => r.text())
+        .then(html => {
+            if (gw.children.length) return;  // htmx beat us
+            gw.innerHTML = html;
+            gw.style.minHeight = '';
+            if (pg) pg.style.display = '';
+            if (typeof htmx !== 'undefined') htmx.process(gw);
+            if (typeof onInlineGridLoad === 'function') onInlineGridLoad(gw);
+        });
+}
+
 function restoreLibraryView() {
     _prewarmTried = false;  // fresh entry to /library — allow prewarm again
     if (_currentLibView === 'grid' && document.getElementById('library-table-wrap')) {
@@ -201,7 +248,9 @@ function setLibraryView(view) {
         tableWrap.style.display = 'none';
         if (!_gridDirty && gridWrap.children.length > 0) {
             gridWrap.style.display = '';
-            if (paginationEl) paginationEl.style.display = 'none';
+            // Cached-grid path: pagination links were already retargeted by
+            // _syncLibraryRequestBindings above, so it's valid to keep visible.
+            if (paginationEl) paginationEl.style.display = '';
             _showCachedGridView(gridWrap);
         } else {
             _viewToggleSwap = true;

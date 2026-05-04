@@ -356,7 +356,12 @@ function _reinitMain(main) {
     window.scrollTo(0, 0);
     if (window.lenis) window.lenis.scrollTo(0, { immediate: true });
 
-    main.querySelectorAll('.animate-in').forEach(el => el.classList.remove('animate-in'));
+    // Skip .anim-persist — bottom-of-page elements (load-more, pagination) whose
+    // anim-blur-rise hidden state translates them off the document, so the IO can
+    // never see them cross into view to re-add animate-in. Keeping animate-in
+    // pinned means they stay visible across SPA navs but still participate in
+    // tab-exit transforms (selector requires .anim-blur-rise.animate-in).
+    main.querySelectorAll('.animate-in:not(.anim-persist)').forEach(el => el.classList.remove('animate-in'));
     _lightboxDirty = true;
 
     // Re-initialize page modules in priority order:
@@ -369,6 +374,12 @@ function _reinitMain(main) {
     // prewarm to the next rAF left glass 1 frame behind CSS on tab switches.
     if (window.resumeGlass) window.resumeGlass();
     if (window.prewarmGlassPanels) window.prewarmGlassPanels();
+
+    // Synchronously restore saved /library view BEFORE entrance animations.
+    // Without this, the table view paints first and restoreLibraryView() in
+    // the idle-deferred bucket switches to grid ~680ms later, producing a
+    // visible table-flash on SPA nav. Mirrors the SSR-time inline script.
+    if (typeof applyEarlyLibraryView === 'function') applyEarlyLibraryView();
 
     initPageEntrance();
     initScrollAnimations(main, true);

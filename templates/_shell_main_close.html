@@ -40,17 +40,6 @@
     <!-- Overlay container (lightbox etc.) -->
     <div id="spa-overlay-container">{{ overlay_html|safe }}</div>
 
-    <footer class="container">
-        <small>
-            {{ gamertag | default('Xbox User') }} &middot;
-            {% if last_sync %}
-                Last sync: {{ last_sync.completed_at | shortdate if last_sync.completed_at else 'In progress...' }}
-            {% else %}
-                Never synced
-            {% endif %}
-        </small>
-    </footer>
-
     <!-- Lenis smooth scroll (sync — must init before deferred scripts for stable layout timing) -->
     <script src="{{ static_url('js/vendor/lenis.min.js') }}"></script>
     <script>

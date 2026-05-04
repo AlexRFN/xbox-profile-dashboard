@@ -776,6 +776,7 @@
     var _cachedZIndex = new Float32Array(MAX_CACHED); // z-index for draw order (painter's algorithm)
     var _cachedSticky = new Uint8Array(MAX_CACHED);   // 1 = sticky, viewport top derived arithmetically each frame
     var _cachedFixed  = new Uint8Array(MAX_CACHED);   // 1 = fixed, viewport rect is scroll-invariant
+    var _cachedStickyAnc = new Uint8Array(MAX_CACHED); // 1 = has a sticky ancestor — visual position drifts with scroll independent of own docTop, so stable-cache path is unsafe
     // Sticky-specific cache: doc-relative geometry of the natural (un-stuck) position
     // and the bottom of the containing block. Allows arithmetic per-frame viewport-top
     // computation: clamp(stickyOffset, naturalDocTop - scrollY, parentDocBottom - h - scrollY).
@@ -950,6 +951,19 @@
                 _stickyTopOffset[idx] = parseFloat(style.top) || 0;
                 _refreshStickyDocGeom(idx, el);
             }
+            // Detect sticky ancestor — sidebar widgets inside a sticky parent
+            // have static position themselves but their visual viewport top is
+            // displaced by the parent's stuck offset, so the doc-top + scrollY
+            // stable-cache path produces drift once the parent sticks (e.g. after
+            // timeline Load More grows the page enough for the sidebar to stick).
+            _cachedStickyAnc[idx] = 0;
+            if (!_cachedSticky[idx] && !_cachedFixed[idx]) {
+                var anc = el.parentElement;
+                while (anc && anc !== document.body) {
+                    if (getComputedStyle(anc).position === 'sticky') { _cachedStickyAnc[idx] = 1; break; }
+                    anc = anc.parentElement;
+                }
+            }
             // Cache whether element participates in entrance animations
             var cl = el.classList;
             _cachedHasAnim[idx] = (cl.contains('anim-blur-rise') || cl.contains('anim-drop') ||
@@ -1093,7 +1107,7 @@
             // arithmetically each frame (no per-frame getBoundingClientRect).
             var rLeft, rTop, rWidth, rHeight;
             var stickyArith = _cachedSticky[i] && !_animActive[i] && !isExiting && !freshRead;
-            if (!stickyArith && (freshRead || isExiting || _animActive[i] || !_rectFresh[i])) {
+            if (!stickyArith && (freshRead || isExiting || _animActive[i] || _cachedStickyAnc[i] || !_rectFresh[i])) {
                 var rect = _cachedEls[i].getBoundingClientRect();
                 rLeft = rect.left; rTop = rect.top; rWidth = rect.width; rHeight = rect.height;
                 _rectLeft[i]   = rLeft;
@@ -1132,7 +1146,7 @@
 
             // Stable = no per-frame rect drift. Buffer stores doc-top, shader subtracts
             // uScrollY each frame. Cull/hit-test still use the local viewport rTop.
-            var stable = !_cachedSticky[i] && !_cachedFixed[i] && !_animActive[i] && !isExiting;
+            var stable = !_cachedSticky[i] && !_cachedFixed[i] && !_animActive[i] && !isExiting && !_cachedStickyAnc[i];
             var idx4 = visCount * 4;
             _sortRects[idx4]     = rLeft;
             _sortRects[idx4 + 1] = stable ? _rectDocTop[i] : rTop;

@@ -232,7 +232,7 @@
 
     <!-- Pagination -->
     {% set total_pages = (ach_total / ach_per_page) | round(0, 'ceil') | int %}
-    <div id="ach-pagination" class="pagination anim-blur-rise">
+    <div id="ach-pagination" class="pagination anim-blur-rise animate-in anim-persist">
     {% if total_pages > 1 %}
         <nav>
             <a href="#" class="pg-arrow {% if ach_page <= 1 %}disabled{% endif %}"

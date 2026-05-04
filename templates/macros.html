@@ -222,7 +222,7 @@
    hx_target: "#game-table-body" or "#library-grid-wrap"
    oob: true for OOB swap (htmx partials), false for initial render #}
 {% macro pagination(page, total, per_page, hx_endpoint, hx_target, oob=false) %}
-<div id="pagination" class="pagination{% if not oob %} anim-blur-rise{% endif %}"{% if oob %} hx-swap-oob="true"{% endif %}>
+<div id="pagination" class="pagination anim-blur-rise animate-in anim-persist"{% if oob %} hx-swap-oob="true"{% endif %}>
     {% set total_pages = (total / per_page) | round(0, 'ceil') | int %}
     {% if total_pages > 1 %}
     <nav>

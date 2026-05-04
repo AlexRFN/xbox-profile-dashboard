@@ -163,6 +163,7 @@ function initScrollAnimations(root, forceStagger = false, keepGen = false) {
 function _cascadeAboveFold(aboveFold, unit, isFirstPaint, gen) {
     const MAX_CASCADE = 500;
     const aboveFoldSet = new Set(aboveFold);
+    const enterClass = _tabEnterClass;
 
     const leaders = [];
     const dependents = [];
@@ -178,11 +179,12 @@ function _cascadeAboveFold(aboveFold, unit, isFirstPaint, gen) {
 
     // Dependents: commit to animate-in instantly with no transition (hidden by parent opacity).
     if (dependents.length) {
-        if (_tabEnterClass) dependents.forEach(el => el.classList.add(_tabEnterClass));
+        if (enterClass) dependents.forEach(el => el.classList.add(enterClass));
         dependents.forEach(el => el.style.transition = 'none');
         dependents.forEach(el => el.classList.add('animate-in'));
-        dependents[0].offsetHeight; // single forced reflow commits all at once
-        dependents.forEach(el => el.style.transition = '');
+        requestAnimationFrame(() => {
+            dependents.forEach(el => el.style.transition = '');
+        });
     }
 
     // Leaders: stagger sequentially in DOM order, compressed to fit MAX_CASCADE when many.
@@ -195,38 +197,45 @@ function _cascadeAboveFold(aboveFold, unit, isFirstPaint, gen) {
     // fires the CSS transition between the two hidden states. When animate-in is added
     // milliseconds later, the interrupted position is still essentially translateY, so
     // the entrance plays as the vertical "fresh load" animation instead of horizontal.
-    // transition:none + forced reflow locks in the translateX start position first.
-    if (_tabEnterClass && leaders.length) {
-        leaders.forEach(el => {
-            el.style.transition = 'none';
-            el.classList.add(_tabEnterClass);
+    // transition:none + next-frame restore locks in the translateX start position first.
+    function startLeaders() {
+        leaders.forEach((el, idx) => {
+            el.style.transitionDelay = '0ms';
+            if (idx === 0 && isFirstPaint) {
+                el.classList.add('animate-in'); // first element fires synchronously on true page load
+            } else {
+                const ms = idx * leaderUnit;
+                if (ms === 0) {
+                    // rAF instead of setTimeout(0): fires in the same vsync as the first glass
+                    // frame so glass and content begin their entrance transitions together,
+                    // eliminating the ~16ms window where content moves without glass behind it.
+                    requestAnimationFrame(() => {
+                        if (_scrollAnimGen !== gen) return;
+                        el.classList.add('animate-in');
+                    });
+                } else {
+                    setTimeout(() => {
+                        if (_scrollAnimGen !== gen) return;
+                        el.classList.add('animate-in');
+                    }, ms);
+                }
+            }
         });
-        leaders[0].offsetHeight; // single forced reflow commits all positions at once
-        leaders.forEach(el => el.style.transition = '');
     }
 
-    leaders.forEach((el, idx) => {
-        el.style.transitionDelay = '0ms';
-        if (idx === 0 && isFirstPaint) {
-            el.classList.add('animate-in'); // first element fires synchronously on true page load
-        } else {
-            const ms = idx * leaderUnit;
-            if (ms === 0) {
-                // rAF instead of setTimeout(0): fires in the same vsync as the first glass
-                // frame so glass and content begin their entrance transitions together,
-                // eliminating the ~16ms window where content moves without glass behind it.
-                requestAnimationFrame(() => {
-                    if (_scrollAnimGen !== gen) return;
-                    el.classList.add('animate-in');
-                });
-            } else {
-                setTimeout(() => {
-                    if (_scrollAnimGen !== gen) return;
-                    el.classList.add('animate-in');
-                }, ms);
-            }
-        }
-    });
+    if (enterClass && leaders.length) {
+        leaders.forEach(el => {
+            el.style.transition = 'none';
+            el.classList.add(enterClass);
+        });
+        requestAnimationFrame(() => {
+            leaders.forEach(el => el.style.transition = '');
+            if (_scrollAnimGen !== gen) return;
+            startLeaders();
+        });
+    } else {
+        startLeaders();
+    }
 
     _tabEnterClass = null; // consumed — only the first initScrollAnimations call per nav uses it
 }
@@ -422,12 +431,11 @@ function initEdgeScale() {
         }
     }
 
-    // Seed positions once via offsetTop (transform-independent). The IO entries
-    // are no longer trusted for rect data — they only manage activeRows membership.
+    // Positions are seeded lazily as rows enter the active set, avoiding a full
+    // table layout read when the library initializes.
     for (let i = 0; i < allRows.length; i++) {
         rowIdx.set(allRows[i], i);
     }
-    seedRowPositions();
 
     if (_edgeScaleRowsObs) _edgeScaleRowsObs.disconnect();
     _edgeScaleRowsObs = new IntersectionObserver((entries) => {
@@ -533,7 +541,7 @@ function initEdgeScale() {
 
     function onScroll() { if (!ticking) { ticking = true; requestAnimationFrame(update); } }
 
-    // seedRowPositions calls getBoundingClientRect for every row — debounce at 120ms
+    // seedRowPositions reads offsetTop/offsetHeight for every row — debounce at 120ms
     // so continuous window-drag resize only triggers one batch read after the user pauses.
     let _edgeResizeTimer = 0;
     function onResize() {

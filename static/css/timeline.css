@@ -164,8 +164,10 @@
     margin-bottom: 0.5rem;
     text-decoration: none;
     color: inherit;
-    content-visibility: auto;
-    contain-intrinsic-size: auto 110px;
+    /* content-visibility:auto removed — its render-skip placeholder geometry
+       desyncs IntersectionObserver intersection reporting for variable-height
+       events (compact first_played at ~57px vs the 110px placeholder), so
+       below-fold cards never receive `animate-in` and stay opacity:0. */
 }
 
 .timeline-event:hover {

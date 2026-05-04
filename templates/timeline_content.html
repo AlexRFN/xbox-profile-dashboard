@@ -141,7 +141,7 @@
 
     {% if has_more %}
     <div id="timeline-load-more" class="timeline-load-more">
-        <button class="outline anim-blur-rise"
+        <button class="outline anim-blur-rise animate-in anim-persist"
                 hx-get="/api/timeline/events?page={{ page + 1 }}"
                 hx-target="#timeline"
                 hx-swap="beforeend"
