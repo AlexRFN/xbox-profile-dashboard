@@ -1082,7 +1082,13 @@
                         _animActive[i] = 1; _rectFresh[i] = 0; _anyAnimating = true;
                     } else continue;
                 } else if (!hasAnimIn) {
+                    // See glass-webgpu.js for rationale: must reset _cachedAnimIn[i] to 0 so
+                    // a future class re-add (e.g. library view-toggle calling _resetAnimations
+                    // then _reapplyEntranceDir) is detected as a fresh 0→1 entrance and
+                    // re-arms _animActive + _rectFresh. Without this, glass panels stay parked
+                    // at the start-of-entrance rect while CSS animates correctly.
                     _fullyOpaque[i] = 0;
+                    _cachedAnimIn[i] = 0;
                 }
             }
 

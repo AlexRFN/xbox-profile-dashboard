@@ -60,9 +60,13 @@
     50%       { box-shadow: 0 0 14px rgba(245,158,11,0.6), 0 0 3px rgba(255,193,7,0.4); }
 }
 
-/* Locked achievements — frosted grayscale */
+/* Locked achievements — frosted grayscale.
+   No !important on opacity: it would block the tab-switch exit transition
+   (`main.tab-exit-* .anim-pop.animate-in { opacity: 0 }`) since CSS specificity
+   can't beat !important. Source order alone is enough to override the legacy
+   `.ach-locked { opacity: 0.4 }` in achievements.css. */
 .ach-locked {
-    opacity: 1 !important;
+    opacity: 1;
     filter: grayscale(0.85);
 }
 

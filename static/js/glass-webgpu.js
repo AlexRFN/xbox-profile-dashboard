@@ -1235,8 +1235,18 @@ fn surfaceHeight(t: f32) -> f32 {
                         _animActive[i] = 1; _rectFresh[i] = 0; _anyAnimating = true;
                     } else continue;
                 } else if (!hasAnimIn) {
-                    // Was revealed, now exiting — force opacity read so glass fades with CSS
+                    // animate-in was revealed and is now gone. Two cases:
+                    //   1) Page-exit (tab switch): animate-in actually stays — exit rule fades
+                    //      the element via CSS. We don't reach this branch (hasAnimIn=true).
+                    //   2) Class-removal (e.g. _resetAnimations on library view toggle): the
+                    //      class is physically gone. We must reset _cachedAnimIn[i] to 0 so
+                    //      the next animate-in re-add is detected as a 0→1 transition above
+                    //      and re-arms _animActive + _rectFresh for per-frame rect reads.
+                    //      Without the reset, the panel stays parked at the start-of-entrance
+                    //      rect through the entire re-entrance — visible as "stuck glass" while
+                    //      CSS animates fine.
                     _fullyOpaque[i] = 0;
+                    _cachedAnimIn[i] = 0;
                 }
             }
             if (_cachedAnimAncestor[i]) {

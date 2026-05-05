@@ -124,7 +124,7 @@ a.outline.reveal-item            { --reveal-intensity: 0.95; --reveal-mid: 0.55;
     position: absolute;
     inset: 0;
     background: radial-gradient(
-        circle farthest-corner at var(--reveal-x, -200px) var(--reveal-y, -200px),
+        circle farthest-corner at var(--reveal-x) var(--reveal-y),
         rgba(150, 255, 200, var(--reveal-intensity)) 0%,
         rgba(0, 255, 128, var(--reveal-mid)) 35%,
         rgba(0, 210, 106, var(--reveal-tail)) 70%,
@@ -145,7 +145,7 @@ a.outline.reveal-item            { --reveal-intensity: 0.95; --reveal-mid: 0.55;
 /* Directional inset rim — light spills from cursor direction */
 .reveal-item:hover {
     box-shadow:
-        inset var(--rim-x, 0px) var(--rim-y, 0px) 28px rgba(0, 255, 128, 0.18),
+        inset var(--rim-x) var(--rim-y) 28px rgba(0, 255, 128, 0.18),
         inset 0 0 1px rgba(0, 255, 128, 0.25);
 }
 
@@ -157,7 +157,7 @@ a.outline.reveal-item            { --reveal-intensity: 0.95; --reveal-mid: 0.55;
     border-radius: inherit;
     border: 2px solid transparent;
     background: radial-gradient(
-        circle farthest-corner at var(--reveal-x, -200px) var(--reveal-y, -200px),
+        circle farthest-corner at var(--reveal-x) var(--reveal-y),
         rgba(200, 255, 230, var(--reveal-border-peak)) 0%,
         rgba(0, 255, 128, 0.30) 40%,
         rgba(0, 210, 106, 0.12) 70%,
@@ -347,16 +347,19 @@ a.outline.reveal-item            { --reveal-intensity: 0.95; --reveal-mid: 0.55;
     100% { background-position: -200% 0; }
 }
 
-.htmx-settling:not(#heatmap-content):not(#main),
-[hx-target].htmx-request:not(.hm-tab):not(.hm-year-btn):not(.cal-nav):not(.calendar-toggle-btn):not(.nav-link):not(.nav-brand):not(.nav-profile-chip),
-.htmx-request > tbody {
+/* Pulse exclusions:
+   - settle-target: #heatmap-content + #main own custom loading states
+   - requester:     small chrome buttons where a full-cover shimmer looks wrong
+   The .htmx-request > tbody branch was dropped — no <table>/<tr>/<tbody>
+   carries htmx attributes anywhere in templates, so it could never fire. */
+.htmx-settling:not(#heatmap-content, #main),
+[hx-target].htmx-request:not(.hm-tab, .hm-year-btn, .cal-nav, .calendar-toggle-btn, .nav-link, .nav-brand, .nav-profile-chip) {
     position: relative;
     pointer-events: none;
 }
 
-.htmx-settling:not(#heatmap-content):not(#main)::after,
-[hx-target].htmx-request:not(.hm-tab):not(.hm-year-btn):not(.cal-nav):not(.calendar-toggle-btn):not(.nav-link):not(.nav-brand):not(.nav-profile-chip)::after,
-.htmx-request > tbody::after {
+.htmx-settling:not(#heatmap-content, #main)::after,
+[hx-target].htmx-request:not(.hm-tab, .hm-year-btn, .cal-nav, .calendar-toggle-btn, .nav-link, .nav-brand, .nav-profile-chip)::after {
     content: '';
     position: absolute;
     inset: 0;

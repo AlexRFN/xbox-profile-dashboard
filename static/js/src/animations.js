@@ -178,12 +178,23 @@ function _cascadeAboveFold(aboveFold, unit, isFirstPaint, gen) {
     }
 
     // Dependents: commit to animate-in instantly with no transition (hidden by parent opacity).
+    // After the rAF restores `transition: ''`, lock transitionDelay to '0ms' inline — same
+    // reason as leaders and _queueReveal. CSS rules like
+    //   .achievements-grid.anim-stagger > .ach-card { transition-delay: calc(var(--i)*25ms) }
+    // would otherwise persist and stagger the EXIT transition. With many cards (var(--i)=50+)
+    // the exit delay exceeds the SPA nav duration and the bottom rows never visibly fade —
+    // they vanish with the page. Order matters: setting transitionDelay BEFORE the
+    // `style.transition = ''` shorthand clear gets wiped, since clearing the shorthand
+    // resets every transition-* longhand. Set it AFTER the restore for it to stick.
     if (dependents.length) {
         if (enterClass) dependents.forEach(el => el.classList.add(enterClass));
         dependents.forEach(el => el.style.transition = 'none');
         dependents.forEach(el => el.classList.add('animate-in'));
         requestAnimationFrame(() => {
-            dependents.forEach(el => el.style.transition = '');
+            dependents.forEach(el => {
+                el.style.transition = '';
+                el.style.transitionDelay = '0ms';
+            });
         });
     }
 
@@ -680,10 +691,9 @@ function _resetAnimations(scope, onReady) {
 // observed on each init call (WeakSet guards against double-observe).
 const _PAUSE_OFFSCREEN_SEL = '.stat-card, .progress-bar-complete, .friend-status-ring.online, .ach-rarity-glow-legendary, .rarity-legendary';
 let _pauseOffscreenObs = null;
-const _pauseOffscreenSeen = (typeof WeakSet !== 'undefined') ? new WeakSet() : null;
+const _pauseOffscreenSeen = new WeakSet();
 
 function initOffscreenAnimationPause(scope) {
-    if (typeof IntersectionObserver === 'undefined') return;
     if (!_pauseOffscreenObs) {
         _pauseOffscreenObs = new IntersectionObserver((entries) => {
             for (const entry of entries) {
@@ -695,8 +705,23 @@ function initOffscreenAnimationPause(scope) {
     const els = root.querySelectorAll(_PAUSE_OFFSCREEN_SEL);
     for (let i = 0; i < els.length; i++) {
         const el = els[i];
-        if (_pauseOffscreenSeen && _pauseOffscreenSeen.has(el)) continue;
-        if (_pauseOffscreenSeen) _pauseOffscreenSeen.add(el);
+        if (_pauseOffscreenSeen.has(el)) continue;
+        _pauseOffscreenSeen.add(el);
         _pauseOffscreenObs.observe(el);
     }
 }
+
+// Drop IO observations for nodes that are about to be removed by an htmx swap.
+// IntersectionObserver holds strong refs to its targets, so without this the
+// detached subtree can't be GC'd until the IO itself is collected — which never
+// happens for this module-singleton. Walking the outgoing subtree on beforeSwap
+// is cheaper than maintaining a parallel iterable Set alongside the WeakSet.
+document.body.addEventListener('htmx:beforeSwap', (evt) => {
+    if (!_pauseOffscreenObs) return;
+    const target = evt.target;
+    if (!target || !target.querySelectorAll) return;
+    const stale = target.querySelectorAll(_PAUSE_OFFSCREEN_SEL);
+    for (let i = 0; i < stale.length; i++) {
+        _pauseOffscreenObs.unobserve(stale[i]);
+    }
+});

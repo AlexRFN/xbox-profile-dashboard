@@ -54,6 +54,3 @@ trace-*.json.json.gz
 # Local-only notes (keep on disk, not in repo)
 docs/
 *_PLAN.md
-*_BASELINE.md
-PERF_*.md
-FRONTEND_PERF_*.md
