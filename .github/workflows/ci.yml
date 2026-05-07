@@ -34,8 +34,8 @@ jobs:
 
       - name: Dependency vulnerability scan (pip-audit)
         run: |
+          # Upgrade pip first to clear runner-preinstalled CVEs (CVE-2026-3219,
+          # CVE-2026-6357) — both target pip itself, not project deps.
+          python -m pip install --upgrade pip
           pip install pip-audit
-          # CVE-2026-3219 (pip 26.0.1, no fix published as of 2026-04-24) is
-          # against the runner-preinstalled pip itself, not a project dep.
-          # Drop the --ignore-vuln once pip publishes a patched release.
-          pip-audit --skip-editable --ignore-vuln CVE-2026-3219
+          pip-audit --skip-editable
