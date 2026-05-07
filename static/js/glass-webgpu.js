@@ -1009,6 +1009,10 @@ fn rboxSDF(p: vec2f, b: vec2f, r: f32) -> f32 {
     var _cachedAnimAncestor = [];
     var _fullyOpaque = new Uint8Array(MAX_CACHED);
     var _cachedReveal = new Uint8Array(MAX_CACHED);
+    // Effective opacity per cached panel, written by collectPanels each frame.
+    // Used by _collectBackdrops so the backdrop fades during tab-exit / page-fade
+    // alongside the glass panel that contains it.
+    var _cachedOpacity = new Float32Array(MAX_CACHED);
     var _revealAnim = new Float32Array(MAX_CACHED);   // smooth 0→1 reveal intensity per panel
     var _cachedZIndex = new Float32Array(MAX_CACHED);
     var _cachedSticky = new Uint8Array(MAX_CACHED);   // 1 = sticky, viewport top derived arithmetically each frame
@@ -1232,19 +1236,24 @@ fn rboxSDF(p: vec2f, b: vec2f, r: f32) -> f32 {
             // scroll for the rest so the backdrop draws at the panel's *current* viewport
             // position — sticky / animating panels included. Without this the rect locked
             // to its doc coordinate and the image stayed pinned during scroll.
+            // Skip panels that haven't entered yet (collectPanels skips these too,
+            // so their _cachedOpacity is stale at 0 — wasteful to issue a 0-alpha draw).
+            if (_cachedHasAnim[i] && !_cachedAnimIn[i]) continue;
             var rTop = _cachedFixed[i] ? _rectDocTop[i] : (_rectDocTop[i] - curScrollY);
             var rLeft = _rectLeft[i];
             var rW = _rectWidth[i];
             var rH = _rectHeight[i];
             if (rTop + rH < -50 || rTop > vpH + 50) continue;
             if (rLeft + rW < -50 || rLeft > vpW + 50) continue;
+            var op = _cachedOpacity[i];
+            if (op < 0.01) continue;  // fully faded — drop the draw entirely
             var d4 = _backdropDrawCount * 4;
             _backdropDrawRect[d4]     = rLeft * inv;
             _backdropDrawRect[d4 + 1] = rTop  * inv;
             _backdropDrawRect[d4 + 2] = rW    * inv;
             _backdropDrawRect[d4 + 3] = rH    * inv;
             _backdropDrawRadius[_backdropDrawCount]  = Math.min(_cachedRadius[i], rW * 0.5, rH * 0.5) * inv;
-            _backdropDrawOpacity[_backdropDrawCount] = 1.0;
+            _backdropDrawOpacity[_backdropDrawCount] = op;
             _backdropDrawTex[_backdropDrawCount]     = entry;
             entry.lastUsed = performance.now();
             _backdropDrawCount++;
@@ -1667,6 +1676,7 @@ fn rboxSDF(p: vec2f, b: vec2f, r: f32) -> f32 {
                 _sortOR[or2] *= mainOpacity;
                 _fullyOpaque[i] = 0;
             }
+            _cachedOpacity[i] = _sortOR[or2];
             // Smooth reveal fade — lerp toward 1 when mouse inside, 0 when outside
             var revealTarget = 0;
             if (_cachedReveal[i] && _mouseX > -9000) {
