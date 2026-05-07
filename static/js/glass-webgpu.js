@@ -1173,6 +1173,26 @@ fn rboxSDF(p: vec2f, b: vec2f, r: f32) -> f32 {
         }
     }
 
+    // Diagnostic surface (window.__glassBackdrops). Removed once feature is stable.
+    window.__glassBackdrops = {
+        cache: _backdropCache,
+        pending: _backdropPending,
+        failed: _backdropFailed,
+        cachedUrl: _cachedBackdropUrl,
+        get drawCount() { return _backdropDrawCount; },
+        get drawList() {
+            var out = [];
+            for (var i = 0; i < _backdropDrawCount; i++) {
+                out.push({
+                    rect: [_backdropDrawRect[i*4], _backdropDrawRect[i*4+1], _backdropDrawRect[i*4+2], _backdropDrawRect[i*4+3]],
+                    radius: _backdropDrawRadius[i],
+                    opacity: _backdropDrawOpacity[i]
+                });
+            }
+            return out;
+        }
+    };
+
     function _resetBackdropBindings() {
         _backdropCache.forEach(function (entry) { entry.refs = 0; });
         for (var i = 0; i < MAX_CACHED; i++) _cachedBackdropUrl[i] = undefined;
