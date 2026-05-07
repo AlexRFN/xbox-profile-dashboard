@@ -1076,7 +1076,8 @@ fn rboxSDF(p: vec2f, b: vec2f, r: f32) -> f32 {
     var BACKDROP_SATURATE = 1.3;
 
     var _backdropCache = new Map();       // url → { tex, lastUsed, refs }
-    var _backdropPending = new Map();     // url → { promise, abort }
+    var _backdropPending = new Map();     // url → { promise }
+    var _backdropFailed = new Set();      // urls that failed to load (CORS, 404, taint) — never retry
     var _cachedBackdropUrl = new Array(MAX_CACHED);
     var _cachedBackdropTexId = new Int32Array(MAX_CACHED);
 
@@ -1096,30 +1097,31 @@ fn rboxSDF(p: vec2f, b: vec2f, r: f32) -> f32 {
     function _loadBackdropImage(url) {
         var existing = _backdropCache.get(url);
         if (existing) { existing.lastUsed = performance.now(); return Promise.resolve(existing); }
+        if (_backdropFailed.has(url)) return Promise.resolve(null);
         var pending = _backdropPending.get(url);
         if (pending) return pending.promise;
 
-        var abort = new AbortController();
-        var p = fetch(url, { signal: abort.signal, mode: 'cors', credentials: 'omit' })
-            .then(function (r) {
-                if (!r.ok) throw new Error('HTTP ' + r.status);
-                return r.blob();
-            })
-            .then(function (blob) {
-                return createImageBitmap(blob, {
-                    resizeWidth: BACKDROP_TEX_SIZE,
-                    resizeHeight: BACKDROP_TEX_SIZE,
-                    resizeQuality: 'high'
-                });
-            })
-            .then(function (bmp) {
+        // Use <img> (img-src CSP) instead of fetch (connect-src CSP). The image must
+        // still be CORS-clean for copyExternalImageToTexture — crossOrigin='anonymous'
+        // requests Access-Control-Allow-Origin from the server. CDN failures land in
+        // _backdropFailed and never retry.
+        var p = new Promise(function (resolve, reject) {
+            var img = new Image();
+            img.crossOrigin = 'anonymous';
+            img.decoding = 'async';
+            img.referrerPolicy = 'no-referrer';
+            img.onload = function () { resolve(img); };
+            img.onerror = function () { reject(new Error('image load failed')); };
+            img.src = url;
+        })
+            .then(function (img) { return img.decode ? img.decode().then(function () { return img; }) : img; })
+            .then(function (img) {
                 var canvas = ('OffscreenCanvas' in window)
                     ? new OffscreenCanvas(BACKDROP_TEX_SIZE, BACKDROP_TEX_SIZE)
                     : Object.assign(document.createElement('canvas'), { width: BACKDROP_TEX_SIZE, height: BACKDROP_TEX_SIZE });
                 var ctx = canvas.getContext('2d');
                 ctx.filter = 'blur(' + BACKDROP_PREBLUR_PX + 'px) brightness(' + BACKDROP_BRIGHTNESS + ') saturate(' + BACKDROP_SATURATE + ')';
-                ctx.drawImage(bmp, 0, 0, BACKDROP_TEX_SIZE, BACKDROP_TEX_SIZE);
-                if (bmp.close) bmp.close();
+                ctx.drawImage(img, 0, 0, BACKDROP_TEX_SIZE, BACKDROP_TEX_SIZE);
                 var tex = device.createTexture({
                     label: 'backdrop:' + url,
                     size: [BACKDROP_TEX_SIZE, BACKDROP_TEX_SIZE, 1],
@@ -1134,12 +1136,12 @@ fn rboxSDF(p: vec2f, b: vec2f, r: f32) -> f32 {
                 _layoutDirty = true;  // re-bind panels next collectPanels
                 return entry;
             })
-            .catch(function (err) {
+            .catch(function () {
                 _backdropPending.delete(url);
-                // Decorative — silent fallback to the CSS overlay.
+                _backdropFailed.add(url);  // permanent — silent CSS-overlay fallback
                 return null;
             });
-        _backdropPending.set(url, { promise: p, abort: abort });
+        _backdropPending.set(url, { promise: p });
         return p;
     }
 
