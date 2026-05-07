@@ -149,7 +149,7 @@
     </header>
     <div class="timeline-events anim-stagger">
         {% for event in timeline_preview %}
-        {{ timeline_event_card(event, loop.index0) }}
+        {{ timeline_event_card(event, loop.index0, backdrop=false) }}
         {% endfor %}
     </div>
 </article>

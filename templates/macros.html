@@ -53,7 +53,7 @@
 {% endmacro %}
 
 {# Timeline event card — used by timeline.html and timeline_events.html #}
-{% macro timeline_event_card(event, i=0) %}
+{% macro timeline_event_card(event, i=0, backdrop=true) %}
 {% if event.event_type == 'achievement_batch' %}
 {# Achievement batch: collapsed group of same-game same-day achievements #}
 <div class="timeline-event timeline-event-achievement timeline-batch">
@@ -106,7 +106,7 @@
    hx-push-url="true" hx-headers='{"X-SPA-Nav":"true"}'>
     <div class="timeline-dot timeline-dot-completion anim-pop" style="--i: {{ i }}"></div>
     <div class="timeline-event-card timeline-event-card-celebration reveal-item anim-slide-blur" style="--i: {{ i }}"
-         {% if event.game_image %}data-glass-backdrop="{{ event.game_image|thumb(48) }}"{% endif %}>
+         {% if backdrop and event.game_image %}data-glass-backdrop="{{ event.game_image|thumb(48) }}"{% endif %}>
         {% if event.game_image %}
         <div class="timeline-celebration-art" style="background-image: url('{{ event.game_image|thumb(48) }}')"></div>
         {% endif %}
