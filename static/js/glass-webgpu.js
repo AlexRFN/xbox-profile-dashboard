@@ -955,6 +955,123 @@ fn surfaceHeight(t: f32) -> f32 {
     var _animActive = new Uint8Array(MAX_CACHED);
     var _elIndex = new Map(); // element → current index in _cachedEls
     var _ancestorToIdx = new Map(); // ancestor el → Array<idx> of panels nested under it
+
+    // ====================================================================
+    // Backdrop image system (Stage 1: infrastructure, no rendering yet)
+    //
+    // Panels with `data-glass-backdrop="<url>"` register an image that gets
+    // pre-blurred + tinted on upload, then (Stage 2) painted into the aurora
+    // source texture before refraction runs — so Snell's law + per-channel CA
+    // distort the image as if it were behind real glass.
+    //
+    // Cache is URL-keyed and refcounted: multiple panels showing the same art
+    // share one GPU texture. LRU eviction caps memory at BACKDROP_MAX_TEXTURES.
+    // ====================================================================
+    var BACKDROP_MAX_TEXTURES = 16;
+    var BACKDROP_TEX_SIZE = 256;          // pre-blurred at low res; matches CSS scale(1.15)+blur(24px) feel
+    var BACKDROP_PREBLUR_PX = 28;
+    var BACKDROP_BRIGHTNESS = 0.35;
+    var BACKDROP_SATURATE = 1.3;
+
+    var _backdropCache = new Map();       // url → { tex, lastUsed, refs }
+    var _backdropPending = new Map();     // url → { promise, abort }
+    var _cachedBackdropUrl = new Array(MAX_CACHED);
+    var _cachedBackdropTexId = new Int32Array(MAX_CACHED);
+
+    function _evictBackdropLRU() {
+        if (_backdropCache.size <= BACKDROP_MAX_TEXTURES) return;
+        var oldestUrl = null, oldestT = Infinity;
+        _backdropCache.forEach(function (entry, url) {
+            if (entry.refs > 0) return;
+            if (entry.lastUsed < oldestT) { oldestT = entry.lastUsed; oldestUrl = url; }
+        });
+        if (!oldestUrl) return;
+        var victim = _backdropCache.get(oldestUrl);
+        if (victim.tex && victim.tex.destroy) victim.tex.destroy();
+        _backdropCache.delete(oldestUrl);
+    }
+
+    function _loadBackdropImage(url) {
+        var existing = _backdropCache.get(url);
+        if (existing) { existing.lastUsed = performance.now(); return Promise.resolve(existing); }
+        var pending = _backdropPending.get(url);
+        if (pending) return pending.promise;
+
+        var abort = new AbortController();
+        var p = fetch(url, { signal: abort.signal, mode: 'cors', credentials: 'omit' })
+            .then(function (r) {
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                return r.blob();
+            })
+            .then(function (blob) {
+                return createImageBitmap(blob, {
+                    resizeWidth: BACKDROP_TEX_SIZE,
+                    resizeHeight: BACKDROP_TEX_SIZE,
+                    resizeQuality: 'high'
+                });
+            })
+            .then(function (bmp) {
+                var canvas = ('OffscreenCanvas' in window)
+                    ? new OffscreenCanvas(BACKDROP_TEX_SIZE, BACKDROP_TEX_SIZE)
+                    : Object.assign(document.createElement('canvas'), { width: BACKDROP_TEX_SIZE, height: BACKDROP_TEX_SIZE });
+                var ctx = canvas.getContext('2d');
+                ctx.filter = 'blur(' + BACKDROP_PREBLUR_PX + 'px) brightness(' + BACKDROP_BRIGHTNESS + ') saturate(' + BACKDROP_SATURATE + ')';
+                ctx.drawImage(bmp, 0, 0, BACKDROP_TEX_SIZE, BACKDROP_TEX_SIZE);
+                if (bmp.close) bmp.close();
+                var tex = device.createTexture({
+                    label: 'backdrop:' + url,
+                    size: [BACKDROP_TEX_SIZE, BACKDROP_TEX_SIZE, 1],
+                    format: 'rgba8unorm-srgb',
+                    usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT
+                });
+                device.queue.copyExternalImageToTexture({ source: canvas }, { texture: tex }, [BACKDROP_TEX_SIZE, BACKDROP_TEX_SIZE, 1]);
+                var entry = { tex: tex, lastUsed: performance.now(), refs: 0 };
+                _backdropCache.set(url, entry);
+                _backdropPending.delete(url);
+                _evictBackdropLRU();
+                _layoutDirty = true;  // re-bind panels next collectPanels
+                return entry;
+            })
+            .catch(function (err) {
+                _backdropPending.delete(url);
+                // Decorative — silent fallback to the CSS overlay.
+                return null;
+            });
+        _backdropPending.set(url, { promise: p, abort: abort });
+        return p;
+    }
+
+    function _resolveBackdropUrl(el) {
+        var raw = el.getAttribute('data-glass-backdrop');
+        if (!raw) return null;
+        return new URL(raw, document.baseURI).href;
+    }
+
+    function _bindPanelBackdrop(idx, el) {
+        var url = _resolveBackdropUrl(el);
+        var prev = _cachedBackdropUrl[idx];
+        if (prev && prev !== url) {
+            var prevEntry = _backdropCache.get(prev);
+            if (prevEntry && prevEntry.refs > 0) prevEntry.refs--;
+        }
+        _cachedBackdropUrl[idx] = url || undefined;
+        _cachedBackdropTexId[idx] = -1;
+        if (!url) return;
+        var entry = _backdropCache.get(url);
+        if (entry) {
+            if (prev !== url) entry.refs++;
+            entry.lastUsed = performance.now();
+        } else {
+            _loadBackdropImage(url);
+        }
+    }
+
+    function _resetBackdropBindings() {
+        _backdropCache.forEach(function (entry) { entry.refs = 0; });
+        for (var i = 0; i < MAX_CACHED; i++) _cachedBackdropUrl[i] = undefined;
+        _cachedBackdropTexId.fill(-1);
+    }
+    _cachedBackdropTexId.fill(-1);
     function _markAnim(target, val) {
         var idx = _elIndex.get(target);
         if (idx !== undefined) {
@@ -1062,6 +1179,7 @@ fn surfaceHeight(t: f32) -> f32 {
         _fullyOpaque.fill(0);
         _revealAnim.fill(0);
         _cachedAnimAncestor = [];
+        _resetBackdropBindings();
         if (_glassIO) _glassIO.disconnect();
         if (_glassRO) _glassRO.disconnect();
         _elIndex.clear();
@@ -1116,6 +1234,7 @@ fn surfaceHeight(t: f32) -> f32 {
             _cachedAnimAncestor[idx] = _cachedHasAnim[idx] ? null
                 : el.parentElement && el.parentElement.closest('.anim-blur-rise,.anim-drop,.anim-pop,.anim-blur-scale,.anim-slide-blur,.anim-grow');
             _cachedInMain[idx] = (_mainEl && _mainEl.contains(el)) ? 1 : 0;
+            _bindPanelBackdrop(idx, el);
             _cachedEls.push(el);
             _elIndex.set(el, idx);
             if (_cachedAnimAncestor[idx]) {
