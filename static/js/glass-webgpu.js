@@ -1100,8 +1100,12 @@ fn rboxSDF(p: vec2f, b: vec2f, r: f32) -> f32 {
     // 480-wide source after the pipeline adds its own contributions.
     var BACKDROP_TEX_SIZE = 256;
     var BACKDROP_PREBLUR_PX = 6;
-    var BACKDROP_BRIGHTNESS = 0.45;
-    var BACKDROP_SATURATE = 1.3;
+    // Tonal handling stays at 1.0 here so the glass shader's per-tier brightness
+    // (~0.78 dark surface) and saturation (~1.8) are the single source of truth.
+    // Baking dim values at the canvas upload AND the shader pass stacked, making
+    // backdrop panels visibly darker than every other glass panel on the page.
+    var BACKDROP_BRIGHTNESS = 1.0;
+    var BACKDROP_SATURATE = 1.0;
 
     var _backdropCache = new Map();       // url → { tex, lastUsed, refs }
     var _backdropPending = new Map();     // url → { promise }
