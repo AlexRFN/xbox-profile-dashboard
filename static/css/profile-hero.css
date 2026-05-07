@@ -279,11 +279,12 @@
     transition: opacity 220ms var(--ease-out, ease);
 }
 
-/* When the GPU glass is rendering this same image refracted through the shader
-   (CSS class added by glass-webgpu.js after the backdrop pass actually drew),
-   hide the CSS overlay so they don't double up. The CSS layer stays visible on
-   browsers without WebGPU/WebGL2 glass, during texture loading, and on mobile. */
-.glass-refract-bd-active .profile-np-bg {
+/* When the GPU shader is rendering this panel's backdrop refracted through the
+   bezel (per-element class toggled by glass-webgpu.js as each draw fires), hide
+   the CSS overlay so they don't double up. Class is only on while the specific
+   panel's draw is active — non-WebGPU browsers, mid-load panels, LRU-evicted
+   panels, and mobile keep the CSS layer. */
+.profile-np.glass-bd-on .profile-np-bg {
     opacity: 0;
 }
 

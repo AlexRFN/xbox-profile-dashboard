@@ -1230,7 +1230,14 @@ fn rboxSDF(p: vec2f, b: vec2f, r: f32) -> f32 {
             var url = _cachedBackdropUrl[i];
             if (!url) continue;
             var entry = _backdropCache.get(url);
-            if (!entry || !entry.tex) continue;
+            // Toggle per-panel class so each backdrop's CSS overlay only hides while
+            // its own GPU draw is firing — panels still loading or evicted from LRU
+            // keep the CSS overlay visible.
+            var elCl = _cachedEls[i].classList;
+            if (!entry || !entry.tex) {
+                elCl.remove('glass-bd-on');
+                continue;
+            }
             // _rectDocTop stores doc-relative top for everything except fixed panels
             // (which cache viewport-top because their rect is scroll-invariant). Subtract
             // scroll for the rest so the backdrop draws at the panel's *current* viewport
@@ -1243,10 +1250,11 @@ fn rboxSDF(p: vec2f, b: vec2f, r: f32) -> f32 {
             var rLeft = _rectLeft[i];
             var rW = _rectWidth[i];
             var rH = _rectHeight[i];
-            if (rTop + rH < -50 || rTop > vpH + 50) continue;
-            if (rLeft + rW < -50 || rLeft > vpW + 50) continue;
+            if (rTop + rH < -50 || rTop > vpH + 50) { elCl.remove('glass-bd-on'); continue; }
+            if (rLeft + rW < -50 || rLeft > vpW + 50) { elCl.remove('glass-bd-on'); continue; }
             var op = _cachedOpacity[i];
-            if (op < 0.01) continue;  // fully faded — drop the draw entirely
+            if (op < 0.01) { elCl.remove('glass-bd-on'); continue; }
+            elCl.add('glass-bd-on');
             var d4 = _backdropDrawCount * 4;
             _backdropDrawRect[d4]     = rLeft * inv;
             _backdropDrawRect[d4 + 1] = rTop  * inv;

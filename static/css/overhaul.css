@@ -170,7 +170,18 @@
     object-position: top center;
     filter: blur(24px) brightness(0.3) saturate(1.4);
     transform: scale(1.15);
-    transition: transform 6s var(--ease-spatial);
+    transition: transform 6s var(--ease-spatial), opacity 220ms var(--ease-out, ease);
+}
+
+/* GPU glass backdrop active — hide the CSS layer while the shader pass is
+   rendering this panel's image refracted through the bezel. See profile-hero.css
+   for the gating rationale. */
+.friend-card.glass-bd-on .friend-art-bg,
+.timeline-event-card-celebration.glass-bd-on .timeline-celebration-art,
+.showcase-card.glass-bd-on .showcase-card-art,
+.game-hero.glass-bd-on .hero-bg {
+    opacity: 0;
+    transition: opacity 220ms var(--ease-out, ease);
 }
 
 .friend-card-online:hover .friend-art-bg {

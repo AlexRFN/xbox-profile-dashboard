@@ -105,7 +105,8 @@
    hx-get="/game/{{ event.title_id }}" hx-target="#main" hx-swap="innerHTML show:window:top"
    hx-push-url="true" hx-headers='{"X-SPA-Nav":"true"}'>
     <div class="timeline-dot timeline-dot-completion anim-pop" style="--i: {{ i }}"></div>
-    <div class="timeline-event-card timeline-event-card-celebration reveal-item anim-slide-blur" style="--i: {{ i }}">
+    <div class="timeline-event-card timeline-event-card-celebration reveal-item anim-slide-blur" style="--i: {{ i }}"
+         {% if event.game_image %}data-glass-backdrop="{{ event.game_image|thumb(48) }}"{% endif %}>
         {% if event.game_image %}
         <div class="timeline-celebration-art" style="background-image: url('{{ event.game_image|thumb(48) }}')"></div>
         {% endif %}

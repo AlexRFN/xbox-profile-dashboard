@@ -35,7 +35,8 @@
 </div>
 <div class="friends-grid friends-grid-online anim-stagger">
     {% for friend in online_friends %}
-    <article class="friend-card friend-card-online reveal-item reveal-border anim-slide-blur" style="--i: {{ loop.index0 }}">
+    <article class="friend-card friend-card-online reveal-item reveal-border anim-slide-blur" style="--i: {{ loop.index0 }}"
+             {% if friend.displayPicRaw %}data-glass-backdrop="{{ friend.displayPicRaw|thumb(320) }}"{% endif %}>
         <div class="friend-card-art">
             <img src="{{ friend.displayPicRaw|thumb(320) }}" alt="" class="friend-art-bg"
                  loading="lazy" decoding="async">

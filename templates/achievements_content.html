@@ -85,7 +85,8 @@
         {% set rarity_lc = ach.rarity_category | lower if ach.rarity_category else 'common' %}
             <a href="/game/{{ ach.title_id }}" class="showcase-card showcase-card-{{ rarity_lc }} anim-blur-rise" style="--i: {{ loop.index0 }}"
                hx-get="/game/{{ ach.title_id }}" hx-target="#main" hx-swap="innerHTML show:window:top"
-               hx-push-url="true" hx-headers='{"X-SPA-Nav":"true"}'>
+               hx-push-url="true" hx-headers='{"X-SPA-Nav":"true"}'
+               {% if ach.game_image %}data-glass-backdrop="{{ ach.game_image|thumb(240) }}"{% endif %}>
                 {% if ach.game_image %}
                 <div class="showcase-card-art" style="background-image: url('{{ ach.game_image|thumb(240) }}')"></div>
                 {% endif %}

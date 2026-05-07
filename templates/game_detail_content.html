@@ -4,7 +4,8 @@
    hx-push-url="true" hx-headers='{"X-SPA-Nav":"true"}'>&larr; Back to Library</a>
 
 <!-- Hero -->
-<article class="game-hero anim-blur-scale">
+<article class="game-hero anim-blur-scale"
+         {% if game.display_image %}data-glass-backdrop="{{ game.display_image|thumb(480) }}"{% endif %}>
     <div class="hero-bg" style="background-image: url('{{ game.display_image|thumb(480) }}')"></div>
     <div class="hero-blur-bottom prog-blur prog-blur-down"><span></span><span></span><span></span><span></span></div>
     <div class="hero-content">
