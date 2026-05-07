@@ -468,7 +468,7 @@ fn surfaceHeight(t: f32) -> f32 {
 struct BackdropU {
     rect: vec4f,        // x, y, w, h — half-res pixels
     radii: vec4f,       // radius (half-res px), opacity, _pad, _pad
-    target: vec4f,      // halfW, halfH, _pad, _pad
+    vp: vec4f,          // halfW, halfH, _pad, _pad
 };
 @group(0) @binding(0) var<uniform> u: BackdropU;
 @group(0) @binding(1) var s: sampler;
@@ -498,7 +498,7 @@ struct VSOut {
     out.uv = vec2f((q.x + 1.0) * 0.5, (q.y + 1.0) * 0.5);
     out.radius = u.radii.x;
     out.opacity = u.radii.y;
-    var ndc = (pos / u.target.xy) * 2.0 - 1.0;
+    var ndc = (pos / u.vp.xy) * 2.0 - 1.0;
     ndc.y = -ndc.y;
     out.position = vec4f(ndc, 0.0, 1.0);
     return out;
