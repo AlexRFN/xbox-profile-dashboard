@@ -668,20 +668,20 @@ fn rboxSDF(p: vec2f, b: vec2f, r: f32) -> f32 {
     });
     var panelStorageData = new Float32Array(MAX_PANELS * PANEL_STRIDE);
 
-    // Backdrop uniforms: rect(4) + radii(4) + target(4) = 48 bytes per panel.
-    // Pool sized to BACKDROP_MAX_TEXTURES — we never draw more backdrops than
-    // we can have textures for. Bind groups are cached by (slot, texView) tuple.
+    // Backdrop uniforms: rect(4) + radii(4) + vp(4) = 48 bytes per panel.
+    // Pool sized to match the texture cache cap (declared in the backdrop section
+    // below — kept literal here because var-hoisted names assign late).
     var BACKDROP_UBO_STRIDE = 48;
+    var BACKDROP_POOL_SIZE = 16;
     var backdropUniformBufs = [];
     var backdropScratch = new Float32Array(12);
-    for (var bi = 0; bi < BACKDROP_MAX_TEXTURES; bi++) {
+    for (var bi = 0; bi < BACKDROP_POOL_SIZE; bi++) {
         backdropUniformBufs.push(device.createBuffer({
             label: 'backdrop uniforms ' + bi,
             size: BACKDROP_UBO_STRIDE,
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
         }));
     }
-    var _backdropBindGroups = new Map(); // texView → { slot: bindGroup }
 
     // Per-frame backdrop draw list — packed by _collectBackdrops, consumed in render.
     var _backdropDrawCount = 0;
@@ -1069,7 +1069,10 @@ fn rboxSDF(p: vec2f, b: vec2f, r: f32) -> f32 {
     // Cache is URL-keyed and refcounted: multiple panels showing the same art
     // share one GPU texture. LRU eviction caps memory at BACKDROP_MAX_TEXTURES.
     // ====================================================================
-    var BACKDROP_MAX_TEXTURES = 16;
+    // BACKDROP_MAX_TEXTURES is also referenced by the uniform buffer pool earlier in
+    // the file (BACKDROP_POOL_SIZE) — both must be equal. Hoisting forced the dup;
+    // they're co-located by the assertion below.
+    var BACKDROP_MAX_TEXTURES = BACKDROP_POOL_SIZE;
     var BACKDROP_TEX_SIZE = 256;          // pre-blurred at low res; matches CSS scale(1.15)+blur(24px) feel
     var BACKDROP_PREBLUR_PX = 28;
     var BACKDROP_BRIGHTNESS = 0.35;
