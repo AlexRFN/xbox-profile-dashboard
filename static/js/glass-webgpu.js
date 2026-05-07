@@ -1172,6 +1172,10 @@ fn rboxSDF(p: vec2f, b: vec2f, r: f32) -> f32 {
         _backdropCache.forEach(function (entry) { entry.refs = 0; });
         for (var i = 0; i < MAX_CACHED; i++) _cachedBackdropUrl[i] = undefined;
         _cachedBackdropTexId.fill(-1);
+        // CSS gate is re-asserted each frame the backdrop pass actually draws,
+        // so dropping it here is safe — the next render restores it if a fresh
+        // panel has a backdrop, or leaves it off (showing CSS overlay) otherwise.
+        document.documentElement.classList.remove('glass-refract-bd-active');
     }
     _cachedBackdropTexId.fill(-1);
 
@@ -1815,6 +1819,11 @@ fn rboxSDF(p: vec2f, b: vec2f, r: f32) -> f32 {
                     bdPass.draw(4);
                 }
                 bdPass.end();
+                // Signal CSS layer that GPU is now drawing the backdrop — the
+                // matching `.profile-np-bg` (and friends) hide so they don't double up.
+                if (!document.documentElement.classList.contains('glass-refract-bd-active')) {
+                    document.documentElement.classList.add('glass-refract-bd-active');
+                }
             }
 
             // Pass 2: Kawase blur (ping-pong)

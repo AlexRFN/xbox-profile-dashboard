@@ -6,7 +6,8 @@
     {# --- Now playing (most recently played game) --- #}
     {% set np = stats.recently_played[0] if stats.recently_played else None %}
     {% if np %}
-    <article class="profile-np anim-blur-rise" style="--i:0">
+    <article class="profile-np anim-blur-rise" style="--i:0"
+             {% if np.display_image %}data-glass-backdrop="{{ np.display_image|thumb(480) }}"{% endif %}>
         <a class="profile-np-link" href="/game/{{ np.title_id }}"
            hx-get="/game/{{ np.title_id }}" hx-target="#main" hx-swap="innerHTML show:window:top"
            hx-push-url="true" hx-headers='{"X-SPA-Nav":"true"}'
