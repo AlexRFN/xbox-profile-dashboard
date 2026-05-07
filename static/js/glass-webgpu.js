@@ -1227,10 +1227,12 @@ fn rboxSDF(p: vec2f, b: vec2f, r: f32) -> f32 {
             if (!url) continue;
             var entry = _backdropCache.get(url);
             if (!entry || !entry.tex) continue;
-            // Mirror collectPanels' rTop derivation: stable panels store doc-top,
-            // animating/sticky/fixed panels store viewport-top.
-            var stable = !_cachedSticky[i] && !_cachedFixed[i] && !_animActive[i] && !_cachedStickyAnc[i];
-            var rTop = stable ? (_rectDocTop[i] - curScrollY) : _rectDocTop[i];
+            // _rectDocTop stores doc-relative top for everything except fixed panels
+            // (which cache viewport-top because their rect is scroll-invariant). Subtract
+            // scroll for the rest so the backdrop draws at the panel's *current* viewport
+            // position — sticky / animating panels included. Without this the rect locked
+            // to its doc coordinate and the image stayed pinned during scroll.
+            var rTop = _cachedFixed[i] ? _rectDocTop[i] : (_rectDocTop[i] - curScrollY);
             var rLeft = _rectLeft[i];
             var rW = _rectWidth[i];
             var rH = _rectHeight[i];
