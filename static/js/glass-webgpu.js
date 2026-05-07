@@ -685,10 +685,12 @@ fn rboxSDF(p: vec2f, b: vec2f, r: f32) -> f32 {
 
     // Per-frame backdrop draw list — packed by _collectBackdrops, consumed in render.
     var _backdropDrawCount = 0;
-    var _backdropDrawRect    = new Float32Array(BACKDROP_MAX_TEXTURES * 4);
-    var _backdropDrawRadius  = new Float32Array(BACKDROP_MAX_TEXTURES);
-    var _backdropDrawOpacity = new Float32Array(BACKDROP_MAX_TEXTURES);
-    var _backdropDrawTex     = new Array(BACKDROP_MAX_TEXTURES);
+    // Use BACKDROP_POOL_SIZE here (early-declared) — BACKDROP_MAX_TEXTURES is hoisted
+    // but assigned later, so referencing it here would yield empty TypedArrays.
+    var _backdropDrawRect    = new Float32Array(BACKDROP_POOL_SIZE * 4);
+    var _backdropDrawRadius  = new Float32Array(BACKDROP_POOL_SIZE);
+    var _backdropDrawOpacity = new Float32Array(BACKDROP_POOL_SIZE);
+    var _backdropDrawTex     = new Array(BACKDROP_POOL_SIZE);
 
     // ====================================================================
     // Render targets (half-res)
