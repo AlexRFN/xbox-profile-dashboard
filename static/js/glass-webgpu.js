@@ -460,6 +460,71 @@ fn surfaceHeight(t: f32) -> f32 {
 }
 `;
 
+    // -- Backdrop pass (per-panel image into RT_AURORA before blur) --
+    // Operates in half-res pixel space throughout: caller divides viewport-pixel
+    // rect/radius by HALF_RES before upload so SDF, geometry, and target all share
+    // the same coordinate system.
+    var BACKDROP_WGSL = /* wgsl */`
+struct BackdropU {
+    rect: vec4f,        // x, y, w, h — half-res pixels
+    radii: vec4f,       // radius (half-res px), opacity, _pad, _pad
+    target: vec4f,      // halfW, halfH, _pad, _pad
+};
+@group(0) @binding(0) var<uniform> u: BackdropU;
+@group(0) @binding(1) var s: sampler;
+@group(0) @binding(2) var t: texture_2d<f32>;
+
+struct VSOut {
+    @builtin(position) position: vec4f,
+    @location(0) localPos: vec2f,
+    @location(1) uv: vec2f,
+    @location(2) panelHalfSize: vec2f,
+    @location(3) radius: f32,
+    @location(4) opacity: f32,
+};
+
+@vertex fn vs(@builtin(vertex_index) vi: u32) -> VSOut {
+    let x = f32((vi & 1u)) * 2.0 - 1.0;
+    let y = f32((vi >> 1u) & 1u) * 2.0 - 1.0;
+    let q = vec2f(x, y);
+
+    let halfSize = u.rect.zw * 0.5;
+    let center = u.rect.xy + halfSize;
+    let pos = center + q * halfSize;            // half-res pixel position
+
+    var out: VSOut;
+    out.localPos = q * halfSize;
+    out.panelHalfSize = halfSize;
+    out.uv = vec2f((q.x + 1.0) * 0.5, (q.y + 1.0) * 0.5);
+    out.radius = u.radii.x;
+    out.opacity = u.radii.y;
+    var ndc = (pos / u.target.xy) * 2.0 - 1.0;
+    ndc.y = -ndc.y;
+    out.position = vec4f(ndc, 0.0, 1.0);
+    return out;
+}
+
+fn rboxSDF(p: vec2f, b: vec2f, r: f32) -> f32 {
+    let q = abs(p) - b + r;
+    return min(max(q.x, q.y), 0.0) + length(max(q, vec2f(0.0))) - r;
+}
+
+@fragment fn fs(
+    @location(0) localPos: vec2f,
+    @location(1) uv: vec2f,
+    @location(2) panelHalfSize: vec2f,
+    @location(3) radius: f32,
+    @location(4) opacity: f32,
+) -> @location(0) vec4f {
+    let sd = rboxSDF(localPos, panelHalfSize, radius);
+    if (sd > 0.0) { discard; }
+    let edge = smoothstep(0.0, 1.5, -sd);
+    let col = textureSample(t, s, uv).rgb;
+    let a = edge * opacity;
+    return vec4f(col * a, a);   // pre-multiplied
+}
+`;
+
     // ====================================================================
     // Pipeline creation helpers
     // ====================================================================
@@ -515,6 +580,16 @@ fn surfaceHeight(t: f32) -> f32 {
         ]
     });
 
+    // Backdrop: per-panel uniform + sampler + texture
+    var backdropLayout = device.createBindGroupLayout({
+        label: 'backdrop',
+        entries: [
+            { binding: 0, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
+            { binding: 1, visibility: GPUShaderStage.FRAGMENT, sampler: {} },
+            { binding: 2, visibility: GPUShaderStage.FRAGMENT, texture: {} }
+        ]
+    });
+
     // Glass: uniform + storage + sampler + texture
     var glassLayout = device.createBindGroupLayout({
         label: 'glass',
@@ -540,7 +615,12 @@ fn surfaceHeight(t: f32) -> f32 {
     });
 
     // Declared here, assigned inside Promise.all below.
-    var auroraPipeline, blitPipeline, blurPipeline, glassPipeline;
+    var auroraPipeline, blitPipeline, blurPipeline, glassPipeline, backdropPipeline;
+
+    var backdropModule = device.createShaderModule({
+        label: 'backdrop',
+        code: BACKDROP_WGSL
+    });
 
     // ====================================================================
     // Shared sampler
@@ -587,6 +667,28 @@ fn surfaceHeight(t: f32) -> f32 {
         usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
     });
     var panelStorageData = new Float32Array(MAX_PANELS * PANEL_STRIDE);
+
+    // Backdrop uniforms: rect(4) + radii(4) + target(4) = 48 bytes per panel.
+    // Pool sized to BACKDROP_MAX_TEXTURES — we never draw more backdrops than
+    // we can have textures for. Bind groups are cached by (slot, texView) tuple.
+    var BACKDROP_UBO_STRIDE = 48;
+    var backdropUniformBufs = [];
+    var backdropScratch = new Float32Array(12);
+    for (var bi = 0; bi < BACKDROP_MAX_TEXTURES; bi++) {
+        backdropUniformBufs.push(device.createBuffer({
+            label: 'backdrop uniforms ' + bi,
+            size: BACKDROP_UBO_STRIDE,
+            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
+        }));
+    }
+    var _backdropBindGroups = new Map(); // texView → { slot: bindGroup }
+
+    // Per-frame backdrop draw list — packed by _collectBackdrops, consumed in render.
+    var _backdropDrawCount = 0;
+    var _backdropDrawRect    = new Float32Array(BACKDROP_MAX_TEXTURES * 4);
+    var _backdropDrawRadius  = new Float32Array(BACKDROP_MAX_TEXTURES);
+    var _backdropDrawOpacity = new Float32Array(BACKDROP_MAX_TEXTURES);
+    var _backdropDrawTex     = new Array(BACKDROP_MAX_TEXTURES);
 
     // ====================================================================
     // Render targets (half-res)
@@ -1072,6 +1174,45 @@ fn surfaceHeight(t: f32) -> f32 {
         _cachedBackdropTexId.fill(-1);
     }
     _cachedBackdropTexId.fill(-1);
+
+    // Pack visible backdropped panels into a draw list. Walks _cachedEls only
+    // when at least one image is loaded; with zero loaded images this returns
+    // in O(1) — the goal is "feature has zero cost when nobody opted in".
+    //
+    // Geometry is stored in half-res pixels: the backdrop pass renders into
+    // RT_AURORA (which is 1/HALF_RES the viewport size), and the shader's
+    // SDF + UV math all share that coordinate space.
+    function _collectBackdrops(curScrollY) {
+        _backdropDrawCount = 0;
+        if (_backdropCache.size === 0) return;
+        var n = _cachedEls.length;
+        var inv = 1.0 / HALF_RES;
+        for (var i = 0; i < n && _backdropDrawCount < BACKDROP_MAX_TEXTURES; i++) {
+            var url = _cachedBackdropUrl[i];
+            if (!url) continue;
+            var entry = _backdropCache.get(url);
+            if (!entry || !entry.tex) continue;
+            // Mirror collectPanels' rTop derivation: stable panels store doc-top,
+            // animating/sticky/fixed panels store viewport-top.
+            var stable = !_cachedSticky[i] && !_cachedFixed[i] && !_animActive[i] && !_cachedStickyAnc[i];
+            var rTop = stable ? (_rectDocTop[i] - curScrollY) : _rectDocTop[i];
+            var rLeft = _rectLeft[i];
+            var rW = _rectWidth[i];
+            var rH = _rectHeight[i];
+            if (rTop + rH < -50 || rTop > vpH + 50) continue;
+            if (rLeft + rW < -50 || rLeft > vpW + 50) continue;
+            var d4 = _backdropDrawCount * 4;
+            _backdropDrawRect[d4]     = rLeft * inv;
+            _backdropDrawRect[d4 + 1] = rTop  * inv;
+            _backdropDrawRect[d4 + 2] = rW    * inv;
+            _backdropDrawRect[d4 + 3] = rH    * inv;
+            _backdropDrawRadius[_backdropDrawCount]  = Math.min(_cachedRadius[i], rW * 0.5, rH * 0.5) * inv;
+            _backdropDrawOpacity[_backdropDrawCount] = 1.0;
+            _backdropDrawTex[_backdropDrawCount]     = entry;
+            entry.lastUsed = performance.now();
+            _backdropDrawCount++;
+        }
+    }
     function _markAnim(target, val) {
         var idx = _elIndex.get(target);
         if (idx !== undefined) {
@@ -1631,6 +1772,51 @@ fn surfaceHeight(t: f32) -> f32 {
             auroraPass.draw(4);
             auroraPass.end();
 
+            // Pass 1b: Backdrop images → RT_AURORA (preserves aurora via loadOp:'load')
+            // Each backdropped panel draws its pre-blurred image into the panel rect with
+            // a rounded-rect mask. The subsequent blur passes treat the composite as one
+            // image, and the glass shader's refraction + CA samples through it naturally.
+            if (_backdropDrawCount > 0 && backdropPipeline) {
+                var bdPass = encoder.beginRenderPass({
+                    label: 'backdrop',
+                    colorAttachments: [{
+                        view: viewAurora,
+                        loadOp: 'load',
+                        storeOp: 'store'
+                    }]
+                });
+                bdPass.setPipeline(backdropPipeline);
+                for (var bd = 0; bd < _backdropDrawCount; bd++) {
+                    var d4 = bd * 4;
+                    backdropScratch[0]  = _backdropDrawRect[d4];
+                    backdropScratch[1]  = _backdropDrawRect[d4 + 1];
+                    backdropScratch[2]  = _backdropDrawRect[d4 + 2];
+                    backdropScratch[3]  = _backdropDrawRect[d4 + 3];
+                    backdropScratch[4]  = _backdropDrawRadius[bd];
+                    backdropScratch[5]  = _backdropDrawOpacity[bd];
+                    backdropScratch[6]  = 0;
+                    backdropScratch[7]  = 0;
+                    backdropScratch[8]  = halfW;
+                    backdropScratch[9]  = halfH;
+                    backdropScratch[10] = 0;
+                    backdropScratch[11] = 0;
+                    device.queue.writeBuffer(backdropUniformBufs[bd], 0, backdropScratch);
+                    var entry = _backdropDrawTex[bd];
+                    if (!entry._view) entry._view = entry.tex.createView();
+                    var bg = device.createBindGroup({
+                        layout: backdropLayout,
+                        entries: [
+                            { binding: 0, resource: { buffer: backdropUniformBufs[bd] } },
+                            { binding: 1, resource: linearSampler },
+                            { binding: 2, resource: entry._view }
+                        ]
+                    });
+                    bdPass.setBindGroup(0, bg);
+                    bdPass.draw(4);
+                }
+                bdPass.end();
+            }
+
             // Pass 2: Kawase blur (ping-pong)
             for (var bpu = 0; bpu < BLUR_PASSES; bpu++) {
                 blurUniformData[0] = 1.0 / halfW;
@@ -1775,6 +1961,7 @@ fn surfaceHeight(t: f32) -> f32 {
         if (_layoutDirty) cacheElements();
 
         collectPanels(frameScrollY);
+        _collectBackdrops(frameScrollY);
 
         // Update idle flag: false once all visible panels confirm fully opaque and no reveals.
         _anyAnimating = false;
@@ -1833,12 +2020,31 @@ fn surfaceHeight(t: f32) -> f32 {
                 }]
             },
             primitive: { topology: 'triangle-strip' }
+        }),
+        device.createRenderPipelineAsync({
+            label: 'backdrop',
+            layout: device.createPipelineLayout({ bindGroupLayouts: [backdropLayout] }),
+            vertex: { module: backdropModule, entryPoint: 'vs' },
+            fragment: {
+                module: backdropModule,
+                entryPoint: 'fs',
+                targets: [{
+                    format: halfResFormat,
+                    blend: {
+                        // Pre-multiplied alpha — color already includes alpha factor
+                        color: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha' },
+                        alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha' }
+                    }
+                }]
+            },
+            primitive: { topology: 'triangle-strip' }
         })
     ]).then(function (pipelines) {
-        auroraPipeline = pipelines[0];
-        blitPipeline   = pipelines[1];
-        blurPipeline   = pipelines[2];
-        glassPipeline  = pipelines[3];
+        auroraPipeline   = pipelines[0];
+        blitPipeline     = pipelines[1];
+        blurPipeline     = pipelines[2];
+        glassPipeline    = pipelines[3];
+        backdropPipeline = pipelines[4];
 
         // First render — deferred one frame so the browser can paint LCP first.
         requestAnimationFrame(function () {
