@@ -177,7 +177,11 @@
 .timeline-dot {
     position: absolute;
     left: -27px;
-    top: 50%;
+    /* Align dot to the card's visual anchor (image center), not the geometric
+       midpoint — multi-line cards stretch the wrapper, drifting a percentage-
+       based dot below the artwork. card padding-top is 0.75rem, image is 48px,
+       so the image's vertical center sits at 0.75rem + 24px from the card top. */
+    top: calc(0.75rem + 24px);
     transform: translateY(-50%);
     width: 14px;
     height: 14px;
@@ -388,6 +392,20 @@
     height: 32px;
 }
 
+/* Compact first_played card: smaller image + smaller padding shifts the
+   anchor up; dot top must match (padding-top 0.5rem + 32px / 2). */
+.timeline-event-first_played .timeline-dot {
+    top: calc(0.5rem + 16px);
+}
+
+/* Celebration cards have no image — anchor the dot to the card's visual
+   centerline instead. min-height 80px keeps the geometric center stable
+   for short cards, and longer body content stays roughly balanced. */
+.timeline-event-celebration .timeline-dot {
+    top: 50%;
+    transform: translateY(-50%);
+}
+
 .timeline-event-first_played .timeline-event-title {
     font-size: 0.85rem;
     font-weight: 500;
@@ -407,6 +425,14 @@
     align-items: center;
     text-decoration: none;
     color: inherit;
+}
+
+/* Keep the artwork anchored to the top of the header even when align-items:center
+   centers the rest of the row. The dot's image-center offset (.75rem + 24px) is
+   computed against a top-aligned image — when the header content grows taller,
+   center-aligning the image would drift it below the dot. */
+.timeline-batch-header > .timeline-event-img {
+    align-self: flex-start;
 }
 
 .timeline-batch-header:hover {

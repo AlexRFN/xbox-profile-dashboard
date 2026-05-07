@@ -1,8 +1,4 @@
-{% from "macros.html" import progress_bar, stat_card, gamerscore_display %}
-<hgroup class="page-header anim-drop">
-    <h1>Profile</h1>
-    <p>{{ gamertag | default('Xbox User') }}'s gaming stats</p>
-</hgroup>
+{% from "macros.html" import progress_bar, stat_card, gamerscore_display, timeline_event_card %}
 
 {% if stats.total_games == 0 %}
 <div class="empty-state anim-blur-rise" style="padding: 4rem 2rem;">
@@ -21,41 +17,10 @@
 </div>
 {% else %}
 
-<!-- Stat Cards -->
-<div class="stat-grid anim-stagger">
-    {% call stat_card(stats.total_games, "Total Games", "", 0) %}
-    <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.5">
-        <path d="M6 3h12l4 6-10 13L2 9z"/><path d="M2 9h20M7 3l-1 6m10-6l1 6m-5 0v13"/>
-    </svg>
-    {% endcall %}
-    {% call stat_card(stats.gamepass_count or 0, "On Game Pass", "var(--status-playing)", 1) %}
-    <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.5">
-        <path d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
-    </svg>
-    {% endcall %}
-    {% call stat_card("{:,}".format(stats.total_gamerscore or 0), "Gamerscore", "var(--rarity-legendary)", 2) %}
-    <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.5">
-        <path d="M12 2l3.09 6.26L22 9.27l-5 4.87L18.18 22 12 18.27 5.82 22 7 14.14l-5-4.87 6.91-1.01z"/>
-    </svg>
-    {% endcall %}
-    {% call stat_card(stats.completed_games, "100% Completed", "var(--color-teal)", 3) %}
-    <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.5">
-        <path d="M8.21 13.89L7 23l5-3 5 3-1.21-9.12"/><circle cx="12" cy="8" r="7"/>
-    </svg>
-    {% endcall %}
-    {% call stat_card((stats.total_minutes or 0) | playtime or "0m", "Total Playtime", "var(--color-sky)", 4) %}
-    <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.5">
-        <circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>
-    </svg>
-    {% endcall %}
-    {% if stats.total_captures %}
-    {% call stat_card(stats.total_captures, "Captures", "var(--color-purple)", 5) %}
-    <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.5">
-        <rect x="2" y="3" width="20" height="18" rx="2"/><circle cx="12" cy="13" r="4"/><path d="M12 3v2"/>
-    </svg>
-    {% endcall %}
-    {% endif %}
-</div>
+{# Profile redesign — hero + now-row + KPI strip replaces stat-grid #}
+{% include "_profile_hero.html" %}
+{% include "_profile_now_row.html" %}
+{% include "_profile_kpi_strip.html" %}
 
 {% if stats.backlog_count %}
 <div class="anim-blur-rise" style="margin-bottom: 1rem;">
@@ -165,47 +130,30 @@
 </article>
 {% endif %}
 
-<!-- Recently Played -->
-<article class="anim-blur-rise">
-    <h4 class="section-title anim-drop">
-        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>
-        </svg>
-        Recently Played
-    </h4>
-    <div class="recent-table-wrap grid-rows">
-        <table class="recent-table">
-            <thead>
-                <tr>
-                    <th></th>
-                    <th>Game</th>
-                    <th class="center">Progress</th>
-                    <th class="center">Gamerscore</th>
-                    <th class="center">Last Played</th>
-                </tr>
-            </thead>
-            <tbody class="anim-stagger">
-                {% for game in stats.recently_played %}
-                <tr class="recent-row anim-blur-rise" style="--i: {{ loop.index0 }}" data-href="/game/{{ game.title_id }}">
-                    <td>
-                        <img src="{{ game.display_image|thumb(48) }}" alt="{{ game.name }}" class="game-thumb-sm"
-                             {% if game.blurhash %}data-blurhash="{{ game.blurhash }}"{% endif %}
-                             loading="lazy" decoding="async" width="40" height="40">
-                    </td>
-                    <td>
-                        <a href="/game/{{ game.title_id }}" class="game-name"
-                           hx-get="/game/{{ game.title_id }}" hx-target="#main" hx-swap="innerHTML show:window:top"
-                           hx-push-url="true" hx-headers='{"X-SPA-Nav":"true"}'>{{ game.name }}</a>
-                    </td>
-                    <td class="progress-cell">{{ progress_bar(game.progress_percentage) }}</td>
-                    <td class="gs-cell">{{ gamerscore_display(game.current_gamerscore, game.total_gamerscore) }}</td>
-                    <td class="date-cell">{{ game.last_played | shortdate }}</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+<!-- Recently — unified timeline preview. Wrapped in <article> so it sits in a glass
+     container like every other section on the page. Inner timeline_event_card glass
+     panels are mapped to the 'nested' tier via the .grid-rows wrapper convention,
+     same pattern the library + recent-table use. -->
+{% if timeline_preview %}
+<article class="profile-tl-preview anim-blur-rise">
+    <header class="profile-tl-head">
+        <h4 class="section-title anim-drop">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>
+            </svg>
+            Recently
+        </h4>
+        <a class="profile-tl-more anim-drop" href="/timeline"
+           hx-get="/timeline" hx-target="#main" hx-swap="innerHTML show:window:top"
+           hx-push-url="true" hx-headers='{"X-SPA-Nav":"true"}'>View timeline →</a>
+    </header>
+    <div class="timeline-events anim-stagger">
+        {% for event in timeline_preview %}
+        {{ timeline_event_card(event, loop.index0) }}
+        {% endfor %}
     </div>
 </article>
+{% endif %}
 
 <!-- Completed Games (100%) -->
 {% if stats.completed_list %}

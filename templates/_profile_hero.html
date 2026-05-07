@@ -1,0 +1,63 @@
+{# Profile hero — avatar, gamertag, real-data subline, milestone bar, three big numbers #}
+<article class="profile-hero anim-blur-rise">
+    <div class="profile-hero-grid">
+        <div class="profile-hero-pic">
+            {% if gamerpic %}
+            <img src="{{ gamerpic }}" alt="{{ gamertag }} gamerpic" width="120" height="120"
+                 loading="eager" decoding="async">
+            {% else %}
+            <div class="profile-hero-pic-fallback">{{ gamertag[:1] | upper if gamertag else 'X' }}</div>
+            {% endif %}
+        </div>
+        <div class="profile-hero-meta">
+            <h1 class="profile-hero-name">{{ gamertag | default('Xbox User') }}</h1>
+            <div class="profile-hero-chips">
+                {% if stats.completion_rate_pct is not none and stats.total_games %}
+                <span class="profile-hero-chip">
+                    <b>{{ "%.1f"|format(stats.completion_rate_pct) }}%</b> perfectionist
+                </span>
+                {% endif %}
+                {% if stats.avg_gamerscore_per_game %}
+                <span class="profile-hero-chip">
+                    <b>{{ "{:,}".format(stats.avg_gamerscore_per_game) }}G</b> avg / game
+                </span>
+                {% endif %}
+                {% if stats.active_months_12mo %}
+                <span class="profile-hero-chip">
+                    Active <b>{{ stats.active_months_12mo }}/12</b> months
+                </span>
+                {% endif %}
+            </div>
+            <div class="profile-hero-milestone">
+                <div class="profile-hero-milestone-bar" role="progressbar"
+                     aria-valuemin="{{ stats.milestone_floor }}"
+                     aria-valuemax="{{ stats.milestone_ceiling }}"
+                     aria-valuenow="{{ stats.total_gamerscore or 0 }}">
+                    <i style="width: {{ stats.milestone_pct }}%"></i>
+                </div>
+                <div class="profile-hero-milestone-label">
+                    <span>{{ "{:,}".format(stats.total_gamerscore or 0) }}G</span>
+                    <span class="muted">→</span>
+                    <span>{{ "{:,}".format(stats.milestone_ceiling) }}G</span>
+                    <span class="muted">·
+                        {{ "{:,}".format(stats.milestone_remaining) }}G to next milestone
+                    </span>
+                </div>
+            </div>
+        </div>
+        <div class="profile-hero-stats">
+            <div class="profile-hero-stat">
+                <div class="v gold">{{ "{:,}".format(stats.total_gamerscore or 0) }}</div>
+                <div class="l">Gamerscore</div>
+            </div>
+            <div class="profile-hero-stat">
+                <div class="v">{{ "{:,}".format(stats.total_games or 0) }}</div>
+                <div class="l">Games</div>
+            </div>
+            <div class="profile-hero-stat">
+                <div class="v">{{ (stats.total_minutes or 0) | playtime or '0m' }}</div>
+                <div class="l">Played</div>
+            </div>
+        </div>
+    </div>
+</article>

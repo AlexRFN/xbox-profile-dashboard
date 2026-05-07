@@ -65,7 +65,8 @@ def _build_bundle(files: list[str], out_path: Path, file_header: str) -> str:
 
 _CSS_FILES = [
     "css/tokens.css", "css/base.css", "css/layout.css", "css/animations.css",
-    "css/library.css", "css/profile.css", "css/game-detail.css", "css/achievements.css",
+    "css/library.css", "css/profile.css", "css/profile-hero.css",
+    "css/game-detail.css", "css/achievements.css",
     "css/timeline.css", "css/friends.css", "css/captures.css", "css/heatmap.css",
     "css/toast.css", "css/palette.css", "css/responsive.css", "css/overhaul.css",
     "css/vendor/lenis.css",
@@ -439,6 +440,10 @@ def _batch_events(events: list[dict], threshold: int = 3) -> list[dict]:
                 result.append(b)
             i = j
     return result
+
+
+# Public alias — same callable, no underscore prefix for cross-module imports.
+batch_events = _batch_events
 
 
 def group_events_by_month(events: list[dict], month_counts: dict | None = None) -> list[dict]:

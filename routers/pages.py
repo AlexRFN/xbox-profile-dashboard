@@ -7,6 +7,7 @@ import database as db
 from config import ACHIEVEMENTS_PAGE_SIZE, CAPTURES_PAGE_SIZE, LIBRARY_PAGE_SIZE, TIMELINE_PAGE_SIZE
 from helpers import (
     LibraryFilters,
+    batch_events,
     build_heatmap_grid,
     get_filters,
     group_events_by_month,
@@ -37,13 +38,16 @@ def _apply_heatmap(ctx: dict, heatmap_rows: list, year_range) -> None:
 async def dashboard(request: Request):
     async def fetch_ctx() -> dict:
         ctx_task = asyncio.create_task(page_ctx(request))
-        stats, heatmap_rows, year_range = await asyncio.gather(
+        stats, heatmap_rows, year_range, (tl_events, _) = await asyncio.gather(
             db.get_dashboard_stats(),
             db.get_heatmap_data(),
             db.get_heatmap_year_range(),
+            # Timeline preview: pull a small slab so batching/dedup has material to work with
+            db.get_timeline_events(page=1, per_page=12),
         )
         ctx = await ctx_task
         ctx["stats"] = stats
+        ctx["timeline_preview"] = batch_events(tl_events)[:4]
         _apply_heatmap(ctx, heatmap_rows, year_range)
         return ctx
 

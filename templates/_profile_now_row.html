@@ -1,0 +1,98 @@
+{# "Now" row — recently played + this-week sparkline + rarest unlocks
+   .anim-stagger activates the CSS --i stagger rule (animations.css:299) on
+   the three sibling articles so they wave in/out in DOM order, not at once. #}
+<div class="profile-now-row anim-stagger">
+
+    {# --- Now playing (most recently played game) --- #}
+    {% set np = stats.recently_played[0] if stats.recently_played else None %}
+    {% if np %}
+    <article class="profile-np anim-blur-rise" style="--i:0">
+        <a class="profile-np-link" href="/game/{{ np.title_id }}"
+           hx-get="/game/{{ np.title_id }}" hx-target="#main" hx-swap="innerHTML show:window:top"
+           hx-push-url="true" hx-headers='{"X-SPA-Nav":"true"}'
+           aria-label="{{ np.name }} — open game detail"></a>
+        {% if np.display_image %}
+        <div class="profile-np-bg" style="background-image: url('{{ np.display_image|thumb(480) }}')"></div>
+        {% endif %}
+        <div class="profile-np-head">
+            <span class="profile-np-live">Recently played</span>
+            <span class="muted">· {{ np.last_played | timeago }}</span>
+        </div>
+        <div class="profile-np-body">
+            <img src="{{ np.display_image|thumb(160) }}" alt="{{ np.name }}"
+                 class="profile-np-art"
+                 {% if np.blurhash %}data-blurhash="{{ np.blurhash }}"{% endif %}
+                 loading="eager" decoding="async" width="96" height="96">
+            <div class="profile-np-info">
+                <div class="profile-np-title">{{ np.name }}</div>
+                <div class="profile-np-row">
+                    <span><b>{{ "{:,}".format(np.current_gamerscore or 0) }}</b> / {{ "{:,}".format(np.total_gamerscore or 0) }} G</span>
+                    {% if stats.today_unlocks %}
+                    <span class="muted">·</span>
+                    <span>{{ stats.today_unlocks }} unlocked today</span>
+                    {% endif %}
+                </div>
+                <div class="profile-np-bar">
+                    <i style="width: {{ [np.progress_percentage or 0, 100] | min }}%"></i>
+                </div>
+                <div class="profile-np-foot">
+                    <span>{{ np.progress_percentage or 0 }}% complete</span>
+                </div>
+            </div>
+        </div>
+    </article>
+    {% endif %}
+
+    {# --- This week — vertical stack: title → number → foot → sparkline below --- #}
+    <article class="profile-week anim-blur-rise" style="--i:1">
+        <h4 class="profile-card-title">This week</h4>
+        <div class="profile-week-big">
+            {{ "{:,}".format(stats.week_gamerscore or 0) }}<span class="g-suffix">G</span>
+            {% if stats.week_delta_pct is not none %}
+            {% set up = stats.week_delta_pct >= 0 %}
+            <span class="profile-week-delta {{ 'up' if up else 'down' }}">
+                {{ '↑' if up else '↓' }} {{ stats.week_delta_pct | abs }}%
+            </span>
+            {% endif %}
+        </div>
+        <div class="profile-week-foot">
+            {{ stats.week_unlocks or 0 }} ACHIEVEMENTS
+            {% if stats.week_games %}· {{ stats.week_games }} GAMES{% endif %}
+        </div>
+        {% if stats.week_spark %}
+        {% set spark_max = (stats.week_spark | map(attribute='gs') | max) or 1 %}
+        <div class="profile-week-spark" aria-hidden="true">
+            {% for d in stats.week_spark %}
+            {% set h = (d.gs / spark_max * 100) if spark_max > 0 else 0 %}
+            <i style="height: {{ [h, 6] | max }}%" data-gs="{{ d.gs }}"></i>
+            {% endfor %}
+        </div>
+        {% endif %}
+    </article>
+
+    {# --- Rarest unlocks --- #}
+    {% if stats.rarest_unlocked %}
+    <article class="profile-rare anim-blur-rise" style="--i:2">
+        <div class="profile-rare-head">
+            <h4 class="profile-card-title">Rarest unlocks</h4>
+        </div>
+        <div class="profile-rare-list">
+            {% for r in stats.rarest_unlocked[:3] %}
+            <a href="/game/{{ r.title_id }}" class="profile-rare-row"
+               hx-get="/game/{{ r.title_id }}" hx-target="#main" hx-swap="innerHTML show:window:top"
+               hx-push-url="true" hx-headers='{"X-SPA-Nav":"true"}'>
+                <span class="profile-rare-icon rarity-{{ (r.rarity_category or 'common') | lower }}">★</span>
+                <div class="profile-rare-info">
+                    <div class="profile-rare-name">{{ r.name }}</div>
+                    <div class="profile-rare-sub">{{ r.game_name }} · {{ r.gamerscore or 0 }}G</div>
+                </div>
+                <div class="profile-rare-pct">
+                    {{ "%.1f"|format(r.rarity_percentage) }}%
+                </div>
+            </a>
+            {% endfor %}
+        </div>
+    </article>
+    {% endif %}
+
+</div>

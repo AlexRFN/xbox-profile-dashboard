@@ -1,0 +1,50 @@
+{# KPI strip — each tile is its own <article> so it inherits canonical glass + radius.
+   .anim-stagger activates the CSS --i stagger rule for the four tiles so they
+   wave on entrance/exit instead of all moving in unison. #}
+<div class="profile-kpi-strip anim-stagger">
+    <article class="profile-kpi anim-blur-rise" style="--i:0">
+        <svg class="profile-kpi-ic" viewBox="0 0 24 24" width="20" height="20"
+             fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+            <path d="M6 3h12l4 6-10 13L2 9z"/><path d="M2 9h20"/>
+        </svg>
+        <div>
+            <div class="v">{{ "{:,}".format(stats.total_games or 0) }}</div>
+            <div class="l">Games owned</div>
+        </div>
+    </article>
+
+    <article class="profile-kpi cyan anim-blur-rise" style="--i:1">
+        <svg class="profile-kpi-ic" viewBox="0 0 24 24" width="20" height="20"
+             fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+            <path d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
+        </svg>
+        <div>
+            <div class="v">{{ "{:,}".format(stats.gamepass_count or 0) }}</div>
+            <div class="l">On Game Pass</div>
+        </div>
+    </article>
+
+    <article class="profile-kpi purple anim-blur-rise" style="--i:2">
+        <svg class="profile-kpi-ic" viewBox="0 0 24 24" width="20" height="20"
+             fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+            <path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><path d="M22 4L12 14.01l-3-3"/>
+        </svg>
+        <div>
+            <div class="v">{{ "{:,}".format(stats.completed_games or 0) }}</div>
+            <div class="l">100% complete</div>
+        </div>
+    </article>
+
+    {% if stats.total_captures %}
+    <article class="profile-kpi amber anim-blur-rise" style="--i:3">
+        <svg class="profile-kpi-ic" viewBox="0 0 24 24" width="20" height="20"
+             fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+            <rect x="2" y="3" width="20" height="18" rx="2"/><circle cx="12" cy="13" r="4"/>
+        </svg>
+        <div>
+            <div class="v">{{ "{:,}".format(stats.total_captures or 0) }}</div>
+            <div class="l">Captures</div>
+        </div>
+    </article>
+    {% endif %}
+</div>

@@ -375,9 +375,11 @@ html:not(.glass-refract) .tracking-form input[type="date"] {
 }
 /* ========== WebGL Glass — Active Overrides ==========
    When WebGL glass is active, strip pseudo-elements and hover backgrounds
-   that would conflict with WebGL-rendered glass material. */
-.glass-refract article::before,
-.glass-refract article::after,
+   that would conflict with WebGL-rendered glass material.
+   Exception: .profile-hero uses ::before / ::after to layer a brand-tinted
+   diagonal + corner glow over the glass surface, which we *want* on top. */
+.glass-refract article:not(.profile-hero)::before,
+.glass-refract article:not(.profile-hero)::after,
 .glass-refract .stat-card::before,
 .glass-refract .stat-card::after {
     display: none;
