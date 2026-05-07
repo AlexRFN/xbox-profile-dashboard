@@ -1819,12 +1819,14 @@ fn rboxSDF(p: vec2f, b: vec2f, r: f32) -> f32 {
                     bdPass.draw(4);
                 }
                 bdPass.end();
-                // Signal CSS layer that GPU is now drawing the backdrop — the
-                // matching `.profile-np-bg` (and friends) hide so they don't double up.
-                if (!document.documentElement.classList.contains('glass-refract-bd-active')) {
-                    document.documentElement.classList.add('glass-refract-bd-active');
-                }
             }
+            // Signal CSS layer that GPU is currently drawing the backdrop. Re-evaluated
+            // every aurora frame so LRU eviction or panel removal flips the class back
+            // off and the CSS overlay re-takes over.
+            var clsHas = document.documentElement.classList.contains('glass-refract-bd-active');
+            var clsWant = _backdropDrawCount > 0;
+            if (clsWant && !clsHas) document.documentElement.classList.add('glass-refract-bd-active');
+            else if (!clsWant && clsHas) document.documentElement.classList.remove('glass-refract-bd-active');
 
             // Pass 2: Kawase blur (ping-pong)
             for (var bpu = 0; bpu < BLUR_PASSES; bpu++) {
