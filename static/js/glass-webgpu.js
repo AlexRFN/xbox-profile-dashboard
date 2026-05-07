@@ -467,7 +467,7 @@ fn surfaceHeight(t: f32) -> f32 {
     var BACKDROP_WGSL = /* wgsl */`
 struct BackdropU {
     rect: vec4f,        // x, y, w, h — half-res pixels
-    radii: vec4f,       // radius (half-res px), opacity, _pad, _pad
+    radii: vec4f,       // radius (half-res px), opacity, texAspect, _pad
     vp: vec4f,          // halfW, halfH, _pad, _pad
 };
 @group(0) @binding(0) var<uniform> u: BackdropU;
@@ -477,10 +477,11 @@ struct BackdropU {
 struct VSOut {
     @builtin(position) position: vec4f,
     @location(0) localPos: vec2f,
-    @location(1) uv: vec2f,
+    @location(1) baseUv: vec2f,
     @location(2) panelHalfSize: vec2f,
     @location(3) radius: f32,
     @location(4) opacity: f32,
+    @location(5) texAspect: f32,
 };
 
 @vertex fn vs(@builtin(vertex_index) vi: u32) -> VSOut {
@@ -495,9 +496,10 @@ struct VSOut {
     var out: VSOut;
     out.localPos = q * halfSize;
     out.panelHalfSize = halfSize;
-    out.uv = vec2f((q.x + 1.0) * 0.5, (q.y + 1.0) * 0.5);
+    out.baseUv = vec2f((q.x + 1.0) * 0.5, (q.y + 1.0) * 0.5);
     out.radius = u.radii.x;
     out.opacity = u.radii.y;
+    out.texAspect = u.radii.z;
     var ndc = (pos / u.vp.xy) * 2.0 - 1.0;
     ndc.y = -ndc.y;
     out.position = vec4f(ndc, 0.0, 1.0);
@@ -511,13 +513,26 @@ fn rboxSDF(p: vec2f, b: vec2f, r: f32) -> f32 {
 
 @fragment fn fs(
     @location(0) localPos: vec2f,
-    @location(1) uv: vec2f,
+    @location(1) baseUv: vec2f,
     @location(2) panelHalfSize: vec2f,
     @location(3) radius: f32,
     @location(4) opacity: f32,
+    @location(5) texAspect: f32,
 ) -> @location(0) vec4f {
     let sd = rboxSDF(localPos, panelHalfSize, radius);
     if (sd > 0.0) { discard; }
+    // Cover-style UV sampling, mirroring CSS background-size:cover. The texture
+    // already has the image's native aspect; we shrink the sampled UV range along
+    // whichever axis would otherwise letterbox so the image fills the panel and the
+    // overflow is symmetrically cropped.
+    let panelAspect = panelHalfSize.x / panelHalfSize.y;
+    var uvMul = vec2f(1.0, 1.0);
+    if (panelAspect > texAspect) {
+        uvMul.y = texAspect / panelAspect;
+    } else {
+        uvMul.x = panelAspect / texAspect;
+    }
+    let uv = (baseUv - 0.5) * uvMul + 0.5;
     let edge = smoothstep(0.0, 1.5, -sd);
     let col = textureSample(t, s, uv).rgb;
     let a = edge * opacity;
@@ -1129,20 +1144,29 @@ fn rboxSDF(p: vec2f, b: vec2f, r: f32) -> f32 {
         })
             .then(function (img) { return img.decode ? img.decode().then(function () { return img; }) : img; })
             .then(function (img) {
+                // Preserve native aspect — texture dimensions track the image's
+                // natural ratio (max side = BACKDROP_TEX_SIZE). The shader uses
+                // texAspect to do cover-style UV sampling against panel rects of
+                // varying aspect, matching CSS `background-size: cover`.
+                var iw = img.naturalWidth || img.width || 1;
+                var ih = img.naturalHeight || img.height || 1;
+                var scale = BACKDROP_TEX_SIZE / Math.max(iw, ih);
+                var tw = Math.max(1, Math.round(iw * scale));
+                var th = Math.max(1, Math.round(ih * scale));
                 var canvas = ('OffscreenCanvas' in window)
-                    ? new OffscreenCanvas(BACKDROP_TEX_SIZE, BACKDROP_TEX_SIZE)
-                    : Object.assign(document.createElement('canvas'), { width: BACKDROP_TEX_SIZE, height: BACKDROP_TEX_SIZE });
+                    ? new OffscreenCanvas(tw, th)
+                    : Object.assign(document.createElement('canvas'), { width: tw, height: th });
                 var ctx = canvas.getContext('2d');
                 ctx.filter = 'blur(' + BACKDROP_PREBLUR_PX + 'px) brightness(' + BACKDROP_BRIGHTNESS + ') saturate(' + BACKDROP_SATURATE + ')';
-                ctx.drawImage(img, 0, 0, BACKDROP_TEX_SIZE, BACKDROP_TEX_SIZE);
+                ctx.drawImage(img, 0, 0, tw, th);
                 var tex = device.createTexture({
                     label: 'backdrop:' + url,
-                    size: [BACKDROP_TEX_SIZE, BACKDROP_TEX_SIZE, 1],
+                    size: [tw, th, 1],
                     format: 'rgba8unorm-srgb',
                     usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT
                 });
-                device.queue.copyExternalImageToTexture({ source: canvas }, { texture: tex }, [BACKDROP_TEX_SIZE, BACKDROP_TEX_SIZE, 1]);
-                var entry = { tex: tex, lastUsed: performance.now(), refs: 0 };
+                device.queue.copyExternalImageToTexture({ source: canvas }, { texture: tex }, [tw, th, 1]);
+                var entry = { tex: tex, lastUsed: performance.now(), refs: 0, aspect: tw / th };
                 _backdropCache.set(url, entry);
                 _backdropPending.delete(url);
                 _evictBackdropLRU();
@@ -1849,7 +1873,7 @@ fn rboxSDF(p: vec2f, b: vec2f, r: f32) -> f32 {
                     backdropScratch[3]  = _backdropDrawRect[d4 + 3];
                     backdropScratch[4]  = _backdropDrawRadius[bd];
                     backdropScratch[5]  = _backdropDrawOpacity[bd];
-                    backdropScratch[6]  = 0;
+                    backdropScratch[6]  = _backdropDrawTex[bd].aspect || 1.0;
                     backdropScratch[7]  = 0;
                     backdropScratch[8]  = halfW;
                     backdropScratch[9]  = halfH;
