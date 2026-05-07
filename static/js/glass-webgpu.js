@@ -1075,9 +1075,13 @@ fn rboxSDF(p: vec2f, b: vec2f, r: f32) -> f32 {
     // the file (BACKDROP_POOL_SIZE) — both must be equal. Hoisting forced the dup;
     // they're co-located by the assertion below.
     var BACKDROP_MAX_TEXTURES = BACKDROP_POOL_SIZE;
-    var BACKDROP_TEX_SIZE = 256;          // pre-blurred at low res; matches CSS scale(1.15)+blur(24px) feel
-    var BACKDROP_PREBLUR_PX = 28;
-    var BACKDROP_BRIGHTNESS = 0.35;
+    // Pre-blur is intentionally light: the existing 2-pass Kawase blur on RT_AURORA
+    // and the glass shader's bezel refraction already smear the image significantly.
+    // 6px on a 256-wide texture lands in the same ballpark as CSS blur(24px) on the
+    // 480-wide source after the pipeline adds its own contributions.
+    var BACKDROP_TEX_SIZE = 256;
+    var BACKDROP_PREBLUR_PX = 6;
+    var BACKDROP_BRIGHTNESS = 0.45;
     var BACKDROP_SATURATE = 1.3;
 
     var _backdropCache = new Map();       // url → { tex, lastUsed, refs }
@@ -1968,7 +1972,12 @@ fn rboxSDF(p: vec2f, b: vec2f, r: f32) -> f32 {
         updatePhysics(_simTime);
 
         // Determine aurora parity before any early-return so the counter stays accurate.
-        var doAurora = (_auroraFrame++ & 1) === 0;
+        // When a backdrop is active, force aurora every frame: the backdrop draw runs
+        // inside the aurora block and tracks the panel's scroll position, so a
+        // half-rate aurora produces visible lag where the glass panel moves at full
+        // rate but the refracted image inside still references the previous frame's
+        // RT_BLUR.
+        var doAurora = (_auroraFrame++ & 1) === 0 || _backdropDrawCount > 0;
 
         // Cooldown: skip heavy layout work for a few frames after DOM changes
         if (_layoutCooldown > 0) { _layoutCooldown--; render(doAurora, _cachedScrollY); return; }
