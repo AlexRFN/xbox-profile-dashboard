@@ -320,7 +320,7 @@
     background: var(--glass-bg);
     border: 1px solid var(--glass-border);
     border-top-color: var(--glass-border-top);
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-lg);
     box-shadow: var(--shadow-4), inset 0 1px 0 var(--glass-bevel-highlight), inset 0 -1px 0 var(--glass-bevel-shadow);
     contain: layout style;
 }
@@ -330,8 +330,8 @@ html:not(.glass-refract) #library-table-wrap {
 }
 
 
-.game-table thead th:first-child { border-radius: var(--radius-md) 0 0 0; }
-.game-table thead th:last-child  { border-radius: 0 var(--radius-md) 0 0; }
+.game-table thead th:first-child { border-radius: var(--radius-lg) 0 0 0; }
+.game-table thead th:last-child  { border-radius: 0 var(--radius-lg) 0 0; }
 
 .game-table {
     font-size: 0.9rem;
@@ -367,8 +367,8 @@ html:not(.glass-refract) #library-table-wrap {
     border-bottom: none;
 }
 
-.game-row:last-child td:first-child { border-radius: 0 0 0 var(--radius-md); }
-.game-row:last-child td:last-child  { border-radius: 0 0 var(--radius-md) 0; }
+.game-row:last-child td:first-child { border-radius: 0 0 0 var(--radius-lg); }
+.game-row:last-child td:last-child  { border-radius: 0 0 var(--radius-lg) 0; }
 
 .game-row:nth-child(even) td {
     background: rgba(255, 255, 255, 0.025);
@@ -422,7 +422,7 @@ html:not(.glass-refract) #library-table-wrap {
     width: 56px;
     height: 56px;
     object-fit: cover;
-    border-radius: var(--radius-lg);
+    border-radius: var(--radius-md);
     display: block;
     border: 1px solid rgba(255, 255, 255, 0.06);
     transition: transform var(--dur-fast) var(--ease-spatial), box-shadow var(--dur-fast) var(--ease-spatial);
@@ -670,7 +670,7 @@ html:not(.glass-refract) #library-table-wrap {
     --rise-distance: 48px;
     --scale-rise: 0.92;
     padding: 0.5rem 0.75rem;
-    border-radius: var(--radius-lg);
+    border-radius: var(--radius-md);
     cursor: pointer;
     position: relative;
     z-index: 2; /* above parent article (z:1) so WebGL glass rows aren't hidden behind it */
@@ -715,7 +715,7 @@ html:not(.glass-refract) #library-table-wrap {
 /* Header row — glass material matching timeline month headers */
 .grid-rows thead tr {
     padding: 0.65rem 0.75rem;
-    border-radius: var(--radius-lg);
+    border-radius: var(--radius-md);
     background: var(--glass-bg);
     backdrop-filter: blur(var(--glass-blur-substrate)) saturate(var(--glass-sat-substrate)) brightness(var(--glass-brightness));
     -webkit-backdrop-filter: blur(var(--glass-blur-substrate)) saturate(var(--glass-sat-substrate)) brightness(var(--glass-brightness));
@@ -806,7 +806,7 @@ html:not(.glass-refract) #library-table-wrap {
     text-transform: uppercase;
     letter-spacing: 0.06em;
     padding: 0.25rem 0.6rem;
-    border-radius: 100px;
+    border-radius: var(--radius-pill);
     border: 1px solid transparent;
     cursor: pointer;
     transition: filter var(--dur-fast) var(--ease-effect), transform var(--dur-fast) var(--ease-spatial);
@@ -959,7 +959,7 @@ html:not(.glass-refract) #library-table-wrap {
     isolation: isolate;
     background: transparent;
     border: 1px solid var(--glass-border);
-    border-radius: var(--radius-lg);
+    border-radius: var(--radius-md);
     text-decoration: none;
     color: inherit;
     transition: transform var(--dur-fast) var(--ease-spatial), box-shadow var(--dur-fast) var(--ease-spatial),

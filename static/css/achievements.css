@@ -64,7 +64,7 @@
     align-items: center;
     gap: 0.5rem;
     padding: 0.5rem 0.85rem;
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-lg);
     border: 1px solid var(--glass-border);
     background: transparent;
     flex: 1;
@@ -116,7 +116,7 @@
 .showcase-card {
     position: relative;
     overflow: hidden;
-    border-radius: var(--radius-lg);
+    border-radius: var(--radius-md);
     background: transparent;
     border: 1px solid var(--glass-border);
     text-decoration: none;
@@ -188,7 +188,7 @@
        so banner art isn't squished into a square. Width auto-derives from height. */
     height: 64px;
     aspect-ratio: 16 / 9;
-    border-radius: var(--radius-lg);
+    border-radius: var(--radius-md);
     flex-shrink: 0;
     box-shadow: var(--shadow-4);
     object-fit: cover;
@@ -259,7 +259,7 @@
     align-items: center;
     gap: 1rem;
     padding: 0.6rem 1rem;
-    border-radius: var(--radius-lg);
+    border-radius: var(--radius-md);
     background: transparent;
     text-decoration: none;
     color: inherit;
@@ -310,7 +310,7 @@
 
 .ach-grid-card {
     position: relative;
-    border-radius: var(--radius-lg);
+    border-radius: var(--radius-md);
     background: transparent;
     overflow: hidden;
     text-decoration: none;
@@ -383,7 +383,7 @@
 .ach-grid-icon-glow {
     position: absolute;
     inset: -4px;
-    border-radius: var(--radius-lg);
+    border-radius: var(--radius-md);
     z-index: -1;
     pointer-events: none;
 }
@@ -535,7 +535,7 @@
     display: flex;
     gap: 1rem;
     padding: 0.75rem 1rem;
-    border-radius: var(--radius-lg);
+    border-radius: var(--radius-md);
     align-items: center;
     border: 1px solid transparent;
     background: transparent;
@@ -630,7 +630,7 @@
 .ach-rarity-glow {
     position: absolute;
     inset: -4px;
-    border-radius: var(--radius-lg);
+    border-radius: var(--radius-md);
     z-index: -1;
     pointer-events: none;
 }

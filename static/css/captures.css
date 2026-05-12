@@ -46,7 +46,7 @@
 /* Capture card */
 .capture-card {
     position: relative;
-    border-radius: var(--radius-lg);
+    border-radius: var(--radius-md);
     overflow: hidden;
     cursor: pointer;
     background: var(--surface-card);
@@ -226,7 +226,7 @@ body.select-mode main {
     color: inherit;
     margin-bottom: 0.75rem;
     padding: 0.5rem;
-    border-radius: var(--radius-lg);
+    border-radius: var(--radius-md);
     border: 1px solid transparent;
     transition: background var(--transition-fast), border-color var(--transition-fast);
 }
@@ -316,7 +316,7 @@ body.select-mode main {
     max-width: 90vw;
     max-height: 80vh;
     object-fit: contain;
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-lg);
     box-shadow: var(--shadow-16);
     transition: opacity var(--dur-fast) var(--ease-enter);
 }

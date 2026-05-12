@@ -121,7 +121,7 @@ hgroup p {
 article {
     background: transparent;
     border: 1px solid var(--glass-border);
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-lg);
     padding: 1.25rem;
     margin-bottom: 1.25rem;
     position: relative;

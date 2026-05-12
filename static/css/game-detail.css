@@ -25,7 +25,7 @@
     padding: 2rem;
     position: relative;
     overflow: hidden;
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-lg);
 }
 
 /* Cinematic hero — heavier blur, gradient overlays */
@@ -70,7 +70,7 @@
 .hero-image-wrap {
     position: relative;
     flex-shrink: 0;
-    border-radius: var(--radius-lg);
+    border-radius: var(--radius-md);
     overflow: hidden;
 }
 
@@ -79,7 +79,7 @@
     position: absolute;
     inset: 8px;
     background: inherit;
-    border-radius: var(--radius-lg);
+    border-radius: var(--radius-md);
     filter: blur(24px) saturate(2);
     opacity: 0.5;
     z-index: -1;
@@ -90,7 +90,7 @@
     width: 200px;
     height: 200px;
     object-fit: cover;
-    border-radius: var(--radius-lg);
+    border-radius: var(--radius-md);
     box-shadow: var(--shadow-16);
     transition: transform var(--dur-normal) var(--ease-spatial), box-shadow var(--dur-normal) var(--ease-spatial);
     position: relative;

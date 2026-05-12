@@ -131,7 +131,7 @@
     display: flex;
     gap: 0.75rem;
     padding: 0.75rem;
-    border-radius: var(--radius-lg);
+    border-radius: var(--radius-md);
     align-items: center;
     border: 1px solid transparent;
     background: rgba(16, 185, 129, 0.05);
@@ -211,7 +211,7 @@
     display: flex;
     gap: 0.75rem;
     padding: 0.75rem;
-    border-radius: var(--radius-lg);
+    border-radius: var(--radius-md);
     align-items: center;
     border: 1px solid transparent;
     background: var(--xbox-green-subtle);
@@ -276,7 +276,7 @@
 /* ========== Dashboard Recently Played Table ========== */
 .recent-table-wrap {
     position: relative;
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-lg);
     margin: 0 -2px;
     padding: 0 2px;
 }
@@ -286,14 +286,14 @@
     font-size: 0.9rem;
     border-collapse: separate;
     border-spacing: 0 2px;
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-lg);
     overflow: hidden;
 }
 
-.recent-table thead th:first-child { border-radius: var(--radius-md) 0 0 0; }
-.recent-table thead th:last-child  { border-radius: 0 var(--radius-md) 0 0; }
-.recent-row:last-child td:first-child { border-radius: 0 0 0 var(--radius-md); }
-.recent-row:last-child td:last-child  { border-radius: 0 0 var(--radius-md) 0; }
+.recent-table thead th:first-child { border-radius: var(--radius-lg) 0 0 0; }
+.recent-table thead th:last-child  { border-radius: 0 var(--radius-lg) 0 0; }
+.recent-row:last-child td:first-child { border-radius: 0 0 0 var(--radius-lg); }
+.recent-row:last-child td:last-child  { border-radius: 0 0 var(--radius-lg) 0; }
 
 .recent-table thead th {
     background: var(--surface-elevated);

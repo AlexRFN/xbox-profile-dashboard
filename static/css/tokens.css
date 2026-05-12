@@ -80,7 +80,7 @@ table { border-collapse: collapse; width: 100%; }
     background: var(--xbox-green);
     color: #fff;
     font-weight: 600;
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-lg);
     text-decoration: none;
     opacity: 0;
     transition: opacity 150ms;
@@ -228,11 +228,12 @@ table { border-collapse: collapse; width: 100%; }
     --shadow-8: 0 4px 16px rgba(0,0,0,0.4), 0 2px 6px rgba(0,0,0,0.5);
     --shadow-16: 0 8px 32px rgba(0,0,0,0.5), 0 4px 12px rgba(0,0,0,0.4);
 
-    /* Radius */
+    /* Radius — sm < md < lg in ascending size */
     --radius-sm: 4px;
-    --radius-md: 32px;
-    --radius-lg: 16px;
+    --radius-md: 16px;
+    --radius-lg: 32px;
     --radius-btn: 20px;
+    --radius-pill: 999px;
 
     /* Spacing */
     --container-max: 1280px;
