@@ -422,7 +422,7 @@ a.outline.reveal-item            { --reveal-intensity: 0.95; --reveal-mid: 0.55;
 /* Timeline skeleton card */
 .skeleton-card {
     padding: 1rem;
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-lg);
     background: var(--surface-card);
     border: 1px solid var(--border-subtle);
 }

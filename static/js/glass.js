@@ -38,11 +38,11 @@
     // ====================================================================
     var PI = Math.PI, TAU = PI * 2;
     var HALF_RES = 4;          // quarter-res aurora + blur (smooth gradient upscales cleanly)
-    var BLUR_PASSES = 2;
+    var BLUR_PASSES = 1;
     var MAX_PANELS = 128;   // max panels drawn per frame
     var MAX_CACHED = 512;   // max elements tracked (all glass-eligible DOM elements)
-    var IOR = 1.52;
-    var THICKNESS = 85.0;
+    var IOR = 3.0;
+    var THICKNESS = 50.0;
     var BEZEL = 60.0;
     var SPECULAR = 0.50;
 
@@ -212,26 +212,42 @@
         // Drop shadow outside glass (gaussian falloff, matches original)
         '  if(sd>0.0){\n' +
         '    if(sd>' + SHADOW_MARGIN.toFixed(1) + ')discard;\n' +
+        // Drop shadow outside glass — color-matched to the local backdrop sample so
+        // the cast shadow takes on the hue of what's behind the panel (Apple Liquid
+        // Glass behavior) instead of being flat black.
         '    float shadowFalloff=exp(-sd*sd/18.0);\n' +
-        '    float shadowAlpha=0.08*shadowFalloff;\n' +
-        '    fragColor=vec4(0.0,0.0,0.0,shadowAlpha*vOpacity);\n' +
+        '    float shadowAlpha=0.22*shadowFalloff;\n' +
+        '    vec3 shadowBackdrop=texture(uBlurTex,vBlurUV).rgb;\n' +
+        // Boost chroma while preserving low luminance — keeps the shadow dark
+        // but emphasizes the color cast from whatever's behind the panel.
+        '    float shadowLum=dot(shadowBackdrop,vec3(0.2126,0.7152,0.0722));\n' +
+        '    vec3 shadowChroma=shadowBackdrop-vec3(shadowLum);\n' +
+        '    vec3 shadowColor=max(vec3(shadowLum)*0.25+shadowChroma*0.9,vec3(0.0));\n' +
+        '    fragColor=vec4(shadowColor,shadowAlpha*vOpacity);\n' +
         '    return;\n' +
         '  }\n' +
         // Edge alpha — match original: 1.5px soft ramp from boundary inward
         '  float distFromEdge=-sd;\n' +
         '  float alpha=smoothstep(0.0,1.5,distFromEdge);\n' +
-        // Bezel zone — match original: min(bezel, min(radius, min(halfW, halfH)) - 1)
-        '  float bezel=min(' + BEZEL.toFixed(1) + ',min(vRadius,min(vPanelSize.x,vPanelSize.y))-1.0);\n' +
+        // Bezel zone — chamfered slab. Width is clamped by both corner radius and
+        // panel size (matches archisvaze/liquid-glass upstream). Keeping the bezel
+        // inside the rounded-corner area avoids exposing the SDF's diagonal
+        // discontinuity in the inner box. The slab scales down proportionally on
+        // tiny panels so small buttons act like small glass.
+        '  float bezel=max(1.0,min(' + BEZEL.toFixed(1) + ',min(vRadius,min(vPanelSize.x,vPanelSize.y))-1.0));\n' +
         '  float t=clamp(distFromEdge/bezel,0.0,1.0);\n' +
         // Surface height + numerical derivative for slope
         '  float h=surfaceHeight(t);\n' +
         '  float dt=0.001;\n' +
         '  float h2=surfaceHeight(min(t+dt,1.0));\n' +
         '  float dh=(h2-h)/dt;\n' +
-        // Depth-varying thickness (thicker at edges → stronger refraction in bezel zone)
+        // Depth-varying thickness — edge gets +40% to strengthen rim bending.
+        // No bezelScale shrink (matches archisvaze/liquid-glass — small panels
+        // stay optically thick instead of fading out as the chamfer clamps down).
         '  float thicknessLocal=' + THICKNESS.toFixed(1) + '*(1.0+(1.0-h*h)*0.4);\n' +
-        // Snell's law refraction (algebraic — eliminates atan, sin, asin, 2×tan)
-        '  float x_s=dh*(thicknessLocal/bezel);\n' +
+        // Snell's law refraction (algebraic — eliminates atan, sin, asin, 2×tan).
+        // tan(slope) = dh directly (upstream calibration in normalized t-space).
+        '  float x_s=dh;\n' +
         '  float invSqrtX2p1=inversesqrt(1.0+x_s*x_s);\n' +
         '  float sinI=x_s*invSqrtX2p1;\n' +
         '  float sinR=sinI/' + IOR.toFixed(1) + ';\n' +
@@ -244,21 +260,19 @@
         '  float omc2=omc*omc;\n' +
         '  float fresnel=0.04+0.96*omc2*omc2*omc;\n' +
         // Analytical SDF gradient (eliminates 2 rboxSDF calls per fragment)
-        '  vec2 q_g=abs(vLocalPos)-vPanelSize+vRadius;\n' +
-        '  vec2 grad;\n' +
-        '  if(q_g.x>0.0&&q_g.y>0.0){\n' +
-        '    grad=sign(vLocalPos)*normalize(q_g);\n' +
-        '  }else if(q_g.x>q_g.y){\n' +
-        '    grad=vec2(sign(vLocalPos.x),0.0);\n' +
-        '  }else{\n' +
-        '    grad=vec2(0.0,sign(vLocalPos.y));\n' +
-        '  }\n' +
+        // SDF gradient via finite differences (matches archisvaze/liquid-glass).
+        // Continuous everywhere on the SDF, so wide bezels don't expose the
+        // axis-switch seam that the analytical formulation produced near the
+        // panel diagonals.
+        '  float sd_dx=rboxSDF(vLocalPos+vec2(0.5,0.0),vPanelSize,vRadius);\n' +
+        '  float sd_dy=rboxSDF(vLocalPos+vec2(0.0,0.5),vPanelSize,vRadius);\n' +
+        '  vec2 grad=normalize(vec2(sd_dx-sd,sd_dy-sd));\n' +
         // Refraction displacement with per-channel chromatic aberration
         '  vec2 baseOffset=-grad*displacement/uViewport;\n' +
         '  vec3 blurred=vec3(\n' +
-        '    texture(uBlurTex,vBlurUV+baseOffset*1.006).r,\n' +
+        '    texture(uBlurTex,vBlurUV+baseOffset*1.10).r,\n' +
         '    texture(uBlurTex,vBlurUV+baseOffset).g,\n' +
-        '    texture(uBlurTex,vBlurUV+baseOffset*0.998).b\n' +
+        '    texture(uBlurTex,vBlurUV+baseOffset*0.90).b\n' +
         '  );\n' +
         // 2. Saturation boost
         '  float lum=dot(blurred,vec3(0.2126,0.7152,0.0722));\n' +
@@ -266,8 +280,8 @@
         // 3. Brightness multiply
         '  vec3 transmitted=saturated*vBrightness;\n' +
         '  float rimFalloff=1.0-smoothstep(0.0,bezel*0.4,distFromEdge);\n' +
-        // 4. Energy conservation: transmitted light reduces as Fresnel reflection increases
-        '  transmitted*=(1.0-fresnel);\n' +
+        // Energy conservation disabled — at IOR=3.0 the rim Fresnel kills transmitted
+        // brightness exactly where refraction (and CA) is strongest, hiding the effect.
         // 5. Beer's law absorption — applied after Fresnel (only absorbed light is transmitted light)
         '  float absorption=(1.0-h)*0.06;\n' +
         '  transmitted*=mix(vec3(1.0),vec3(0.96,0.97,1.0),absorption);\n' +
@@ -276,15 +290,62 @@
         // 7. Inner shadow — applied before specular so it only darkens transmitted light
         '  float innerShadow=1.0-smoothstep(0.0,bezel*0.6,distFromEdge);\n' +
         '  col*=mix(1.0,0.7,innerShadow*0.3);\n' +
-        // 8. Anisotropic specular — highlights stretch along edge tangent
-        '  float rimDot=abs(dot(grad,vec2(0.5812,-0.8137)));\n' +
-        '  vec2 tangent=vec2(-grad.y,grad.x);\n' +
-        '  float tangentDot=abs(dot(tangent,vec2(0.5812,-0.8137)));\n' +
-        '  float aniso=mix(rimDot,tangentDot,0.15);\n' +
-        '  float rimBase=aniso*rimFalloff;\n' +
-        '  float specHighlight=rimBase*sqrt(rimBase);\n' +
-        '  col+=vec3(specHighlight*' + SPECULAR.toFixed(2) + '*(0.3+0.7*fresnel));\n' +
-        // 9. Inner rim (thin bright line just inside edge, from original)
+        // 8. Liquid Glass diagonal highlight — based on rxing365/html-liquid-glass-effect-webgl.
+        // The directional term (nx*ny+1)*0.5 peaks on the top-left and bottom-right
+        // diagonals (where nx and ny have the same sign) and dims on top-right and
+        // bottom-left, with straight edges sitting at 0.5. Combined with edge proximity
+        // and a mix-toward-white blend, the rim brightens what's already there —
+        // giving the color-influenced look (a brightened version of the transmitted
+        // backdrop) rather than a flat white streak.
+        '  float edgeProx=1.0-smoothstep(0.0,3.0,distFromEdge);\n' +
+        // Cursor-as-light specular with per-pixel light direction. Each rim pixel
+        // computes its own vector toward the cursor, so the light angle varies
+        // smoothly along straight edges instead of uniformly lighting the whole
+        // edge. abs(dot(...)) gives a symmetric dual hot spot. Small bias keeps
+        // the direction well-defined when the cursor lands on a rim pixel.
+        '  vec2 highlightPanelCenter=vScreenPos-vLocalPos;\n' +
+        '  vec2 highlightMouseRel=uMouse-highlightPanelCenter;\n' +
+        // localPos contribution is dampened — full per-pixel (1.0) gives point-light
+        // focusing as the cursor approaches; pure per-panel (0.0) is Apple's uniform
+        // edges. 0.4 keeps the smooth edge gradient without the dramatic shrink.
+        '  vec2 highlightPixelToCursor=highlightMouseRel-vLocalPos*0.4+vec2(0.5,0.5);\n' +
+        '  vec2 highlightMouseDir=normalize(highlightPixelToCursor);\n' +
+        '  float directional=abs(dot(grad,highlightMouseDir));\n' +
+        '  float directionalPeaked=smoothstep(0.35,0.80,directional);\n' +
+        '  float highlightAlpha=edgeProx*directionalPeaked;\n' +
+        // Color-influenced brightening: aggressive additive + multiplicative lift.
+        // Target is intentionally allowed to exceed 1.0 (overshoot) — output clamping
+        // handles the ceiling, while keeping peak brightness punchy on bright areas
+        // and visibly lifted on dark ones, without dividing by luminance.
+        // Backdrop-adaptive highlight intensity — Apple Liquid Glass scales the
+        // highlight strength with what's behind the glass at this pixel: bright
+        // backdrop = emphasized highlight, dark backdrop = subdued highlight.
+        // Uses the pre-tint `saturated` backdrop sample so the highlight responds
+        // to actual transmitted content, not the post-rim-effects color.
+        '  float backdropLum=max(dot(saturated,vec3(0.2126,0.7152,0.0722)),0.0);\n' +
+        '  float backdropFactor=smoothstep(0.05,0.25,backdropLum);\n' +
+        // Hue-preserving highlight target: cap luminance at 1.0 to prevent white-out,
+        // then add back amplified chroma so channels stay differentiated. Result:
+        // brightness lift comparable to before but with visibly more inherited hue
+        // from the backdrop instead of washing to white at peak.
+        '  vec3 highlightBase=col*2.75+vec3(0.375);\n' +
+        '  float highlightBaseLum=dot(highlightBase,vec3(0.2126,0.7152,0.0722));\n' +
+        '  vec3 highlightBaseChroma=highlightBase-vec3(highlightBaseLum);\n' +
+        '  vec3 highlightTarget=vec3(min(highlightBaseLum,1.0))+highlightBaseChroma*1.4;\n' +
+        '  col=mix(col,highlightTarget,highlightAlpha*0.875*mix(0.30,1.0,backdropFactor));\n' +
+        // Inner shadow on perpendicular rim sections — the rim arc whose normal is
+        // sideways to the light direction darkens, giving the panel a sense of being
+        // lit from a specific direction (bright on the highlight axis, dark on the
+        // perpendicular axis). Uses a slightly wider edge band than the highlight
+        // for a softer, more gradient-y dark falloff.
+        '  float shadowEdgeProx=1.0-smoothstep(0.0,6.0,distFromEdge);\n' +
+        '  float shadowDirectional=1.0-directional;\n' +
+        '  float shadowPeaked=smoothstep(0.50,0.85,shadowDirectional);\n' +
+        '  float shadowAlpha=shadowEdgeProx*shadowPeaked;\n' +
+        '  col*=1.0-shadowAlpha*0.45;\n' +
+        // 9. Inner rim — continuous hairline 2–5 px inside the edge. Defines the
+        // panel shape independently of the directional highlight, matching Apple
+        // Liquid Glass behavior where the rim and the lighting are separate concerns.
         '  float innerRim=smoothstep(0.0,2.0,distFromEdge)*(1.0-smoothstep(2.0,5.0,distFromEdge));\n' +
         '  col+=vec3(innerRim*0.15*' + SPECULAR.toFixed(2) + ');\n' +
         // 10. Fake environment reflection — subtle sky gradient modulated by Fresnel
@@ -329,6 +390,13 @@
         '    float rimDist=exp(-d2/(2000.0*ps2));\n' +
         '    col+=vReveal*vec3(0.2,0.9,0.45)*rimCaustic*rimDist*edgeProx*2.5*revealTransmit;\n' +
         '  }\n' +
+        // Ambient breathing — low-spatial-frequency brightness drift (~±7%, ~3.5s
+        // cycle) so the glass surface feels alive instead of printed. Two slightly
+        // decorrelated sines on panel-local space keep regions out of phase.
+        '  vec2 breathPos=vLocalPos*0.012;\n' +
+        '  float breathTime=uTime*0.45;\n' +
+        '  float breath=sin(breathPos.x+breathPos.y+breathTime)*0.5+sin(breathPos.x-breathPos.y*0.7+breathTime*0.65+1.3)*0.5;\n' +
+        '  col*=1.0+breath*0.07;\n' +
         // 9. Ambient caustic shimmer — multi-layer interference like light through thick glass
         '  vec2 st=gl_FragCoord.xy*0.005;\n' +
         '  float t_s=uTime*0.35;\n' +

@@ -26,7 +26,7 @@
     width: min(640px, calc(100vw - 2rem));
     background: transparent;
     border: 1px solid var(--glass-border);
-    border-radius: var(--radius-lg);
+    border-radius: var(--radius-md);
     box-shadow: var(--shadow-16),
                 0 0 60px rgba(0, 210, 106, 0.06);
     overflow: hidden;
@@ -256,7 +256,7 @@
     width: min(420px, calc(100vw - 2rem));
     background: transparent;
     border: 1px solid var(--glass-border);
-    border-radius: var(--radius-lg);
+    border-radius: var(--radius-md);
     box-shadow: var(--shadow-16);
     padding: 1.5rem;
     animation: cmd-slide-in var(--dur-fast) var(--ease-enter);

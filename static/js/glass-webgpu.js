@@ -71,11 +71,11 @@
     // ====================================================================
     var PI = Math.PI, TAU = PI * 2;
     var HALF_RES = 4;          // quarter-res aurora + blur (smooth gradient upscales cleanly)
-    var BLUR_PASSES = 2;
+    var BLUR_PASSES = 1;
     var MAX_PANELS = 128;
     var MAX_CACHED = 512;
-    var IOR = 1.52;
-    var THICKNESS = 85.0;
+    var IOR = 3.0;
+    var THICKNESS = 50.0;
     var BEZEL = 60.0;
     var SPECULAR = 0.50;
     var SHADOW_MARGIN = 6.0;
@@ -296,20 +296,32 @@ fn surfaceHeight(t: f32) -> f32 {
 ) -> @location(0) vec4f {
     let sd = rboxSDF(localPos, panelSize, radius);
 
-    // Drop shadow outside glass
+    // Drop shadow outside glass — color-matched to the local backdrop sample so
+    // the cast shadow takes on the hue of what's behind the panel (Apple Liquid
+    // Glass behavior) instead of being flat black.
     if (sd > 0.0) {
         if (sd > ${SHADOW_MARGIN.toFixed(1)}) { discard; }
         let shadowFalloff = exp(-sd * sd / 18.0);
-        let shadowAlpha = 0.08 * shadowFalloff;
-        return vec4f(0.0, 0.0, 0.0, shadowAlpha * opacity);
+        let shadowAlpha = 0.22 * shadowFalloff;
+        let shadowBackdrop = textureSampleLevel(blurTex, blurSampler, blurUV, 0.0).rgb;
+        // Boost chroma while preserving low luminance — keeps the shadow dark
+        // but emphasizes the color cast from whatever's behind the panel.
+        let shadowLum = dot(shadowBackdrop, vec3f(0.2126, 0.7152, 0.0722));
+        let shadowChroma = shadowBackdrop - vec3f(shadowLum);
+        let shadowColor = max(vec3f(shadowLum) * 0.25 + shadowChroma * 0.9, vec3f(0.0));
+        return vec4f(shadowColor, shadowAlpha * opacity);
     }
 
     // Edge alpha — 1.5px soft ramp
     let distFromEdge = -sd;
     let alpha = smoothstep(0.0, 1.5, distFromEdge);
 
-    // Bezel zone
-    let bezel = min(${BEZEL.toFixed(1)}, min(radius, min(panelSize.x, panelSize.y)) - 1.0);
+    // Bezel zone — chamfered slab. Width is clamped by both corner radius and
+    // panel size (matches archisvaze/liquid-glass upstream). Keeping the bezel
+    // inside the rounded-corner area avoids exposing the SDF's diagonal
+    // discontinuity in the inner box. The slab scales down proportionally on
+    // tiny panels so small buttons act like small glass.
+    let bezel = max(1.0, min(${BEZEL.toFixed(1)}, min(radius, min(panelSize.x, panelSize.y)) - 1.0));
     let t = clamp(distFromEdge / bezel, 0.0, 1.0);
 
     // Surface height + numerical derivative
@@ -318,11 +330,14 @@ fn surfaceHeight(t: f32) -> f32 {
     let h2 = surfaceHeight(min(t + dt, 1.0));
     let dh = (h2 - h) / dt;
 
-    // Depth-varying thickness (thicker at edges → stronger refraction in bezel zone)
+    // Depth-varying thickness — edge gets +40% to strengthen rim bending.
+    // No bezelScale shrink (matches archisvaze/liquid-glass — small panels stay
+    // optically thick instead of fading out as the chamfer clamps down).
     let thicknessLocal = ${THICKNESS.toFixed(1)} * (1.0 + (1.0 - h * h) * 0.4);
 
-    // Snell's law refraction (algebraic — eliminates atan, sin, asin, 2×tan)
-    let x_s = dh * (thicknessLocal / bezel);
+    // Snell's law refraction (algebraic — eliminates atan, sin, asin, 2×tan).
+    // tan(slope) = dh directly (upstream calibration in normalized t-space).
+    let x_s = dh;
     let invSqrtX2p1 = inverseSqrt(1.0 + x_s * x_s);
     let sinI = x_s * invSqrtX2p1;
     var sinR = sinI / ${IOR.toFixed(1)};
@@ -336,23 +351,20 @@ fn surfaceHeight(t: f32) -> f32 {
     let omc2 = omc * omc;
     let fresnel = 0.04 + 0.96 * omc2 * omc2 * omc;
 
-    // Analytical SDF gradient (eliminates 2 rboxSDF calls per fragment)
-    let q_g = abs(localPos) - panelSize + radius;
-    var grad: vec2f;
-    if (q_g.x > 0.0 && q_g.y > 0.0) {
-        grad = sign(localPos) * normalize(q_g);
-    } else if (q_g.x > q_g.y) {
-        grad = vec2f(sign(localPos.x), 0.0);
-    } else {
-        grad = vec2f(0.0, sign(localPos.y));
-    }
+    // SDF gradient via finite differences (matches archisvaze/liquid-glass).
+    // Continuous everywhere on the SDF, so wide bezels don't expose the
+    // axis-switch seam that the analytical formulation produced near the
+    // panel diagonals.
+    let sd_dx = rboxSDF(localPos + vec2f(0.5, 0.0), panelSize, radius);
+    let sd_dy = rboxSDF(localPos + vec2f(0.0, 0.5), panelSize, radius);
+    let grad = normalize(vec2f(sd_dx - sd, sd_dy - sd));
 
     // Refraction displacement with per-channel chromatic aberration
     let baseOffset = -grad * displacement / uniforms.viewport;
     let blurred = vec3f(
-        textureSampleLevel(blurTex, blurSampler, blurUV + baseOffset * 1.006, 0.0).r,
+        textureSampleLevel(blurTex, blurSampler, blurUV + baseOffset * 1.10, 0.0).r,
         textureSampleLevel(blurTex, blurSampler, blurUV + baseOffset, 0.0).g,
-        textureSampleLevel(blurTex, blurSampler, blurUV + baseOffset * 0.998, 0.0).b
+        textureSampleLevel(blurTex, blurSampler, blurUV + baseOffset * 0.90, 0.0).b
     );
 
     // Saturation boost
@@ -364,8 +376,8 @@ fn surfaceHeight(t: f32) -> f32 {
 
     let rimFalloff = 1.0 - smoothstep(0.0, bezel * 0.4, distFromEdge);
 
-    // Energy conservation: transmitted light reduces as Fresnel reflection increases
-    transmitted *= (1.0 - fresnel);
+    // Energy conservation disabled — at IOR=3.0 the rim Fresnel kills transmitted
+    // brightness exactly where refraction (and CA) is strongest, hiding the effect.
 
     // Beer's law absorption — applied after Fresnel (only absorbed light is transmitted light)
     let absorption = (1.0 - h) * 0.06;
@@ -378,16 +390,64 @@ fn surfaceHeight(t: f32) -> f32 {
     let innerShadow = 1.0 - smoothstep(0.0, bezel * 0.6, distFromEdge);
     col *= mix(1.0, 0.7, innerShadow * 0.3);
 
-    // Anisotropic specular — highlights stretch along edge tangent direction
-    let rimDot = abs(dot(grad, vec2f(0.5812, -0.8137)));
-    let tangent = vec2f(-grad.y, grad.x);
-    let tangentDot = abs(dot(tangent, vec2f(0.5812, -0.8137)));
-    let aniso = mix(rimDot, tangentDot, 0.15);
-    let rimBase = aniso * rimFalloff;
-    let specHighlight = rimBase * sqrt(rimBase);
-    col += vec3f(specHighlight * ${SPECULAR.toFixed(2)} * (0.3 + 0.7 * fresnel));
+    // Liquid Glass diagonal highlight — based on rxing365/html-liquid-glass-effect-webgl.
+    // The directional term (nx*ny+1)*0.5 peaks on the top-left and bottom-right
+    // diagonals (where nx and ny have the same sign) and dims on top-right and
+    // bottom-left, with straight edges sitting at 0.5. Combined with edge proximity
+    // and a mix-toward-white blend, the rim brightens what's already there —
+    // giving the color-influenced look (a brightened version of the transmitted
+    // backdrop) rather than a flat white streak.
+    let edgeProx = 1.0 - smoothstep(0.0, 3.0, distFromEdge);
+    // Cursor-as-light specular with per-pixel light direction. Each rim pixel
+    // computes its own vector toward the cursor, so the light angle varies
+    // smoothly along straight edges instead of uniformly lighting the whole
+    // edge. abs(dot(...)) gives a symmetric dual hot spot. Small bias keeps
+    // the direction well-defined when the cursor lands on a rim pixel.
+    let highlightPanelCenter = screenPos - localPos;
+    let highlightMouseRel = uniforms.mouse - highlightPanelCenter;
+    // localPos contribution is dampened — full per-pixel (1.0) gives point-light
+    // focusing as the cursor approaches; pure per-panel (0.0) is Apple's uniform
+    // edges. 0.4 keeps the smooth edge gradient without the dramatic shrink.
+    let highlightPixelToCursor = highlightMouseRel - localPos * 0.4 + vec2f(0.5, 0.5);
+    let highlightMouseDir = normalize(highlightPixelToCursor);
+    let directional = abs(dot(grad, highlightMouseDir));
+    let directionalPeaked = smoothstep(0.35, 0.80, directional);
+    let highlightAlpha = edgeProx * directionalPeaked;
+    // Color-influenced brightening: aggressive additive + multiplicative lift.
+    // Target is intentionally allowed to exceed 1.0 (overshoot) — output clamping
+    // handles the ceiling, while keeping peak brightness punchy on bright areas
+    // and visibly lifted on dark ones, without dividing by luminance.
+    // Backdrop-adaptive highlight intensity — Apple Liquid Glass scales the
+    // highlight strength with what's behind the glass at this pixel: bright
+    // backdrop = emphasized highlight, dark backdrop = subdued highlight.
+    // Uses the pre-tint saturated backdrop sample so the highlight responds
+    // to actual transmitted content, not the post-rim-effects color.
+    let backdropLum = max(dot(saturated, vec3f(0.2126, 0.7152, 0.0722)), 0.0);
+    let backdropFactor = smoothstep(0.05, 0.25, backdropLum);
+    // Hue-preserving highlight target: cap luminance at 1.0 to prevent white-out,
+    // then add back amplified chroma so channels stay differentiated. Result:
+    // brightness lift comparable to before but with visibly more inherited hue
+    // from the backdrop instead of washing to white at peak.
+    let highlightBase = col * 2.75 + vec3f(0.375);
+    let highlightBaseLum = dot(highlightBase, vec3f(0.2126, 0.7152, 0.0722));
+    let highlightBaseChroma = highlightBase - vec3f(highlightBaseLum);
+    let highlightTarget = vec3f(min(highlightBaseLum, 1.0)) + highlightBaseChroma * 1.4;
+    col = mix(col, highlightTarget, highlightAlpha * 0.875 * mix(0.30, 1.0, backdropFactor));
 
-    // Inner rim
+    // Inner shadow on perpendicular rim sections — the rim arc whose normal is
+    // sideways to the light direction darkens, giving the panel a sense of being
+    // lit from a specific direction (bright on the highlight axis, dark on the
+    // perpendicular axis). Uses a slightly wider edge band than the highlight
+    // for a softer, more gradient-y dark falloff.
+    let shadowEdgeProx = 1.0 - smoothstep(0.0, 6.0, distFromEdge);
+    let shadowDirectional = 1.0 - directional;
+    let shadowPeaked = smoothstep(0.50, 0.85, shadowDirectional);
+    let shadowAlpha = shadowEdgeProx * shadowPeaked;
+    col *= 1.0 - shadowAlpha * 0.45;
+
+    // Inner rim — continuous hairline 2–5 px inside the edge. Defines the
+    // panel shape independently of the directional highlight, matching Apple
+    // Liquid Glass behavior where the rim and the lighting are separate concerns.
     let innerRim = smoothstep(0.0, 2.0, distFromEdge) * (1.0 - smoothstep(2.0, 5.0, distFromEdge));
     col += vec3f(innerRim * 0.15 * ${SPECULAR.toFixed(2)});
 
@@ -441,6 +501,15 @@ fn surfaceHeight(t: f32) -> f32 {
         let rimDist = exp(-d2 / (2000.0 * ps2));
         col += reveal * vec3f(0.2, 0.9, 0.45) * rimCaustic * rimDist * edgeProx * ${REVEAL_MULT.toFixed(2)} * revealTransmit;
     }
+
+    // Ambient breathing — low-spatial-frequency brightness drift (~±7%, ~3.5s
+    // cycle) so the glass surface feels alive instead of printed. Two slightly
+    // decorrelated sines on panel-local space keep regions out of phase.
+    let breathPos = localPos * 0.012;
+    let breathTime = uniforms.time * 0.45;
+    let breath = sin(breathPos.x + breathPos.y + breathTime) * 0.5
+               + sin(breathPos.x - breathPos.y * 0.7 + breathTime * 0.65 + 1.3) * 0.5;
+    col *= 1.0 + breath * 0.07;
 
     // Ambient caustic shimmer — multi-layer interference like light through thick glass
     let st = screenPos * 0.005;
@@ -1099,7 +1168,7 @@ fn rboxSDF(p: vec2f, b: vec2f, r: f32) -> f32 {
     // 6px on a 256-wide texture lands in the same ballpark as CSS blur(24px) on the
     // 480-wide source after the pipeline adds its own contributions.
     var BACKDROP_TEX_SIZE = 256;
-    var BACKDROP_PREBLUR_PX = 6;
+    var BACKDROP_PREBLUR_PX = 3;
     // Tonal handling stays at 1.0 here so the glass shader's per-tier brightness
     // (~0.78 dark surface) and saturation (~1.8) are the single source of truth.
     // Baking dim values at the canvas upload AND the shader pass stacked, making
