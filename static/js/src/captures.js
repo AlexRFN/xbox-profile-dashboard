@@ -238,10 +238,20 @@ function toggleSelectMode() {
     if (btn) btn.innerHTML = _selectMode
         ? '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" style="display:inline;vertical-align:-2px"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg> Cancel'
         : '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" style="display:inline;vertical-align:-2px"><rect x="3" y="3" width="18" height="18" rx="2"/><polyline points="9 11 12 14 22 4"/></svg> Select';
-    if (bar) bar.style.display = _selectMode ? '' : 'none';
+    // Class-driven open/close so opacity+transform can transition. The bar stays
+    // in the layout tree the whole time; pointer-events on .is-open keeps the
+    // hidden state non-interactive.
+    if (bar) bar.classList.toggle('is-open', _selectMode);
     const topDl = document.getElementById('download-selected-top');
     if (topDl) topDl.style.display = _selectMode ? '' : 'none';
-    if (window.invalidateGlassRects) window.invalidateGlassRects();
+    // Force a synchronous re-scan: the bar's inner outline buttons transition
+    // from offscreen (translated down + opacity 0, _inViewport often 0) into the
+    // viewport. invalidateGlassRects alone leaves _inViewport stale until the
+    // IntersectionObserver catches up async — and the panels stay culled in the
+    // meantime. updateGlassPanelsNow forces cacheElements on the next frame so
+    // IO re-observes with the bar in its open position.
+    if (window.updateGlassPanelsNow) window.updateGlassPanelsNow();
+    else if (window.invalidateGlassRects) window.invalidateGlassRects();
     if (!_selectMode) clearCaptureSelection();
 }
 
@@ -286,6 +296,12 @@ function updateSelectCount() {
         const span = topDl.querySelector('.dl-count');
         if (span) span.textContent = n > 0 ? '(' + n + ')' : '';
     }
+    // Count text width changes shift the select-bar's inner outline buttons via flex
+    // layout — a translation, not a resize, so ResizeObserver doesn't fire on them
+    // and their cached rects go stale. Invalidate rects so collectPanels re-reads
+    // the buttons' viewport positions on the next frame and the shader glass tracks
+    // the new layout.
+    if (window.invalidateGlassRects) window.invalidateGlassRects();
 }
 
 function _captureFilename(game, dateStr) {

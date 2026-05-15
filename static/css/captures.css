@@ -189,7 +189,6 @@ body.select-mode main {
     position: fixed;
     bottom: 1.5rem;
     left: 50%;
-    transform: translateX(-50%);
     display: flex;
     align-items: center;
     gap: 0.75rem;
@@ -209,6 +208,35 @@ body.select-mode main {
                 inset 0 -1px 0 var(--glass-bevel-shadow);
     z-index: 100;
     white-space: nowrap;
+    /* Hidden resting state — slides up + fades in when .is-open is added.
+       translateX(-50%) is baked into both states so X-centering survives the
+       transition. Exit uses --ease-exit (emphasized accel) at --dur-fast for a
+       quick dismiss; entrance uses --ease-spring-soft at --dur-normal for the
+       gentle floating-pill bounce. */
+    opacity: 0;
+    transform: translate(-50%, calc(100% + 1.5rem));
+    pointer-events: none;
+    transition: opacity var(--dur-fast) var(--ease-exit),
+                transform var(--dur-fast) var(--ease-exit);
+}
+
+.captures-select-bar.is-open {
+    opacity: 1;
+    transform: translate(-50%, 0);
+    pointer-events: auto;
+    transition: opacity var(--dur-normal) var(--ease-out),
+                transform var(--dur-normal) var(--ease-spring-soft);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .captures-select-bar,
+    .captures-select-bar.is-open {
+        transition: none;
+        transform: translateX(-50%);
+    }
+    .captures-select-bar:not(.is-open) {
+        opacity: 0;
+    }
 }
 
 .captures-select-bar span {
