@@ -481,6 +481,14 @@ document.body.addEventListener('htmx:afterSwap', (evt) => {
     if (evt.detail.target.id === 'ach-grid-wrap' || evt.detail.target.id === 'timeline') {
         requestGlassPanelsUpdate();
     }
+    // Heatmap year/rolling toggle re-emits the nav buttons (.hm-tab, .hm-year-btn).
+    // Without a rescan, the old buttons stay in _cachedEls (DOM-detached, invisible)
+    // and the new buttons have no GPU panel entry — only the CSS backdrop-filter
+    // fallback paints, which reads visually as the buttons "dropping behind" the
+    // article's GPU glass.
+    if (evt.detail.target.id === 'heatmap-content') {
+        requestGlassPanelsUpdate();
+    }
     // Timeline filter/load-more swap — fresh h3 nodes arrive via OOB; re-run countup
     if (evt.detail.target.id === 'timeline') {
         animateCountUp();
@@ -512,7 +520,14 @@ document.body.addEventListener('htmx:afterSwap', (evt) => {
             });
         }
         initBlurhash(_gridTarget);
-    } else if (evt.detail.target.id !== 'game-table-body' && evt.detail.target.id !== 'captures-grid') {
+    } else if (evt.detail.target.id !== 'game-table-body'
+            && evt.detail.target.id !== 'captures-grid'
+            && evt.detail.target.id !== 'heatmap-content') {
+        // initScrollAnimations() is destructive: it disconnects the global scroll
+        // observer + bumps _scrollAnimGen, invalidating any in-flight reveal timers.
+        // Skip for swap targets that hold no .anim-* elements (heatmap-content's
+        // children are static — only nav buttons + grid cells). Without this skip,
+        // a heatmap swap orphans every below-fold card on the page.
         initScrollAnimations(evt.detail.target);
         initBlurhash(evt.detail.target);
     } else {

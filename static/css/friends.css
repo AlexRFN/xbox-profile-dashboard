@@ -1,37 +1,63 @@
 /* Xbox Dashboard — friends */
 
-/* ========== Friends ========== */
+/* ========== Friends — three tiers, one shell ==========
+   All tiers share .friend-card glass + .friend-card-art backdrop.
+   Difference is grid density, card height, and presence tint — NOT material.
+   playing → big cinematic, green tint, rich presence
+   idle    → medium, neutral tint
+   away    → compact, desaturated art (offline)
+*/
 .friends-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
     gap: 1rem;
     content-visibility: auto;
-    contain-intrinsic-size: auto 1500px;
+    contain-intrinsic-size: auto 1200px;
 }
+
+.friends-grid-playing { grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); }
+.friends-grid-idle    { grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
+.friends-grid-away    { grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 0.75rem; }
 
 .friends-grid > .anim-slide-blur { transition-delay: calc(var(--i, 0) * 50ms); }
 
+.friends-section-head {
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+}
+
+.friends-section-label-muted { color: var(--text-tertiary); margin-bottom: 0; }
+
+.friends-section-count {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    color: var(--text-tertiary);
+    letter-spacing: 0.05em;
+}
+
+.friends-header-same {
+    color: var(--xbox-green);
+    font-weight: 600;
+}
+
+/* ---------- Base card ---------- */
 .friend-card {
     display: flex;
     gap: 1rem;
     padding: 1rem;
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-lg);
     align-items: center;
     border: 1px solid transparent;
     background: transparent;
-    transition: border-color var(--dur-normal) var(--ease-effect), transform var(--dur-normal) var(--ease-spatial);
+    transition: border-color var(--dur-normal) var(--ease-effect),
+                transform var(--dur-normal) var(--ease-spatial);
     contain: layout style paint;
 }
 
-.friend-card:hover {
-    transform: translateY(-3px);
-}
+.friend-card:hover { transform: translateY(-3px); }
 
-
-.friend-avatar-wrap {
-    position: relative;
-    flex-shrink: 0;
-}
+.friend-avatar-wrap { position: relative; flex-shrink: 0; }
 
 .friend-avatar {
     width: 48px;
@@ -41,9 +67,7 @@
     transition: transform var(--dur-fast) var(--ease-spatial);
 }
 
-.friend-card:hover .friend-avatar {
-    transform: scale(1.08);
-}
+.friend-card:hover .friend-avatar { transform: scale(1.08); }
 
 .friend-status-ring {
     position: absolute;
@@ -70,9 +94,7 @@
     pointer-events: none;
 }
 
-.friend-status-ring.offline {
-    background: var(--text-tertiary);
-}
+.friend-status-ring.offline { background: var(--text-tertiary); }
 
 @keyframes online-pulse {
     0%   { transform: scale(1); opacity: 0.3; }
@@ -80,20 +102,9 @@
     100% { transform: scale(1); opacity: 0.3; }
 }
 
-.friend-info {
-    flex: 1;
-    min-width: 0;
-}
-
-.friend-name {
-    font-weight: 600;
-    font-size: 0.95rem;
-}
-
-.friend-fav {
-    color: var(--gold);
-    margin-left: 0.25rem;
-}
+.friend-info { flex: 1; min-width: 0; }
+.friend-name { font-weight: 600; font-size: 0.95rem; }
+.friend-fav { color: var(--gold); margin-left: 0.25rem; }
 
 .friend-gs {
     font-family: var(--font-mono);
@@ -133,5 +144,52 @@
     letter-spacing: 0.03em;
 }
 
-.status-offline { border-left: 3px solid var(--text-tertiary); }
+/* ---------- Tier overrides ---------- */
+/* Playing — big, green-edged */
+.friend-card-playing { min-height: 144px; }
 
+/* Idle — medium, neutral edge override */
+.friend-card-idle {
+    min-height: 104px;
+    border-color: rgba(255, 255, 255, 0.06) !important;
+}
+.friend-card-idle::after { display: none; }            /* drop the green bottom glow */
+.friend-card-idle .friend-art-overlay {
+    background: linear-gradient(135deg,
+        rgba(255, 255, 255, 0.04) 0%, transparent 50%, rgba(0, 0, 0, 0.35) 100%);
+}
+
+/* Away — plain glass row, no art backdrop */
+.friend-card-away {
+    min-height: 80px;
+    border-color: rgba(255, 255, 255, 0.05) !important;
+}
+.friend-card-away .friend-avatar { opacity: 0.85; }
+.friend-card-away .friend-gs { color: var(--text-tertiary); }
+.friend-card-away .friend-name { color: var(--text-secondary); }
+
+/* ---------- "Same as you" pill ---------- */
+.friend-same-as-you {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    z-index: 2;
+    font-family: var(--font-mono);
+    font-size: 0.62rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 0.2rem 0.5rem;
+    border-radius: var(--radius-pill);
+    background: rgba(0, 210, 106, 0.2);
+    color: var(--xbox-green);
+    border: 1px solid rgba(0, 210, 106, 0.45);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+}
+
+@media (max-width: 600px) {
+    .friends-grid-playing,
+    .friends-grid-idle,
+    .friends-grid-away { grid-template-columns: 1fr; }
+}

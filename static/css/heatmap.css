@@ -28,7 +28,7 @@
 .hm-tab {
     background: transparent;
     border: 1px solid var(--glass-border);
-    border-radius: 6px;
+    border-radius: var(--radius-pill);
     position: relative;
     z-index: 2;
     padding: 0.25rem 0.65rem;
@@ -71,7 +71,7 @@
 .hm-year-btn {
     background: transparent;
     border: 1px solid var(--glass-border);
-    border-radius: 4px;
+    border-radius: var(--radius-pill);
     position: relative;
     z-index: 2;
     padding: 0.2rem 0.3rem;

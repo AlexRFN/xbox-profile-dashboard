@@ -30,6 +30,7 @@ async def timeline_events(request: Request, page: int = 2, event_type: str = "",
             db.get_timeline_events(page, 50, event_type, game_search, date_from, date_to),
             db.get_timeline_stats_and_months(event_type, game_search, date_from, date_to),
         )
+        timeline_stats = {**timeline_stats, "active_months": len(month_counts)}
     return templates.TemplateResponse(request, "timeline_events.html", {
         "grouped_events": group_events_by_month(events, month_counts),
         "has_more": has_more,

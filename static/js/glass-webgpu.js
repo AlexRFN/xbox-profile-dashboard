@@ -971,7 +971,7 @@ fn rboxSDF(p: vec2f, b: vec2f, r: f32) -> f32 {
         '.grid-rows .game-row': 'nested', '.grid-rows .recent-row': 'nested',
         '.captures-game-header': 'surface',
         '.sidebar-widget': 'chrome',
-        '.cmd-panel': 'overlay', '.shortcuts-panel': 'overlay', '.captures-select-bar': 'overlay', '.calendar-dropdown': 'overlay',
+        '.cmd-panel': 'overlay', '.shortcuts-panel': 'overlay', '.calendar-dropdown': 'overlay',
         'button.outline': 'button', 'button.secondary': 'button',
         '[role="button"].outline': 'button', '[role="button"].secondary': 'button',
         '.tracking-form select': 'control', '.tracking-form textarea': 'control', '.tracking-form input[type="date"]': 'control',
@@ -1065,7 +1065,7 @@ fn rboxSDF(p: vec2f, b: vec2f, r: f32) -> f32 {
         '.hm-tab', '.hm-year-btn', '.calendar-toggle-btn',
         '.filters-inline button', '.rarity-strip-item',
         '.cal-nav', '.quick-nav-pill',
-        '.captures-select-bar', '.calendar-dropdown'
+        '.calendar-dropdown'
     ].join(',');
 
     var REVEAL_SEL = [
@@ -1079,8 +1079,7 @@ fn rboxSDF(p: vec2f, b: vec2f, r: f32) -> f32 {
         '.tracking-form select', '.tracking-form textarea', '.tracking-form input[type="date"]',
         '.view-toggle', '.view-toggle-captures',
         '.hm-tab', '.hm-year-btn', '.calendar-toggle-btn',
-        '.filters-inline button', '.cal-nav', '.quick-nav-pill',
-        '.captures-select-bar'
+        '.filters-inline button', '.cal-nav', '.quick-nav-pill'
     ].join(',');
 
     var _isMobile = false;

@@ -164,10 +164,10 @@
 }
 
 .friend-art-bg {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    object-position: top center;
+    position: absolute;
+    inset: 0;
+    background-size: cover;
+    background-position: center;
     filter: blur(24px) brightness(0.3) saturate(1.4);
     transform: scale(1.15);
     transition: transform 6s var(--ease-spatial), opacity 220ms var(--ease-out, ease);
@@ -360,7 +360,6 @@ html:not(.glass-refract) .calendar-toggle-btn,
 html:not(.glass-refract) .filters-inline button,
 html:not(.glass-refract) .filters-inline select,
 html:not(.glass-refract) .rarity-strip-item,
-html:not(.glass-refract) .captures-select-bar,
 html:not(.glass-refract) .cal-nav,
 html:not(.glass-refract) .quick-nav-pill:not(.active),
 html:not(.glass-refract) .calendar-dropdown {

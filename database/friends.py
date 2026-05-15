@@ -77,6 +77,7 @@ async def get_friends() -> list[dict]:
             "isFavorite": bool(r["is_favorite"]),
             "presenceDevice": None,
             "presenceGame": None,
+            "presenceTitleId": None,
             "richPresenceText": None,
         }
         # presenceDetails can list multiple devices; index 0 is the primary/active one
@@ -91,6 +92,9 @@ async def get_friends() -> list[dict]:
                     if primary.get("IsGame"):
                         friend["presenceGame"] = primary.get("PresenceText")
                     friend["richPresenceText"] = primary.get("RichPresenceText")
+                    title_id = primary.get("TitleId") or primary.get("titleId")
+                    if title_id:
+                        friend["presenceTitleId"] = str(title_id)
             except Exception:
                 log.debug("Failed to parse presence details for %s", r["xuid"], exc_info=True)
         result.append(friend)
