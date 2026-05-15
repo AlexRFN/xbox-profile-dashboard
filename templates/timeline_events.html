@@ -1,4 +1,7 @@
 {% from "macros.html" import timeline_event_card %}
+{# Re-emit the vertical timeline line only on filter swaps (page == 1, innerHTML mode).
+   Load More (page >= 2) uses beforeend, where this would create a duplicate line. #}
+{% if page == 1 %}<div class="timeline-line anim-blur-rise"></div>{% endif %}
 {% for group in grouped_events %}
 {% set skip_header = (page > 1 and loop.first) %}
 {% if skip_header %}
@@ -50,18 +53,15 @@
     {% endif %}
 </div>
 
-<!-- OOB swap: update stats cards (no anim classes — OOB targets don't trigger afterSwap) -->
+<!-- OOB swap: update subtitle. Single <p> replace — no count-up animation needed
+     because filter changes are user-initiated and the new total appears in step. -->
 {% if timeline_stats %}
 {% set ts = timeline_stats %}
-<!-- Swap only the number nodes — leaves the glass .stat-card articles intact
-     (no flash from GPU glass re-scan) and lets animateCountUp re-run on fresh h3s. -->
-<h3 id="ts-achievement-count" hx-swap-oob="true" data-countup>{{ "{:,}".format(ts.achievement_count) }}</h3>
-<h3 id="ts-completion-count" hx-swap-oob="true" data-countup>{{ "{:,}".format(ts.completion_count) }}</h3>
-<h3 id="ts-first-played-count" hx-swap-oob="true" data-countup>{{ "{:,}".format(ts.first_played_count) }}</h3>
-<h3 id="ts-total-gamerscore" hx-swap-oob="true" data-countup>{{ "{:,}".format(ts.total_gamerscore) }}</h3>
-
-<!-- OOB swap: update result count -->
-<div id="timeline-result-count" hx-swap-oob="true" class="timeline-result-count anim-drop animate-in" style="--i: 2">
-    {{ ts.total_events }} event{{ 's' if ts.total_events != 1 else '' }}
-</div>
+<p id="timeline-subtitle" hx-swap-oob="true">
+    {{ "{:,}".format(ts.total_events) }} event{{ 's' if ts.total_events != 1 else '' }}
+    &middot; {{ "{:,}".format(ts.total_gamerscore) }}G earned
+    {% if ts.active_months %}
+    &middot; across {{ ts.active_months }} month{{ 's' if ts.active_months != 1 else '' }}
+    {% endif %}
+</p>
 {% endif %}

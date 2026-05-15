@@ -134,11 +134,32 @@ body.select-mode .capture-select-check {
 }
 
 body.select-mode .capture-card:not(.selected) {
-    opacity: 0.6;
+    opacity: 0.62;
 }
 
 body.select-mode .capture-card.selected {
     opacity: 1;
+}
+
+/* Select-mode affordance — every card carries a faint green ring as soon as
+   select-mode is on so the click target is obvious BEFORE the first click.
+   Selected cards get a saturated ring + matching glow so the picked set reads
+   as a group, not a sea of identical thumbnails. Using outline (not border) so
+   the ring sits ON TOP of the rounded corner without forcing a re-layout. */
+body.select-mode .capture-card {
+    outline: 1.5px solid var(--xbox-green-subtle);
+    outline-offset: -1.5px;
+    transition: outline-color var(--dur-fast) var(--ease-effect),
+                box-shadow var(--dur-fast) var(--ease-effect),
+                opacity var(--dur-fast) var(--ease-effect),
+                transform var(--transition-fast),
+                border-color var(--transition-fast);
+}
+
+body.select-mode .capture-card.selected {
+    outline-color: var(--xbox-green);
+    box-shadow: 0 0 0 1px var(--xbox-green-subtle),
+                0 6px 24px -10px rgba(0, 210, 106, 0.5);
 }
 
 body.select-mode .capture-card:hover {
@@ -158,7 +179,12 @@ body.select-mode main {
     font-weight: 600;
 }
 
-/* Floating select action bar */
+/* Floating select action bar.
+   NOT a GPU glass panel — the WebGPU canvas sits behind DOM, so its refraction
+   is occluded by capture cards painted above it. CSS backdrop-filter is the
+   only mechanism that can sample pixels from those DOM cards directly.
+   Material is the same substrate tier as #library-table-wrap so the page reads
+   as one glass system. */
 .captures-select-bar {
     position: fixed;
     bottom: 1.5rem;
@@ -168,10 +194,19 @@ body.select-mode main {
     align-items: center;
     gap: 0.75rem;
     padding: 0.75rem 1.25rem;
-    background: transparent;
+    background: var(--glass-bg);
+    backdrop-filter: blur(var(--glass-blur-substrate))
+                     saturate(var(--glass-sat-substrate))
+                     brightness(var(--glass-brightness));
+    -webkit-backdrop-filter: blur(var(--glass-blur-substrate))
+                             saturate(var(--glass-sat-substrate))
+                             brightness(var(--glass-brightness));
     border: 1px solid var(--glass-border);
-    border-radius: var(--radius-btn);
-    box-shadow: var(--shadow-16);
+    border-top-color: var(--glass-border-top);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-4),
+                inset 0 1px 0 var(--glass-bevel-highlight),
+                inset 0 -1px 0 var(--glass-bevel-shadow);
     z-index: 100;
     white-space: nowrap;
 }

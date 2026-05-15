@@ -67,15 +67,6 @@
     color: #fff;
 }
 
-/* ========== Result count ========== */
-.timeline-result-count {
-    font-family: var(--font-mono);
-    font-size: var(--text-xs);
-    color: var(--text-tertiary);
-    margin: 0.5rem 0 0.25rem;
-}
-
-
 /* ========== Month Headers (enhanced) ========== */
 .timeline-month {
     margin-bottom: 1.5rem;

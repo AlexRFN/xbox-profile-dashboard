@@ -2,10 +2,19 @@
 {% block title %}Friends - Xbox{% endblock %}
 
 {% block content %}
+{% set playing_friends = friends | selectattr('presenceState', 'equalto', 'Online') | selectattr('presenceGame') | list %}
+{% set idle_friends = friends | selectattr('presenceState', 'equalto', 'Online') | rejectattr('presenceGame') | list %}
+{% set offline_friends = friends | rejectattr('presenceState', 'equalto', 'Online') | list %}
+{% set same_count = playing_friends | selectattr('sameAsYou') | list | length %}
+
 <div class="page-header-actions">
     <hgroup class="anim-drop">
         <h1>Friends</h1>
-        <p>{{ friends | length }} friends{% if online_count %} &middot; {{ online_count }} online{% endif %}</p>
+        <p>
+            {{ friends | length }} friends
+            {% if online_count %}&middot; {{ online_count }} online{% endif %}
+            {% if same_count %}&middot; <span class="friends-header-same">{{ same_count }} playing what you played</span>{% endif %}
+        </p>
     </hgroup>
     <button id="sync-friends-btn" class="outline anim-drop" style="--i: 1"
             onclick="fetchFriends()" aria-busy="false">
@@ -24,68 +33,25 @@
 </div>
 {% else %}
 
-<!-- Online friends -->
-{% set online_friends = friends | selectattr('presenceState', 'equalto', 'Online') | list %}
-{% set offline_friends = friends | rejectattr('presenceState', 'equalto', 'Online') | list %}
-
-{% if online_friends %}
-<div class="friends-section-label anim-drop">
-    <span class="friends-section-dot friends-section-dot-online"></span>
-    Online ({{ online_friends | length }})
-</div>
-<div class="friends-grid friends-grid-online anim-stagger">
-    {% for friend in online_friends %}
-    <article class="friend-card friend-card-online reveal-item reveal-border anim-slide-blur" style="--i: {{ loop.index0 }}"
-             {% if friend.displayPicRaw %}data-glass-backdrop="{{ friend.displayPicRaw|thumb(320) }}"{% endif %}>
-        <div class="friend-card-art">
-            <img src="{{ friend.displayPicRaw|thumb(320) }}" alt="" class="friend-art-bg"
-                 loading="lazy" decoding="async">
-            <div class="friend-art-overlay"></div>
-        </div>
-        <div class="friend-card-content">
-            <div class="friend-avatar-wrap">
-                <img src="{{ friend.displayPicRaw|thumb(48) }}" alt="" class="friend-avatar"
-                     loading="lazy" decoding="async">
-                <span class="friend-status-ring online"></span>
-            </div>
-            <div class="friend-info">
-                <div class="friend-name">
-                    {{ friend.gamertag }}
-                    {% if friend.isFavorite %}<span class="friend-fav" title="Favorite">&#9733;</span>{% endif %}
-                </div>
-                <div class="friend-gs">{{ "{:,}".format(friend.gamerScore | int) }} G</div>
-                {% if friend.presenceGame %}
-                <div class="friend-presence friend-presence-active">Playing {{ friend.presenceGame }}</div>
-                {% if friend.richPresenceText %}
-                <div class="friend-rich-presence">{{ friend.richPresenceText }}</div>
-                {% endif %}
-                {% else %}
-                <div class="friend-presence friend-presence-active">{{ friend.presenceText or 'Online' }}</div>
-                {% endif %}
-                {% if friend.presenceDevice %}
-                <div class="friend-device-tag">{{ friend.presenceDevice }}</div>
-                {% endif %}
-            </div>
-        </div>
-    </article>
-    {% endfor %}
-</div>
-{% endif %}
-
-{% if offline_friends %}
-{% if online_friends %}
-<div class="friends-section-label anim-drop" style="margin-top: 1.5rem;">
-    <span class="friends-section-dot"></span>
-    Offline ({{ offline_friends | length }})
-</div>
-{% endif %}
-<div class="friends-grid anim-stagger">
-    {% for friend in offline_friends %}
-    <article class="friend-card reveal-item reveal-border anim-slide-blur status-offline" style="--i: {{ loop.index0 }}">
+{# Macro: full friend card with blurred art backdrop + glass shell.
+   variant: 'playing' | 'idle' | 'away' — controls grid density + tint, NOT card construction. #}
+{% macro friend_card(friend, variant, idx) %}
+{% set has_art = variant != 'away' %}
+<article class="friend-card {% if has_art %}friend-card-online{% endif %} friend-card-{{ variant }} reveal-item reveal-border anim-slide-blur"
+         style="--i: {{ idx }}"
+         {% if has_art and friend.displayPicRaw %}data-glass-backdrop="{{ friend.displayPicRaw|thumb(320) }}"{% endif %}>
+    {% if has_art %}
+    <div class="friend-card-art">
+        <div class="friend-art-bg" style="background-image: url('{{ friend.displayPicRaw|thumb(320) }}')"></div>
+        <div class="friend-art-overlay"></div>
+    </div>
+    {% endif %}
+    {% if friend.sameAsYou %}<span class="friend-same-as-you" title="In your library">Same as you</span>{% endif %}
+    <div class="friend-card-content">
         <div class="friend-avatar-wrap">
             <img src="{{ friend.displayPicRaw|thumb(48) }}" alt="" class="friend-avatar"
                  loading="lazy" decoding="async">
-            <span class="friend-status-ring offline"></span>
+            <span class="friend-status-ring {{ 'online' if variant != 'away' else 'offline' }}"></span>
         </div>
         <div class="friend-info">
             <div class="friend-name">
@@ -93,10 +59,64 @@
                 {% if friend.isFavorite %}<span class="friend-fav" title="Favorite">&#9733;</span>{% endif %}
             </div>
             <div class="friend-gs">{{ "{:,}".format(friend.gamerScore | int) }} G</div>
-            <div class="friend-presence">{{ friend.presenceText or 'Offline' }}</div>
+            {% if variant == 'playing' %}
+                <div class="friend-presence friend-presence-active">Playing {{ friend.presenceGame }}</div>
+                {% if friend.richPresenceText %}
+                <div class="friend-rich-presence">{{ friend.richPresenceText }}</div>
+                {% endif %}
+            {% elif variant == 'idle' %}
+                <div class="friend-presence friend-presence-active">{{ friend.presenceText or 'Online' }}</div>
+            {% else %}
+                <div class="friend-presence">{{ friend.presenceText or 'Offline' }}</div>
+            {% endif %}
+            {% if friend.presenceDevice and variant != 'away' %}
+            <div class="friend-device-tag">{{ friend.presenceDevice }}</div>
+            {% endif %}
         </div>
-    </article>
-    {% endfor %}
+    </div>
+</article>
+{% endmacro %}
+
+{# ── Now playing — cinematic, sorted same-as-you first ───────────── #}
+{% if playing_friends %}
+{% set playing_sorted = playing_friends | sort(attribute='gamerScore', reverse=true) | sort(attribute='sameAsYou', reverse=true) %}
+<div class="friends-section-head anim-drop">
+    <div class="friends-section-label">
+        <span class="friends-section-dot friends-section-dot-online"></span>
+        Now playing
+    </div>
+    <span class="friends-section-count">{{ playing_friends | length }}</span>
+</div>
+<div class="friends-grid friends-grid-playing anim-stagger">
+    {% for friend in playing_sorted %}{{ friend_card(friend, 'playing', loop.index0) }}{% endfor %}
+</div>
+{% endif %}
+
+{# ── Online but idle — medium tier ───────────────────────────────── #}
+{% if idle_friends %}
+<div class="friends-section-head anim-drop" style="margin-top: 1.75rem;">
+    <div class="friends-section-label friends-section-label-muted">
+        <span class="friends-section-dot friends-section-dot-online"></span>
+        Other online
+    </div>
+    <span class="friends-section-count">{{ idle_friends | length }}</span>
+</div>
+<div class="friends-grid friends-grid-idle anim-stagger">
+    {% for friend in idle_friends %}{{ friend_card(friend, 'idle', loop.index0) }}{% endfor %}
+</div>
+{% endif %}
+
+{# ── Offline — same glass shell, denser grid, desaturated art ────── #}
+{% if offline_friends %}
+<div class="friends-section-head anim-drop" style="margin-top: 1.75rem;">
+    <div class="friends-section-label friends-section-label-muted">
+        <span class="friends-section-dot"></span>
+        Offline
+    </div>
+    <span class="friends-section-count">{{ offline_friends | length }}</span>
+</div>
+<div class="friends-grid friends-grid-away anim-stagger">
+    {% for friend in offline_friends %}{{ friend_card(friend, 'away', loop.index0) }}{% endfor %}
 </div>
 {% endif %}
 

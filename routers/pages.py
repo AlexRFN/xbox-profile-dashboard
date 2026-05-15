@@ -177,7 +177,7 @@ async def timeline_page(request: Request, event_type: str = "", game_search: str
             "game_search": game_search,
             "date_from": date_from,
             "date_to": date_to,
-            "timeline_stats": timeline_stats,
+            "timeline_stats": {**timeline_stats, "active_months": len(month_counts)},
             "ach_stats": ach_stats,
             "near_completion": near_completion,
             "active_range": timeline_active_preset(date_from, date_to),
@@ -287,10 +287,22 @@ async def captures_page(request: Request):
 
 @router.get("/friends", response_class=HTMLResponse)
 async def friends_page(request: Request):
-    ctx, friends = await asyncio.gather(
+    ctx, friends, game_index = await asyncio.gather(
         page_ctx(request),
         db.get_friends(),
+        db.get_game_index(),
     )
+    # "Same as you" — friend's currently-playing title is in your library.
+    # Title IDs are the reliable match; fall back to lowercase name for older sync rows
+    # where presenceTitleId may be missing.
+    owned_ids = {str(g["title_id"]) for g in game_index if g.get("title_id")}
+    owned_names = {(g.get("name") or "").lower() for g in game_index if g.get("name")}
+    for f in friends:
+        tid = f.get("presenceTitleId")
+        pname = (f.get("presenceGame") or "").lower()
+        f["sameAsYou"] = bool(
+            (tid and tid in owned_ids) or (pname and pname in owned_names)
+        )
     ctx.update({
         "friends": friends,
         "online_count": sum(1 for f in friends if f.get("presenceState") == "Online"),
