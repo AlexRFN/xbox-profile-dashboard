@@ -28,33 +28,30 @@
     border-radius: var(--radius-lg);
 }
 
-/* Cinematic hero — heavier blur, gradient overlays */
+/* Cinematic hero — WebGL2 fallback layer. WebGPU path drops this via
+   `.glass-bd-on { visibility: hidden }` once the GPU backdrop pass takes over.
+   Values tuned to be the single visual source on the fallback path: brighter
+   than the original (0.3) since prog-blur and stat-text gradient no longer
+   stack on top of it. */
 .hero-bg {
     position: absolute;
-    top: -20px; left: -20px; right: -20px; bottom: -20px;
+    inset: 0;
     background-size: cover;
     background-position: center;
-    filter: blur(40px) brightness(0.3) saturate(1.3);
-    opacity: 0.75;
+    filter: blur(40px) brightness(0.55) saturate(1.5);
+    opacity: 0.9;
     z-index: 0;
-    transform: translateZ(0);
 }
 
-/* Hero progressive blur — inside the hero (overflow:hidden safe) */
-.hero-blur-bottom {
-    z-index: 1;
-    height: 60px;
-}
-.hero-blur-bottom.prog-blur-down { bottom: 0; }
-/* Keep a subtle gradient underneath the blur for color blending */
+/* Subtle bottom darkening to keep stat text readable on bright game art. */
 .game-hero::after {
     content: '';
     position: absolute;
     bottom: 0;
     left: 0;
     right: 0;
-    height: 40%;
-    background: linear-gradient(to top, var(--surface-abyss) 5%, transparent);
+    height: 30%;
+    background: linear-gradient(to top, var(--surface-abyss) 0%, transparent);
     z-index: 0;
     pointer-events: none;
 }

@@ -199,7 +199,7 @@ To add a column: add an `ALTER TABLE` entry to the `MIGRATIONS` list in `databas
 - **Rarity:** Common (gray) · Rare (blue) · Epic (purple) · Legendary (amber)
 - **Tracking status:** Unset (gray) · Backlog (blue) · Playing (green) · Finished (purple) · Dropped (red)
 - **Themes:** light / dark / OLED — toggled via `data-theme` + `data-oled` attributes, persisted in `localStorage`
-- **Glass renderer:** WebGPU primary (`glass-webgpu.js`), WebGL2 fallback (`glass.js`) — physically-based with IOR 1.52, Fresnel, chromatic aberration, aurora background
+- **Glass renderer:** WebGPU primary (`glass-webgpu.js`), WebGL2 fallback (`glass.js`) — stylized IOR 3.0 (intentionally past real glass for stronger lensing), Fresnel, chromatic aberration, aurora background
 
 ## Testing
 

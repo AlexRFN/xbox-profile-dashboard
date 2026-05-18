@@ -168,20 +168,39 @@
     inset: 0;
     background-size: cover;
     background-position: center;
-    filter: blur(24px) brightness(0.3) saturate(1.4);
+    filter: blur(24px) brightness(0.55) saturate(1.5);
+    opacity: 0.9;
     transform: scale(1.15);
     transition: transform 6s var(--ease-spatial), opacity 220ms var(--ease-out, ease);
 }
 
-/* GPU glass backdrop active — hide the CSS layer while the shader pass is
-   rendering this panel's image refracted through the bezel. See profile-hero.css
-   for the gating rationale. */
+/* GPU glass backdrop active — fade the CSS layer out, then drop it from the
+   render tree via `visibility: hidden` so the expensive `filter: blur(...)`
+   stops compositing. Delaying the visibility transition by 220ms keeps the
+   fade visible; the change applies only after opacity has already finished
+   animating. See profile-hero.css for the gating rationale. */
+.friend-card .friend-art-bg,
+.timeline-event-card-celebration .timeline-celebration-art,
+.showcase-card .showcase-card-art,
+.game-hero .hero-bg {
+    visibility: visible;
+}
 .friend-card.glass-bd-on .friend-art-bg,
 .timeline-event-card-celebration.glass-bd-on .timeline-celebration-art,
 .showcase-card.glass-bd-on .showcase-card-art,
 .game-hero.glass-bd-on .hero-bg {
     opacity: 0;
-    transition: opacity 220ms var(--ease-out, ease);
+    visibility: hidden;
+    transition: opacity 220ms var(--ease-out, ease),
+                visibility 0s linear 220ms;
+}
+@media (prefers-reduced-motion: reduce) {
+    .friend-card.glass-bd-on .friend-art-bg,
+    .timeline-event-card-celebration.glass-bd-on .timeline-celebration-art,
+    .showcase-card.glass-bd-on .showcase-card-art,
+    .game-hero.glass-bd-on .hero-bg {
+        transition: none;
+    }
 }
 
 .friend-card-online:hover .friend-art-bg {
@@ -244,7 +263,8 @@
     inset: 0;
     background-size: cover;
     background-position: center;
-    filter: blur(20px) brightness(0.25) saturate(1.5);
+    filter: blur(20px) brightness(0.55) saturate(1.5);
+    opacity: 0.9;
     transform: scale(1.1);
     z-index: 0;
 }

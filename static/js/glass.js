@@ -328,11 +328,20 @@
         // then add back amplified chroma so channels stay differentiated. Result:
         // brightness lift comparable to before but with visibly more inherited hue
         // from the backdrop instead of washing to white at peak.
-        '  vec3 highlightBase=col*2.75+vec3(0.375);\n' +
+        '  vec3 highlightBase=col*3.50+vec3(0.375);\n' +
         '  float highlightBaseLum=dot(highlightBase,vec3(0.2126,0.7152,0.0722));\n' +
         '  vec3 highlightBaseChroma=highlightBase-vec3(highlightBaseLum);\n' +
-        '  vec3 highlightTarget=vec3(min(highlightBaseLum,1.0))+highlightBaseChroma*1.4;\n' +
-        '  col=mix(col,highlightTarget,highlightAlpha*0.875*mix(0.30,1.0,backdropFactor));\n' +
+        '  vec3 highlightTarget=vec3(min(highlightBaseLum,1.0))+highlightBaseChroma*1.50;\n' +
+        '  col=mix(col,highlightTarget,highlightAlpha*1.00*mix(0.30,1.0,backdropFactor));\n' +
+        // White Fresnel specular lobe — cursor-driven, sits on top of the color rim
+        // and adds a "wet shiny" near-white crest at the directional peak. Falloff
+        // is wider (directional²) than the color rim's smoothstep so it stays
+        // visible alongside the color inheritance rather than overlapping the
+        // brightest portion. Fresnel weights it toward grazing rim pixels where
+        // physical specular reflection is strongest.
+        '  float specLobe=directional*directional;\n' +
+        '  float specAlpha=edgeProx*specLobe*fresnel;\n' +
+        '  col+=vec3(0.95,0.97,1.0)*specAlpha*1.40;\n' +
         // Inner shadow on perpendicular rim sections — the rim arc whose normal is
         // sideways to the light direction darkens, giving the panel a sense of being
         // lit from a specific direction (bright on the highlight axis, dark on the

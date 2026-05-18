@@ -138,8 +138,8 @@
     inset: 0;
     background-size: cover;
     background-position: center;
-    filter: blur(24px) brightness(0.25) saturate(1.4);
-    opacity: 0.6;
+    filter: blur(24px) brightness(0.55) saturate(1.5);
+    opacity: 0.9;
     z-index: 0;
 }
 

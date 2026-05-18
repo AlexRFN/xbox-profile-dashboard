@@ -428,11 +428,21 @@ fn surfaceHeight(t: f32) -> f32 {
     // then add back amplified chroma so channels stay differentiated. Result:
     // brightness lift comparable to before but with visibly more inherited hue
     // from the backdrop instead of washing to white at peak.
-    let highlightBase = col * 2.75 + vec3f(0.375);
+    let highlightBase = col * 3.50 + vec3f(0.375);
     let highlightBaseLum = dot(highlightBase, vec3f(0.2126, 0.7152, 0.0722));
     let highlightBaseChroma = highlightBase - vec3f(highlightBaseLum);
-    let highlightTarget = vec3f(min(highlightBaseLum, 1.0)) + highlightBaseChroma * 1.4;
-    col = mix(col, highlightTarget, highlightAlpha * 0.875 * mix(0.30, 1.0, backdropFactor));
+    let highlightTarget = vec3f(min(highlightBaseLum, 1.0)) + highlightBaseChroma * 1.50;
+    col = mix(col, highlightTarget, highlightAlpha * 1.00 * mix(0.30, 1.0, backdropFactor));
+
+    // White Fresnel specular lobe — cursor-driven, sits on top of the color rim
+    // and adds a "wet shiny" near-white crest at the directional peak. Falloff
+    // is wider (directional²) than the color rim's smoothstep so it stays
+    // visible alongside the color inheritance rather than overlapping the
+    // brightest portion. Fresnel weights it toward grazing rim pixels where
+    // physical specular reflection is strongest.
+    let specLobe = directional * directional;
+    let specAlpha = edgeProx * specLobe * fresnel;
+    col += vec3f(0.95, 0.97, 1.0) * specAlpha * 1.40;
 
     // Inner shadow on perpendicular rim sections — the rim arc whose normal is
     // sideways to the light direction darkens, giving the panel a sense of being
@@ -1148,12 +1158,12 @@ fn rboxSDF(p: vec2f, b: vec2f, r: f32) -> f32 {
     var _ancestorToIdx = new Map(); // ancestor el → Array<idx> of panels nested under it
 
     // ====================================================================
-    // Backdrop image system (Stage 1: infrastructure, no rendering yet)
+    // Backdrop image system
     //
     // Panels with `data-glass-backdrop="<url>"` register an image that gets
-    // pre-blurred + tinted on upload, then (Stage 2) painted into the aurora
-    // source texture before refraction runs — so Snell's law + per-channel CA
-    // distort the image as if it were behind real glass.
+    // pre-blurred on upload, then painted into the aurora source texture each
+    // frame before refraction runs — so Snell's law + per-channel CA distort
+    // the image as if it were behind real glass.
     //
     // Cache is URL-keyed and refcounted: multiple panels showing the same art
     // share one GPU texture. LRU eviction caps memory at BACKDROP_MAX_TEXTURES.
@@ -1162,12 +1172,14 @@ fn rboxSDF(p: vec2f, b: vec2f, r: f32) -> f32 {
     // the file (BACKDROP_POOL_SIZE) — both must be equal. Hoisting forced the dup;
     // they're co-located by the assertion below.
     var BACKDROP_MAX_TEXTURES = BACKDROP_POOL_SIZE;
-    // Pre-blur is intentionally light: the existing 2-pass Kawase blur on RT_AURORA
-    // and the glass shader's bezel refraction already smear the image significantly.
-    // 6px on a 256-wide texture lands in the same ballpark as CSS blur(24px) on the
-    // 480-wide source after the pipeline adds its own contributions.
-    var BACKDROP_TEX_SIZE = 256;
-    var BACKDROP_PREBLUR_PX = 3;
+    // Pre-blur is light noise-reduction at the texture's native resolution; the
+    // shader's bezel refraction and Kawase aurora blur do the rest. Texture size
+    // is 512 max-side to keep hero panels (typically 1280–1920 px wide) within a
+    // ~3× upscale instead of the 7× the previous 256 cap forced on them. Pre-blur
+    // scales 1:1 with texture size so the visual softness stays equivalent across
+    // resolutions. Memory: 16 panels × 512² × 4 B RGBA ≈ 16 MB worst case.
+    var BACKDROP_TEX_SIZE = 512;
+    var BACKDROP_PREBLUR_PX = 6;
     // Tonal handling stays at 1.0 here so the glass shader's per-tier brightness
     // (~0.78 dark surface) and saturation (~1.8) are the single source of truth.
     // Baking dim values at the canvas upload AND the shader pass stacked, making
