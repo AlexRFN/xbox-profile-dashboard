@@ -359,12 +359,15 @@ fn surfaceHeight(t: f32) -> f32 {
     let sd_dy = rboxSDF(localPos + vec2f(0.0, 0.5), panelSize, radius);
     let grad = normalize(vec2f(sd_dx - sd, sd_dy - sd));
 
-    // Refraction displacement with per-channel chromatic aberration
+    // Refraction displacement with per-channel chromatic aberration.
+    // Dispersion held at ±5% — wide enough to read as wet-glass shimmer at the
+    // rim, narrow enough that the SDF gradient's pixel-quantized direction
+    // doesn't expose visible color fringes on corners.
     let baseOffset = -grad * displacement / uniforms.viewport;
     let blurred = vec3f(
-        textureSampleLevel(blurTex, blurSampler, blurUV + baseOffset * 1.10, 0.0).r,
+        textureSampleLevel(blurTex, blurSampler, blurUV + baseOffset * 1.05, 0.0).r,
         textureSampleLevel(blurTex, blurSampler, blurUV + baseOffset, 0.0).g,
-        textureSampleLevel(blurTex, blurSampler, blurUV + baseOffset * 0.90, 0.0).b
+        textureSampleLevel(blurTex, blurSampler, blurUV + baseOffset * 0.95, 0.0).b
     );
 
     // Saturation boost
@@ -598,7 +601,11 @@ fn rboxSDF(p: vec2f, b: vec2f, r: f32) -> f32 {
     @location(4) opacity: f32,
     @location(5) texAspect: f32,
 ) -> @location(0) vec4f {
-    let sd = rboxSDF(localPos, panelHalfSize, radius);
+    // Inset half a quarter-res pixel (~2 screen px) so the whole edge ramp sits
+    // inside the geometric panel — without this the Kawase blur smears the
+    // half-alpha pixels outward past the glass shader's clip and the image
+    // appears to bleed past the rounded edge.
+    let sd = rboxSDF(localPos, panelHalfSize, radius) + 0.5;
     if (sd > 0.0) { discard; }
     // Cover-style UV sampling, mirroring CSS background-size:cover. The texture
     // already has the image's native aspect; we shrink the sampled UV range along
@@ -612,6 +619,9 @@ fn rboxSDF(p: vec2f, b: vec2f, r: f32) -> f32 {
         uvMul.x = panelAspect / texAspect;
     }
     let uv = (baseUv - 0.5) * uvMul + 0.5;
+    // Derivative-based edge AA — feather width auto-scales to screen-pixel
+    // size (via fwidth) so corner stair-steps in the quarter-res rasterization
+    // dissolve into a smooth ramp. The whole gradient sits inside the geometric
     let edge = smoothstep(0.0, 1.5, -sd);
     let col = textureSample(t, s, uv).rgb;
     let a = edge * opacity;
@@ -1179,7 +1189,7 @@ fn rboxSDF(p: vec2f, b: vec2f, r: f32) -> f32 {
     // scales 1:1 with texture size so the visual softness stays equivalent across
     // resolutions. Memory: 16 panels × 512² × 4 B RGBA ≈ 16 MB worst case.
     var BACKDROP_TEX_SIZE = 512;
-    var BACKDROP_PREBLUR_PX = 6;
+    var BACKDROP_PREBLUR_PX = 4;
     // Tonal handling stays at 1.0 here so the glass shader's per-tier brightness
     // (~0.78 dark surface) and saturation (~1.8) are the single source of truth.
     // Baking dim values at the canvas upload AND the shader pass stacked, making
@@ -1750,10 +1760,19 @@ fn rboxSDF(p: vec2f, b: vec2f, r: f32) -> f32 {
             _sortMul[visCount]   = stable ? 1.0 : 0.0;
 
             var tv = _cachedTierValues[i];
+            // Backdrop-bearing panels show real product imagery — soften the
+            // per-tier sat/bright/tint so the picture comes through close to its
+            // source instead of being darkened and oversaturated by the glass pass.
+            var _tvSat = tv.sat, _tvBright = tv.bright, _tvTint = tv.tint;
+            if (_cachedBackdropUrl[i]) {
+                _tvSat = Math.min(_tvSat, 1.20);
+                _tvBright = Math.max(_tvBright, 0.92);
+                _tvTint = Math.min(_tvTint, 0.02);
+            }
             _sortExtra[idx4]     = Math.min(_cachedRadius[i], rWidth * 0.5, rHeight * 0.5);
-            _sortExtra[idx4 + 1] = tv.sat;
-            _sortExtra[idx4 + 2] = tv.bright;
-            _sortExtra[idx4 + 3] = tv.tint;
+            _sortExtra[idx4 + 1] = _tvSat;
+            _sortExtra[idx4 + 2] = _tvBright;
+            _sortExtra[idx4 + 3] = _tvTint;
 
             var animTarget = isExiting ? _cachedEls[i]
                 : (_cachedHasAnim[i] ? _cachedEls[i] : _cachedAnimAncestor[i]);
