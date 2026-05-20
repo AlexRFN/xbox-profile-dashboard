@@ -45,6 +45,11 @@
     var THICKNESS = 50.0;
     var BEZEL = 60.0;
     var SPECULAR = 0.50;
+    var BACKDROP_TEX_SIZE = 512;
+    var BACKDROP_PREBLUR_PX = 4;
+    var BACKDROP_BRIGHTNESS = 1.0;
+    var BACKDROP_SATURATE = 1.0;
+    var BACKDROP_MAX_TEXTURES = 16;
 
     // ====================================================================
     // Shader sources
@@ -126,6 +131,71 @@
         '    texture(uTex,vUV+vec2(-o.x, o.y))+\n' +
         '    texture(uTex,vUV+vec2( o.x,-o.y))+\n' +
         '    texture(uTex,vUV+vec2( o.x, o.y)));\n' +
+        '}\n';
+
+    // -- Backdrop pass (per-panel image into FBO_AURORA before blur) --
+    // Operates in half-res pixel space throughout: caller divides viewport-pixel
+    // rect/radius by HALF_RES before upload so SDF, geometry, and target all share
+    // the same coordinate system.
+    var BACKDROP_VS =
+        '#version 300 es\n' +
+        'precision mediump float;\n' +
+        'in vec2 aPos;\n' +
+        'uniform vec4 uRect;\n' +    // x, y, w, h — half-res pixels
+        'uniform vec4 uRadii;\n' +   // radius (half-res px), opacity, texAspect, _pad
+        'uniform vec2 uVp;\n' +      // halfW, halfH
+        'out vec2 vLocalPos;\n' +
+        'out vec2 vBaseUv;\n' +
+        'out vec2 vPanelHalfSize;\n' +
+        'out float vRadius;\n' +
+        'out float vOpacity;\n' +
+        'out float vTexAspect;\n' +
+        'void main(){\n' +
+        '  vec2 halfSize=uRect.zw*0.5;\n' +
+        '  vec2 center=uRect.xy+halfSize;\n' +
+        '  vec2 pos=center+aPos*halfSize;\n' +
+        '  vLocalPos=aPos*halfSize;\n' +
+        '  vPanelHalfSize=halfSize;\n' +
+        '  vBaseUv=vec2((aPos.x+1.0)*0.5,(aPos.y+1.0)*0.5);\n' +
+        '  vRadius=uRadii.x;\n' +
+        '  vOpacity=uRadii.y;\n' +
+        '  vTexAspect=uRadii.z;\n' +
+        '  vec2 ndc=(pos/uVp)*2.0-1.0;\n' +
+        '  ndc.y=-ndc.y;\n' +
+        '  gl_Position=vec4(ndc,0.0,1.0);\n' +
+        '}\n';
+
+    var BACKDROP_FS =
+        '#version 300 es\n' +
+        'precision mediump float;\n' +
+        'in vec2 vLocalPos;\n' +
+        'in vec2 vBaseUv;\n' +
+        'in vec2 vPanelHalfSize;\n' +
+        'in float vRadius;\n' +
+        'in float vOpacity;\n' +
+        'in float vTexAspect;\n' +
+        'uniform sampler2D uTex;\n' +
+        'out vec4 fragColor;\n' +
+        'float rboxSDF(vec2 p,vec2 b,float r){\n' +
+        '  vec2 q=abs(p)-b+r;\n' +
+        '  return min(max(q.x,q.y),0.0)+length(max(q,vec2(0.0)))-r;\n' +
+        '}\n' +
+        'void main(){\n' +
+        // Inset half a quarter-res pixel so the whole edge ramp sits inside the
+        // geometric panel — otherwise the Kawase blur smears half-alpha pixels
+        // outward past the glass shader's clip and the image bleeds.
+        '  float sd=rboxSDF(vLocalPos,vPanelHalfSize,vRadius)+0.5;\n' +
+        '  if(sd>0.0)discard;\n' +
+        // Cover-style UV sampling, mirroring CSS background-size:cover.
+        '  float panelAspect=vPanelHalfSize.x/vPanelHalfSize.y;\n' +
+        '  vec2 uvMul=vec2(1.0,1.0);\n' +
+        '  if(panelAspect>vTexAspect)uvMul.y=vTexAspect/panelAspect;\n' +
+        '  else uvMul.x=panelAspect/vTexAspect;\n' +
+        '  vec2 uv=(vBaseUv-0.5)*uvMul+0.5;\n' +
+        '  float edge=smoothstep(0.0,1.5,-sd);\n' +
+        '  vec3 col=texture(uTex,uv).rgb;\n' +
+        '  float a=edge*vOpacity;\n' +
+        '  fragColor=vec4(col*a,a);\n' +    // pre-multiplied
         '}\n';
 
     var SHADOW_MARGIN = 6.0;  // px — quad expansion for drop shadow
@@ -270,9 +340,9 @@
         // Refraction displacement with per-channel chromatic aberration
         '  vec2 baseOffset=-grad*displacement/uViewport;\n' +
         '  vec3 blurred=vec3(\n' +
-        '    texture(uBlurTex,vBlurUV+baseOffset*1.10).r,\n' +
+        '    texture(uBlurTex,vBlurUV+baseOffset*1.05).r,\n' +
         '    texture(uBlurTex,vBlurUV+baseOffset).g,\n' +
-        '    texture(uBlurTex,vBlurUV+baseOffset*0.90).b\n' +
+        '    texture(uBlurTex,vBlurUV+baseOffset*0.95).b\n' +
         '  );\n' +
         // 2. Saturation boost
         '  float lum=dot(blurred,vec3(0.2126,0.7152,0.0722));\n' +
@@ -458,12 +528,13 @@
     // ====================================================================
     // Build programs
     // ====================================================================
-    var auroraProg = build(QUAD_VS, AURORA_FS);
-    var blitProg   = build(QUAD_VS, BLIT_FS);
-    var blurProg   = build(QUAD_VS, BLUR_FS);
-    var glassProg  = build(GLASS_VS, GLASS_FS);
+    var auroraProg   = build(QUAD_VS, AURORA_FS);
+    var blitProg     = build(QUAD_VS, BLIT_FS);
+    var blurProg     = build(QUAD_VS, BLUR_FS);
+    var glassProg    = build(GLASS_VS, GLASS_FS);
+    var backdropProg = build(BACKDROP_VS, BACKDROP_FS);
 
-    if (!auroraProg || !blitProg || !blurProg || !glassProg) {
+    if (!auroraProg || !blitProg || !blurProg || !glassProg || !backdropProg) {
         console.error('Glass: shader compilation failed');
         document.documentElement.classList.remove('glass-refract');
         return;
@@ -496,6 +567,12 @@
         time:      gl.getUniformLocation(glassProg, 'uTime'),
         scrollY:   gl.getUniformLocation(glassProg, 'uScrollY')
     };
+    var backdropU = {
+        rect:      gl.getUniformLocation(backdropProg, 'uRect'),
+        radii:     gl.getUniformLocation(backdropProg, 'uRadii'),
+        vp:        gl.getUniformLocation(backdropProg, 'uVp'),
+        tex:       gl.getUniformLocation(backdropProg, 'uTex')
+    };
 
     // ====================================================================
     // Geometry
@@ -519,9 +596,10 @@
         return vao;
     }
 
-    var auroraVAO = makeQuadVAO(auroraProg);
-    var blitVAO   = makeQuadVAO(blitProg);
-    var blurVAO   = makeQuadVAO(blurProg);
+    var auroraVAO   = makeQuadVAO(auroraProg);
+    var blitVAO     = makeQuadVAO(blitProg);
+    var blurVAO     = makeQuadVAO(blurProg);
+    var backdropVAO = makeQuadVAO(backdropProg);
 
     // Glass VAO with instanced panel data
     var panelRectBuf  = gl.createBuffer();
@@ -894,6 +972,193 @@
     // (or on an ancestor that wraps it). Forces per-frame rect re-read ONLY for
     // panels whose visual position is actually moving.
     var _animActive = new Uint8Array(MAX_CACHED);
+    var _cachedOpacity = new Float32Array(MAX_CACHED);
+
+    // ====================================================================
+    // Backdrop image system
+    //
+    // Panels with `data-glass-backdrop="<url>"` register an image that gets
+    // pre-blurred on upload, then painted into the aurora source texture each
+    // frame before refraction runs — so Snell's law + per-channel CA distort
+    // the image as if it were behind real glass.
+    //
+    // URL-keyed and refcounted cache: multiple panels showing the same art
+    // share one GPU texture. LRU eviction caps memory at BACKDROP_MAX_TEXTURES.
+    // ====================================================================
+    var _backdropCache = new Map();       // url → { tex, lastUsed, refs, aspect }
+    var _backdropPending = new Map();     // url → { promise }
+    var _backdropFailed = new Set();      // urls that failed to load — never retry
+    var _cachedBackdropUrl = new Array(MAX_CACHED);
+    var _backdropDrawCount = 0;
+    var _backdropDrawRect    = new Float32Array(BACKDROP_MAX_TEXTURES * 4);
+    var _backdropDrawRadius  = new Float32Array(BACKDROP_MAX_TEXTURES);
+    var _backdropDrawOpacity = new Float32Array(BACKDROP_MAX_TEXTURES);
+    var _backdropDrawTex     = new Array(BACKDROP_MAX_TEXTURES);
+
+    function _evictBackdropLRU() {
+        if (_backdropCache.size <= BACKDROP_MAX_TEXTURES) return;
+        var oldestUrl = null, oldestT = Infinity;
+        _backdropCache.forEach(function (entry, url) {
+            if (entry.refs > 0) return;
+            if (entry.lastUsed < oldestT) { oldestT = entry.lastUsed; oldestUrl = url; }
+        });
+        if (!oldestUrl) return;
+        var victim = _backdropCache.get(oldestUrl);
+        if (victim.tex) gl.deleteTexture(victim.tex);
+        _backdropCache.delete(oldestUrl);
+    }
+
+    function _loadBackdropImage(url) {
+        var existing = _backdropCache.get(url);
+        if (existing) { existing.lastUsed = performance.now(); return Promise.resolve(existing); }
+        if (_backdropFailed.has(url)) return Promise.resolve(null);
+        var pending = _backdropPending.get(url);
+        if (pending) return pending.promise;
+
+        var p = new Promise(function (resolve, reject) {
+            var img = new Image();
+            img.crossOrigin = 'anonymous';
+            img.decoding = 'async';
+            img.referrerPolicy = 'no-referrer';
+            img.onload = function () { resolve(img); };
+            img.onerror = function () { reject(new Error('image load failed')); };
+            img.src = url;
+        })
+            .then(function (img) { return img.decode ? img.decode().then(function () { return img; }) : img; })
+            .then(function (img) {
+                // Preserve native aspect — texture dimensions track the image's
+                // natural ratio (max side = BACKDROP_TEX_SIZE). The shader uses
+                // texAspect to do cover-style UV sampling against panel rects of
+                // varying aspect, matching CSS `background-size: cover`.
+                var iw = img.naturalWidth || img.width || 1;
+                var ih = img.naturalHeight || img.height || 1;
+                var scale = BACKDROP_TEX_SIZE / Math.max(iw, ih);
+                var tw = Math.max(1, Math.round(iw * scale));
+                var th = Math.max(1, Math.round(ih * scale));
+                var c = ('OffscreenCanvas' in window)
+                    ? new OffscreenCanvas(tw, th)
+                    : Object.assign(document.createElement('canvas'), { width: tw, height: th });
+                var cctx = c.getContext('2d');
+                cctx.filter = 'blur(' + BACKDROP_PREBLUR_PX + 'px) brightness(' + BACKDROP_BRIGHTNESS + ') saturate(' + BACKDROP_SATURATE + ')';
+                cctx.drawImage(img, 0, 0, tw, th);
+                var tex = gl.createTexture();
+                gl.bindTexture(gl.TEXTURE_2D, tex);
+                gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+                gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+                // RGBA8 (not SRGB8_ALPHA8) — the aurora/blur FBO is RGBA8 and the
+                // entire pipeline operates on sRGB-encoded values; image bytes are
+                // already sRGB-encoded so we want pass-through, not auto-linearize.
+                gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, c);
+                gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+                gl.bindTexture(gl.TEXTURE_2D, null);
+                var entry = { tex: tex, lastUsed: performance.now(), refs: 0, aspect: tw / th };
+                _backdropCache.set(url, entry);
+                _backdropPending.delete(url);
+                _evictBackdropLRU();
+                _layoutDirty = true;   // re-bind panels next collectPanels
+                return entry;
+            })
+            .catch(function () {
+                _backdropPending.delete(url);
+                _backdropFailed.add(url);   // permanent — silent CSS-overlay fallback
+                return null;
+            });
+        _backdropPending.set(url, { promise: p });
+        return p;
+    }
+
+    function _resolveBackdropUrl(el) {
+        var raw = el.getAttribute('data-glass-backdrop');
+        if (!raw) return null;
+        return new URL(raw, document.baseURI).href;
+    }
+
+    function _bindPanelBackdrop(idx, el) {
+        var url = _resolveBackdropUrl(el);
+        var prev = _cachedBackdropUrl[idx];
+        if (prev && prev !== url) {
+            var prevEntry = _backdropCache.get(prev);
+            if (prevEntry && prevEntry.refs > 0) prevEntry.refs--;
+        }
+        _cachedBackdropUrl[idx] = url || undefined;
+        if (!url) return;
+        var entry = _backdropCache.get(url);
+        if (entry) {
+            if (prev !== url) entry.refs++;
+            entry.lastUsed = performance.now();
+        } else {
+            _loadBackdropImage(url);
+        }
+    }
+
+    window.__glassBackdrops = {
+        cache: _backdropCache,
+        pending: _backdropPending,
+        failed: _backdropFailed,
+        cachedUrl: _cachedBackdropUrl,
+        get drawCount() { return _backdropDrawCount; },
+        get drawList() {
+            var out = [];
+            for (var i = 0; i < _backdropDrawCount; i++) {
+                out.push({
+                    rect: [_backdropDrawRect[i*4], _backdropDrawRect[i*4+1], _backdropDrawRect[i*4+2], _backdropDrawRect[i*4+3]],
+                    radius: _backdropDrawRadius[i],
+                    opacity: _backdropDrawOpacity[i]
+                });
+            }
+            return out;
+        }
+    };
+
+    function _resetBackdropBindings() {
+        _backdropCache.forEach(function (entry) { entry.refs = 0; });
+        for (var i = 0; i < MAX_CACHED; i++) _cachedBackdropUrl[i] = undefined;
+        document.documentElement.classList.remove('glass-refract-bd-active');
+    }
+
+    // Pack visible backdropped panels into a draw list. Walks _cachedEls only
+    // when at least one image is loaded; zero loaded images returns in O(1).
+    // Geometry is stored in half-res pixels: the backdrop pass renders into
+    // FBO_AURORA (which is 1/HALF_RES the viewport size).
+    function _collectBackdrops(curScrollY) {
+        _backdropDrawCount = 0;
+        if (_backdropCache.size === 0) return;
+        var n = _cachedEls.length;
+        var inv = 1.0 / HALF_RES;
+        for (var i = 0; i < n && _backdropDrawCount < BACKDROP_MAX_TEXTURES; i++) {
+            var url = _cachedBackdropUrl[i];
+            if (!url) continue;
+            var entry = _backdropCache.get(url);
+            var elCl = _cachedEls[i].classList;
+            if (!entry || !entry.tex) { elCl.remove('glass-bd-on'); continue; }
+            // Skip panels that haven't entered yet (collectPanels skips these too).
+            if (_cachedHasAnim[i] && !_cachedAnimIn[i]) continue;
+            var rTop = _cachedFixed[i] ? _rectDocTop[i] : (_rectDocTop[i] - curScrollY);
+            var rLeft = _rectLeft[i];
+            var rW = _rectWidth[i];
+            var rH = _rectHeight[i];
+            if (rTop + rH < -50 || rTop > vpH + 50) { elCl.remove('glass-bd-on'); continue; }
+            if (rLeft + rW < -50 || rLeft > vpW + 50) { elCl.remove('glass-bd-on'); continue; }
+            var op = _cachedOpacity[i];
+            if (op < 0.01) { elCl.remove('glass-bd-on'); continue; }
+            elCl.add('glass-bd-on');
+            var d4 = _backdropDrawCount * 4;
+            _backdropDrawRect[d4]     = rLeft * inv;
+            _backdropDrawRect[d4 + 1] = rTop  * inv;
+            _backdropDrawRect[d4 + 2] = rW    * inv;
+            _backdropDrawRect[d4 + 3] = rH    * inv;
+            _backdropDrawRadius[_backdropDrawCount]  = Math.min(_cachedRadius[i], rW * 0.5, rH * 0.5) * inv;
+            _backdropDrawOpacity[_backdropDrawCount] = op;
+            _backdropDrawTex[_backdropDrawCount]     = entry;
+            entry.lastUsed = performance.now();
+            _backdropDrawCount++;
+        }
+    }
+
     function _markAnim(target, val) {
         var idx = _elIndex.get(target);
         if (idx !== undefined) {
@@ -996,6 +1261,7 @@
         _fullyOpaque.fill(0);
         _revealAnim.fill(0);
         _cachedAnimAncestor = [];
+        _resetBackdropBindings();
         if (_glassIO) _glassIO.disconnect();
         if (_glassRO) _glassRO.disconnect();
         _elIndex.clear();
@@ -1051,6 +1317,7 @@
                 : el.parentElement && el.parentElement.closest('.anim-blur-rise,.anim-drop,.anim-pop,.anim-blur-scale,.anim-slide-blur,.anim-grow');
             // Cache whether element is inside <main> (for exit animation detection)
             _cachedInMain[idx] = (_mainEl && _mainEl.contains(el)) ? 1 : 0;
+            _bindPanelBackdrop(idx, el);
             _cachedEls.push(el);
             _elIndex.set(el, idx);
             if (_cachedAnimAncestor[idx]) {
@@ -1237,10 +1504,19 @@
             _sortMul[visCount]   = stable ? 1.0 : 0.0;
 
             var tv = _cachedTierValues[i];
+            // Backdrop-bearing panels show real product imagery — soften the
+            // per-tier sat/bright/tint so the picture comes through close to its
+            // source instead of being darkened and oversaturated by the glass pass.
+            var _tvSat = tv.sat, _tvBright = tv.bright, _tvTint = tv.tint;
+            if (_cachedBackdropUrl[i]) {
+                _tvSat = Math.min(_tvSat, 1.20);
+                _tvBright = Math.max(_tvBright, 0.92);
+                _tvTint = Math.min(_tvTint, 0.02);
+            }
             _sortExtra[idx4]     = Math.min(_cachedRadius[i], rWidth * 0.5, rHeight * 0.5);
-            _sortExtra[idx4 + 1] = tv.sat;
-            _sortExtra[idx4 + 2] = tv.bright;
-            _sortExtra[idx4 + 3] = tv.tint;
+            _sortExtra[idx4 + 1] = _tvSat;
+            _sortExtra[idx4 + 2] = _tvBright;
+            _sortExtra[idx4 + 3] = _tvTint;
 
             var animTarget = isExiting ? _cachedEls[i]
                 : (_cachedHasAnim[i] ? _cachedEls[i] : _cachedAnimAncestor[i]);
@@ -1270,6 +1546,7 @@
                 _sortOR[or2] *= mainOpacity;
                 _fullyOpaque[i] = 0;
             }
+            _cachedOpacity[i] = _sortOR[or2];
             // Smooth reveal fade — lerp toward 1 when mouse inside, 0 when outside
             var revealTarget = 0;
             if (_cachedReveal[i] && _mouseX > -9000) {
@@ -1390,6 +1667,42 @@
             setAuroraUniforms();
             gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
             gl.bindVertexArray(null);
+
+            // Pass 1b: Backdrop images → FBO_AURORA (preserves aurora — no clear)
+            // Each backdropped panel draws its pre-blurred image into the panel rect
+            // with a rounded-rect mask. Pre-multiplied alpha blending.
+            if (_backdropDrawCount > 0) {
+                gl.useProgram(backdropProg);
+                gl.bindVertexArray(backdropVAO);
+                gl.enable(gl.BLEND);
+                gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+                gl.uniform2f(backdropU.vp, halfW, halfH);
+                gl.uniform1i(backdropU.tex, 0);
+                gl.activeTexture(gl.TEXTURE0);
+                for (var bd = 0; bd < _backdropDrawCount; bd++) {
+                    var d4 = bd * 4;
+                    gl.uniform4f(backdropU.rect,
+                        _backdropDrawRect[d4],     _backdropDrawRect[d4 + 1],
+                        _backdropDrawRect[d4 + 2], _backdropDrawRect[d4 + 3]);
+                    var bdEntry = _backdropDrawTex[bd];
+                    gl.uniform4f(backdropU.radii,
+                        _backdropDrawRadius[bd],
+                        _backdropDrawOpacity[bd],
+                        bdEntry.aspect || 1.0,
+                        0.0);
+                    gl.bindTexture(gl.TEXTURE_2D, bdEntry.tex);
+                    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+                }
+                gl.disable(gl.BLEND);
+                gl.bindVertexArray(null);
+            }
+            // Signal CSS layer that GPU is drawing backdrops — CSS overlay hides
+            // while its own GPU draw is firing; flips back off on LRU eviction or
+            // panel removal.
+            var clsHas = document.documentElement.classList.contains('glass-refract-bd-active');
+            var clsWant = _backdropDrawCount > 0;
+            if (clsWant && !clsHas) document.documentElement.classList.add('glass-refract-bd-active');
+            else if (!clsWant && clsHas) document.documentElement.classList.remove('glass-refract-bd-active');
 
             // Kawase blur (ping-pong, 2 passes)
             gl.useProgram(blurProg);
@@ -1531,6 +1844,7 @@
         if (_layoutDirty) cacheElements();
 
         collectPanels(frameScrollY);
+        _collectBackdrops(frameScrollY);
 
         // Update idle flag: false once all visible panels confirm fully opaque and no reveals.
         _anyAnimating = false;

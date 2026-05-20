@@ -51,16 +51,11 @@
         return;
     }
 
-    // HDR: rgba16float + extended tone mapping so values >1.0 reach high nits.
-    // scRGB ref white = 1.0 = 80 nits; 10.0 = 800 nits.
-    // SDR: fall back to preferred format + standard tone mapping.
-    var _isHDR = window.matchMedia('(dynamic-range: high)').matches;
-    var presentFormat = _isHDR ? 'rgba16float' : navigator.gpu.getPreferredCanvasFormat();
+    var presentFormat = navigator.gpu.getPreferredCanvasFormat();
     ctx.configure({
         device: device,
         format: presentFormat,
-        alphaMode: 'opaque',
-        toneMapping: { mode: _isHDR ? 'extended' : 'standard' }
+        alphaMode: 'opaque'
     });
 
     document.documentElement.classList.add('glass-refract');
@@ -79,9 +74,7 @@
     var BEZEL = 60.0;
     var SPECULAR = 0.50;
     var SHADOW_MARGIN = 6.0;
-    // HDR: 800 nits / 80 nits ref white = 10.0; peak revealAlpha = 2.6 → 10.0/2.6 ≈ 3.85
-    // SDR: clamps at 1.0 anyway, keep original 2.5
-    var REVEAL_MULT = _isHDR ? 3.85 : 2.5;
+    var REVEAL_MULT = 2.5;
 
     // ====================================================================
     // WGSL Shaders
