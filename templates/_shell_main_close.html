@@ -80,7 +80,8 @@
     })();
     </script>
 
-    <!-- Glass renderer: WebGPU preferred, WebGL2 fallback loaded dynamically if needed -->
+    <!-- Glass renderer: shared core, then WebGPU preferred, WebGL2 fallback loaded dynamically if needed -->
+    <script defer src="{{ static_url('js/glass-core.js') }}"></script>
     <script defer src="{{ static_url('js/glass-webgpu.js') }}"></script>
 
     <script defer src="{{ static_url('js/vendor/minisearch.min.js') }}"></script>

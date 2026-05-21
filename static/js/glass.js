@@ -34,22 +34,24 @@
     document.documentElement.classList.add('glass-refract');
 
     // ====================================================================
-    // Constants
+    // Shared core — single source of truth for constants, selectors, tier system.
     // ====================================================================
+    var core = window.__glassCore;
+    if (!core) { console.error('Glass: glass-core.js must load before this script'); return; }
     var PI = Math.PI, TAU = PI * 2;
-    var HALF_RES = 4;          // quarter-res aurora + blur (smooth gradient upscales cleanly)
-    var BLUR_PASSES = 1;
-    var MAX_PANELS = 128;   // max panels drawn per frame
-    var MAX_CACHED = 512;   // max elements tracked (all glass-eligible DOM elements)
-    var IOR = 3.0;
-    var THICKNESS = 50.0;
-    var BEZEL = 60.0;
-    var SPECULAR = 0.50;
-    var BACKDROP_TEX_SIZE = 512;
-    var BACKDROP_PREBLUR_PX = 4;
-    var BACKDROP_BRIGHTNESS = 1.0;
-    var BACKDROP_SATURATE = 1.0;
-    var BACKDROP_MAX_TEXTURES = 16;
+    var HALF_RES = core.HALF_RES;
+    var BLUR_PASSES = core.BLUR_PASSES;
+    var MAX_PANELS = core.MAX_PANELS;
+    var MAX_CACHED = core.MAX_CACHED;
+    var IOR = core.IOR;
+    var THICKNESS = core.THICKNESS;
+    var BEZEL = core.BEZEL;
+    var SPECULAR = core.SPECULAR;
+    var BACKDROP_TEX_SIZE = core.BACKDROP_TEX_SIZE;
+    var BACKDROP_PREBLUR_PX = core.BACKDROP_PREBLUR_PX;
+    var BACKDROP_BRIGHTNESS = core.BACKDROP_BRIGHTNESS;
+    var BACKDROP_SATURATE = core.BACKDROP_SATURATE;
+    var BACKDROP_MAX_TEXTURES = core.BACKDROP_MAX_TEXTURES;
 
     // ====================================================================
     // Shader sources
@@ -198,7 +200,7 @@
         '  fragColor=vec4(col*a,a);\n' +    // pre-multiplied
         '}\n';
 
-    var SHADOW_MARGIN = 6.0;  // px — quad expansion for drop shadow
+    var SHADOW_MARGIN = core.SHADOW_MARGIN;  // px — quad expansion for drop shadow
 
     var GLASS_VS =
         '#version 300 es\n' +
@@ -207,7 +209,7 @@
         'in vec4 aPanelRect;\n' +   // x,y,w,h in pixels (instanced). y is doc-top when aScrollMul=1, screen-top when aScrollMul=0.
         'in vec4 aPanelExtra;\n' +  // radius, saturation, brightness, tintAlpha (instanced)
         'in vec2 aOpacReveal;\n' +    // x=CSS opacity, y=reveal flag (instanced)
-        'in float aScrollMul;\n' +    // 0 fixed/sticky/animating/exit, 1 stable (instanced) — Phase 1.1
+        'in float aScrollMul;\n' +    // 0 fixed/sticky/animating/exit, 1 stable (instanced)
         'uniform vec2 uViewport;\n' +
         'uniform float uScrollY;\n' +    // doc-space scroll (mirrors FS uniform)
 
@@ -265,58 +267,83 @@
         'uniform vec2 uViewport;\n' +
         'uniform vec2 uMouse;\n' +       // screen-space mouse position (px)
         'uniform float uTime;\n' +
-        'uniform float uScrollY;\n' +    // doc-space scroll offset; reserved for Phase 1 doc-space y flip
+        'uniform float uScrollY;\n' +    // doc-space scroll offset; mirrors VS uScrollY
         'out vec4 fragColor;\n' +
-        // Rounded box SDF
+        // ====================================================================
+        // Tuning constants — top-level knobs designers reach for first.
+        // ====================================================================
+        'const float EDGE_AA_PX=1.5;\n' +
+        'const float THICKNESS_EDGE_BOOST=0.4;\n' +
+        'const float SHADOW_BASE_ALPHA=0.22;\n' +
+        'const float SHADOW_FALLOFF_SIGMA2=18.0;\n' +
+        'const float SHADOW_LUM_SCALE=0.25;\n' +
+        'const float SHADOW_CHROMA_SCALE=0.9;\n' +
+        'const float ABSORPTION=0.06;\n' +
+        'const vec3 ABSORPTION_TINT=vec3(0.96,0.97,1.0);\n' +
+        'const float INNER_SHADOW_STRENGTH=0.3;\n' +
+        'const float INNER_SHADOW_FLOOR=0.7;\n' +
+        'const float HIGHLIGHT_BASE_MUL=3.50;\n' +
+        'const float HIGHLIGHT_BASE_ADD=0.375;\n' +
+        'const float HIGHLIGHT_CHROMA_MUL=1.50;\n' +
+        'const float HIGHLIGHT_LOCALPOS_DAMPEN=0.4;\n' +
+        'const float HIGHLIGHT_DARK_BACKDROP_FLOOR=0.30;\n' +
+        'const vec3 SPEC_CREST_COLOR=vec3(0.95,0.97,1.0);\n' +
+        'const float SPEC_CREST_INTENSITY=1.40;\n' +
+        'const float DIRECTIONAL_SHADOW_STRENGTH=0.45;\n' +
+        'const float INNER_RIM_INTENSITY=0.15;\n' +
+        'const vec3 ENV_COLOR_LOW=vec3(0.6,0.65,0.75);\n' +
+        'const vec3 ENV_COLOR_HIGH=vec3(0.85,0.9,1.0);\n' +
+        'const float ENV_INTENSITY=0.03;\n' +
+        'const vec3 REVEAL_RIM_COLOR=vec3(0.2,0.9,0.45);\n' +
+        'const float BREATH_AMOUNT=0.07;\n' +
+        'const float CAUSTIC_INTENSITY=0.04;\n' +
+        'const float GRAIN_INTENSITY=0.04;\n' +
+        // Signed-distance to a rounded box centered at origin, half-extents b,
+        // radius r. Negative inside, zero on boundary, positive outside.
         'float rboxSDF(vec2 p,vec2 b,float r){\n' +
         '  vec2 q=abs(p)-b+r;\n' +
         '  return min(max(q.x,q.y),0.0)+length(max(q,0.0))-r;\n' +
         '}\n' +
-        // Quartic dome surface profile (from original liquid glass)
+        // Quartic dome profile — radial slope from 0 at center to vertical at edge.
         'float surfaceHeight(float t){\n' +
         '  float s=1.0-t;\n' +
         '  return sqrt(sqrt(1.0-s*s*s*s));\n' +
         '}\n' +
         'void main(){\n' +
         '  float sd=rboxSDF(vLocalPos,vPanelSize,vRadius);\n' +
-        // Drop shadow outside glass (gaussian falloff, matches original)
+        // === Drop shadow (outside panel) ===
+        // Color-matched to local backdrop so the cast shadow takes on the hue
+        // of what's behind the panel instead of being flat black.
         '  if(sd>0.0){\n' +
         '    if(sd>' + SHADOW_MARGIN.toFixed(1) + ')discard;\n' +
-        // Drop shadow outside glass — color-matched to the local backdrop sample so
-        // the cast shadow takes on the hue of what's behind the panel (Apple Liquid
-        // Glass behavior) instead of being flat black.
-        '    float shadowFalloff=exp(-sd*sd/18.0);\n' +
-        '    float shadowAlpha=0.22*shadowFalloff;\n' +
+        '    float shadowFalloff=exp(-sd*sd/SHADOW_FALLOFF_SIGMA2);\n' +
+        '    float shadowAlpha=SHADOW_BASE_ALPHA*shadowFalloff;\n' +
         '    vec3 shadowBackdrop=texture(uBlurTex,vBlurUV).rgb;\n' +
         // Boost chroma while preserving low luminance — keeps the shadow dark
-        // but emphasizes the color cast from whatever's behind the panel.
+        // but emphasizes color cast from whatever's behind the panel.
         '    float shadowLum=dot(shadowBackdrop,vec3(0.2126,0.7152,0.0722));\n' +
         '    vec3 shadowChroma=shadowBackdrop-vec3(shadowLum);\n' +
-        '    vec3 shadowColor=max(vec3(shadowLum)*0.25+shadowChroma*0.9,vec3(0.0));\n' +
+        '    vec3 shadowColor=max(vec3(shadowLum)*SHADOW_LUM_SCALE+shadowChroma*SHADOW_CHROMA_SCALE,vec3(0.0));\n' +
         '    fragColor=vec4(shadowColor,shadowAlpha*vOpacity);\n' +
         '    return;\n' +
         '  }\n' +
-        // Edge alpha — match original: 1.5px soft ramp from boundary inward
+        // === Edge alpha + bezel zone ===
         '  float distFromEdge=-sd;\n' +
-        '  float alpha=smoothstep(0.0,1.5,distFromEdge);\n' +
-        // Bezel zone — chamfered slab. Width is clamped by both corner radius and
-        // panel size (matches archisvaze/liquid-glass upstream). Keeping the bezel
-        // inside the rounded-corner area avoids exposing the SDF's diagonal
-        // discontinuity in the inner box. The slab scales down proportionally on
-        // tiny panels so small buttons act like small glass.
+        '  float alpha=smoothstep(0.0,EDGE_AA_PX,distFromEdge);\n' +
+        // Bezel slab clamped by both corner radius and panel size — keeps it
+        // inside the rounded area so the SDF's diagonal discontinuity stays
+        // hidden, and scales down on small panels so buttons act like small glass.
         '  float bezel=max(1.0,min(' + BEZEL.toFixed(1) + ',min(vRadius,min(vPanelSize.x,vPanelSize.y))-1.0));\n' +
         '  float t=clamp(distFromEdge/bezel,0.0,1.0);\n' +
-        // Surface height + numerical derivative for slope
+        // === Surface profile + slope ===
         '  float h=surfaceHeight(t);\n' +
         '  float dt=0.001;\n' +
         '  float h2=surfaceHeight(min(t+dt,1.0));\n' +
         '  float dh=(h2-h)/dt;\n' +
-        // Depth-varying thickness — edge gets +40% to strengthen rim bending.
-        // No bezelScale shrink (matches archisvaze/liquid-glass — small panels
-        // stay optically thick instead of fading out as the chamfer clamps down).
-        '  float thicknessLocal=' + THICKNESS.toFixed(1) + '*(1.0+(1.0-h*h)*0.4);\n' +
-        // Snell's law refraction (algebraic — eliminates atan, sin, asin, 2×tan).
-        // tan(slope) = dh directly (upstream calibration in normalized t-space).
+        // Depth-varying thickness — edge gets a boost to strengthen rim bending.
+        '  float thicknessLocal=' + THICKNESS.toFixed(1) + '*(1.0+(1.0-h*h)*THICKNESS_EDGE_BOOST);\n' +
+        // === Snell refraction (algebraic) ===
+        // tan(slope) = dh directly — no atan/asin/tan needed.
         '  float x_s=dh;\n' +
         '  float invSqrtX2p1=inversesqrt(1.0+x_s*x_s);\n' +
         '  float sinI=x_s*invSqrtX2p1;\n' +
@@ -324,115 +351,91 @@
         '  sinR=clamp(sinR,-1.0,1.0);\n' +
         '  float cosR=sqrt(1.0-sinR*sinR);\n' +
         '  float displacement=h*thicknessLocal*(x_s-sinR/max(cosR,0.001));\n' +
-        // Fresnel (Schlick's approximation — edge reflectivity vs center transparency)
+        // === Fresnel (Schlick) ===
         '  float cosTheta=invSqrtX2p1;\n' +
         '  float omc=1.0-cosTheta;\n' +
         '  float omc2=omc*omc;\n' +
         '  float fresnel=0.04+0.96*omc2*omc2*omc;\n' +
-        // Analytical SDF gradient (eliminates 2 rboxSDF calls per fragment)
-        // SDF gradient via finite differences (matches archisvaze/liquid-glass).
-        // Continuous everywhere on the SDF, so wide bezels don't expose the
-        // axis-switch seam that the analytical formulation produced near the
-        // panel diagonals.
+        // === SDF gradient (finite differences) ===
+        // Used as the surface-normal direction for refraction sampling. Continuous
+        // everywhere on the SDF, so wide bezels don't expose the axis-switch seam
+        // the analytical formulation produced near diagonals.
         '  float sd_dx=rboxSDF(vLocalPos+vec2(0.5,0.0),vPanelSize,vRadius);\n' +
         '  float sd_dy=rboxSDF(vLocalPos+vec2(0.0,0.5),vPanelSize,vRadius);\n' +
         '  vec2 grad=normalize(vec2(sd_dx-sd,sd_dy-sd));\n' +
-        // Refraction displacement with per-channel chromatic aberration
+        // === Backdrop sampling with chromatic aberration ===
+        // CA at ±5% — wide enough to read as wet-glass shimmer at the rim, narrow
+        // enough that the SDF gradient's pixel-quantization doesn't expose colored
+        // fringes on corners.
         '  vec2 baseOffset=-grad*displacement/uViewport;\n' +
         '  vec3 blurred=vec3(\n' +
         '    texture(uBlurTex,vBlurUV+baseOffset*1.05).r,\n' +
         '    texture(uBlurTex,vBlurUV+baseOffset).g,\n' +
         '    texture(uBlurTex,vBlurUV+baseOffset*0.95).b\n' +
         '  );\n' +
-        // 2. Saturation boost
+        // === Color grading ===
         '  float lum=dot(blurred,vec3(0.2126,0.7152,0.0722));\n' +
         '  vec3 saturated=mix(vec3(lum),blurred,vSaturation);\n' +
-        // 3. Brightness multiply
         '  vec3 transmitted=saturated*vBrightness;\n' +
-        '  float rimFalloff=1.0-smoothstep(0.0,bezel*0.4,distFromEdge);\n' +
-        // Energy conservation disabled — at IOR=3.0 the rim Fresnel kills transmitted
-        // brightness exactly where refraction (and CA) is strongest, hiding the effect.
-        // 5. Beer's law absorption — applied after Fresnel (only absorbed light is transmitted light)
-        '  float absorption=(1.0-h)*0.06;\n' +
-        '  transmitted*=mix(vec3(1.0),vec3(0.96,0.97,1.0),absorption);\n' +
-        // 6. Frosted glass scattering (tintAlpha is per-panel haze, independent of Fresnel)
+        // Beer's law absorption — slight cool tint at thicker (lower-h) areas.
+        '  float absorption=(1.0-h)*ABSORPTION;\n' +
+        '  transmitted*=mix(vec3(1.0),ABSORPTION_TINT,absorption);\n' +
+        // Frosted glass haze (per-panel, independent of Fresnel).
         '  vec3 col=mix(transmitted,vec3(1.0),vTintAlpha);\n' +
-        // 7. Inner shadow — applied before specular so it only darkens transmitted light
+        // Inner shadow — darkens transmitted light before specular is added.
         '  float innerShadow=1.0-smoothstep(0.0,bezel*0.6,distFromEdge);\n' +
-        '  col*=mix(1.0,0.7,innerShadow*0.3);\n' +
-        // 8. Liquid Glass diagonal highlight — based on rxing365/html-liquid-glass-effect-webgl.
-        // The directional term (nx*ny+1)*0.5 peaks on the top-left and bottom-right
-        // diagonals (where nx and ny have the same sign) and dims on top-right and
-        // bottom-left, with straight edges sitting at 0.5. Combined with edge proximity
-        // and a mix-toward-white blend, the rim brightens what's already there —
-        // giving the color-influenced look (a brightened version of the transmitted
-        // backdrop) rather than a flat white streak.
+        '  col*=mix(1.0,INNER_SHADOW_FLOOR,innerShadow*INNER_SHADOW_STRENGTH);\n' +
+        // === Cursor-driven rim highlight ===
+        // Each rim pixel computes its own vector toward the cursor; abs(dot) gives
+        // a symmetric dual hot spot. Edge proximity gates the effect to the rim.
         '  float edgeProx=1.0-smoothstep(0.0,3.0,distFromEdge);\n' +
-        // Cursor-as-light specular with per-pixel light direction. Each rim pixel
-        // computes its own vector toward the cursor, so the light angle varies
-        // smoothly along straight edges instead of uniformly lighting the whole
-        // edge. abs(dot(...)) gives a symmetric dual hot spot. Small bias keeps
-        // the direction well-defined when the cursor lands on a rim pixel.
         '  vec2 highlightPanelCenter=vScreenPos-vLocalPos;\n' +
         '  vec2 highlightMouseRel=uMouse-highlightPanelCenter;\n' +
-        // localPos contribution is dampened — full per-pixel (1.0) gives point-light
-        // focusing as the cursor approaches; pure per-panel (0.0) is Apple's uniform
-        // edges. 0.4 keeps the smooth edge gradient without the dramatic shrink.
-        '  vec2 highlightPixelToCursor=highlightMouseRel-vLocalPos*0.4+vec2(0.5,0.5);\n' +
+        // localPos contribution dampened — pure per-pixel gives point-light focus
+        // as the cursor approaches; pure per-panel is uniform along edges.
+        '  vec2 highlightPixelToCursor=highlightMouseRel-vLocalPos*HIGHLIGHT_LOCALPOS_DAMPEN+vec2(0.5,0.5);\n' +
         '  vec2 highlightMouseDir=normalize(highlightPixelToCursor);\n' +
         '  float directional=abs(dot(grad,highlightMouseDir));\n' +
         '  float directionalPeaked=smoothstep(0.35,0.80,directional);\n' +
         '  float highlightAlpha=edgeProx*directionalPeaked;\n' +
-        // Color-influenced brightening: aggressive additive + multiplicative lift.
-        // Target is intentionally allowed to exceed 1.0 (overshoot) — output clamping
-        // handles the ceiling, while keeping peak brightness punchy on bright areas
-        // and visibly lifted on dark ones, without dividing by luminance.
-        // Backdrop-adaptive highlight intensity — Apple Liquid Glass scales the
-        // highlight strength with what's behind the glass at this pixel: bright
-        // backdrop = emphasized highlight, dark backdrop = subdued highlight.
-        // Uses the pre-tint `saturated` backdrop sample so the highlight responds
-        // to actual transmitted content, not the post-rim-effects color.
+        // Backdrop-adaptive intensity: bright backdrop = emphasized highlight,
+        // dark backdrop = subdued. Uses pre-tint saturated sample so the response
+        // tracks transmitted content, not the post-rim-effects color.
         '  float backdropLum=max(dot(saturated,vec3(0.2126,0.7152,0.0722)),0.0);\n' +
         '  float backdropFactor=smoothstep(0.05,0.25,backdropLum);\n' +
-        // Hue-preserving highlight target: cap luminance at 1.0 to prevent white-out,
-        // then add back amplified chroma so channels stay differentiated. Result:
-        // brightness lift comparable to before but with visibly more inherited hue
-        // from the backdrop instead of washing to white at peak.
-        '  vec3 highlightBase=col*3.50+vec3(0.375);\n' +
+        // Hue-preserving target: cap luminance at 1.0 to prevent white-out,
+        // then re-add amplified chroma so channels stay differentiated.
+        '  vec3 highlightBase=col*HIGHLIGHT_BASE_MUL+vec3(HIGHLIGHT_BASE_ADD);\n' +
         '  float highlightBaseLum=dot(highlightBase,vec3(0.2126,0.7152,0.0722));\n' +
         '  vec3 highlightBaseChroma=highlightBase-vec3(highlightBaseLum);\n' +
-        '  vec3 highlightTarget=vec3(min(highlightBaseLum,1.0))+highlightBaseChroma*1.50;\n' +
-        '  col=mix(col,highlightTarget,highlightAlpha*1.00*mix(0.30,1.0,backdropFactor));\n' +
-        // White Fresnel specular lobe — cursor-driven, sits on top of the color rim
-        // and adds a "wet shiny" near-white crest at the directional peak. Falloff
-        // is wider (directional²) than the color rim's smoothstep so it stays
-        // visible alongside the color inheritance rather than overlapping the
-        // brightest portion. Fresnel weights it toward grazing rim pixels where
-        // physical specular reflection is strongest.
+        '  vec3 highlightTarget=vec3(min(highlightBaseLum,1.0))+highlightBaseChroma*HIGHLIGHT_CHROMA_MUL;\n' +
+        '  col=mix(col,highlightTarget,highlightAlpha*mix(HIGHLIGHT_DARK_BACKDROP_FLOOR,1.0,backdropFactor));\n' +
+        // White Fresnel specular crest — sits on top of the color rim. Wider falloff
+        // (directional²) than the color rim's smoothstep so it stays visible alongside.
         '  float specLobe=directional*directional;\n' +
         '  float specAlpha=edgeProx*specLobe*fresnel;\n' +
-        '  col+=vec3(0.95,0.97,1.0)*specAlpha*1.40;\n' +
-        // Inner shadow on perpendicular rim sections — the rim arc whose normal is
-        // sideways to the light direction darkens, giving the panel a sense of being
-        // lit from a specific direction (bright on the highlight axis, dark on the
-        // perpendicular axis). Uses a slightly wider edge band than the highlight
-        // for a softer, more gradient-y dark falloff.
+        '  col+=SPEC_CREST_COLOR*specAlpha*SPEC_CREST_INTENSITY;\n' +
+        // === Directional dark falloff ===
+        // Perpendicular rim arc (normal sideways to light direction) darkens, giving
+        // the panel a sense of being lit from a specific direction. Wider edge band
+        // than the highlight for a softer gradient.
         '  float shadowEdgeProx=1.0-smoothstep(0.0,6.0,distFromEdge);\n' +
         '  float shadowDirectional=1.0-directional;\n' +
         '  float shadowPeaked=smoothstep(0.50,0.85,shadowDirectional);\n' +
         '  float shadowAlpha=shadowEdgeProx*shadowPeaked;\n' +
-        '  col*=1.0-shadowAlpha*0.45;\n' +
-        // 9. Inner rim — continuous hairline 2–5 px inside the edge. Defines the
-        // panel shape independently of the directional highlight, matching Apple
-        // Liquid Glass behavior where the rim and the lighting are separate concerns.
+        '  col*=1.0-shadowAlpha*DIRECTIONAL_SHADOW_STRENGTH;\n' +
+        // === Inner rim hairline ===
+        // Continuous 2–5 px stripe inside the edge — defines panel shape
+        // independent of cursor lighting.
         '  float innerRim=smoothstep(0.0,2.0,distFromEdge)*(1.0-smoothstep(2.0,5.0,distFromEdge));\n' +
-        '  col+=vec3(innerRim*0.15*' + SPECULAR.toFixed(2) + ');\n' +
-        // 10. Fake environment reflection — subtle sky gradient modulated by Fresnel
+        '  col+=vec3(innerRim*INNER_RIM_INTENSITY*' + SPECULAR.toFixed(2) + ');\n' +
+        // === Environment reflection ===
+        // Subtle sky gradient modulated by Fresnel.
         '  float envUp=grad.y*-0.5+0.5;\n' +
-        '  vec3 envColor=mix(vec3(0.6,0.65,0.75),vec3(0.85,0.9,1.0),envUp);\n' +
-        '  col+=envColor*fresnel*0.03;\n' +
-        // Edge prismatic dispersion — additive colored rim where refraction is steepest
-        // Pointer reveal — early exit when no reveal active (saves 9 exp() on ~70% of fragments)
+        '  vec3 envColor=mix(ENV_COLOR_LOW,ENV_COLOR_HIGH,envUp);\n' +
+        '  col+=envColor*fresnel*ENV_INTENSITY;\n' +
+        // === Pointer reveal (early-exit when inactive) ===
+        // Saves 9 exp() calls on the ~70% of fragments with no active reveal.
         '  if(vReveal>0.001){\n' +
         '    vec2 panelCenter=vScreenPos-vLocalPos;\n' +
         '    vec2 mouseLocal=uMouse-panelCenter;\n' +
@@ -462,33 +465,32 @@
         '      vec3(0.03,0.38,0.14)*g6*0.15+\n' +
         '      vec3(0.01,0.22,0.08)*g7*0.08\n' +
         '    )*caustic*surfaceMod;\n' +
+        // Reveal light transmits through glass — attenuate by Fresnel exit.
         '    float revealTransmit=1.0-fresnel;\n' +
         '    col+=vReveal*revealLight*2.5*revealTransmit;\n' +
-        '    float edgeProx=1.0-smoothstep(0.0,4.0,distFromEdge);\n' +
+        '    float revealEdgeProx=1.0-smoothstep(0.0,4.0,distFromEdge);\n' +
         '    float rimCaustic=abs(dh)*h*2.0;\n' +
         '    float rimDist=exp(-d2/(2000.0*ps2));\n' +
-        '    col+=vReveal*vec3(0.2,0.9,0.45)*rimCaustic*rimDist*edgeProx*2.5*revealTransmit;\n' +
+        '    col+=vReveal*REVEAL_RIM_COLOR*rimCaustic*rimDist*revealEdgeProx*2.5*revealTransmit;\n' +
         '  }\n' +
-        // Ambient breathing — low-spatial-frequency brightness drift (~±7%, ~3.5s
-        // cycle) so the glass surface feels alive instead of printed. Two slightly
-        // decorrelated sines on panel-local space keep regions out of phase.
+        // === Ambient surface life ===
+        // Low-frequency breathing (~±7%, ~3.5s cycle) so the surface feels alive
+        // instead of printed. Two decorrelated sines on panel-local space.
         '  vec2 breathPos=vLocalPos*0.012;\n' +
         '  float breathTime=uTime*0.45;\n' +
         '  float breath=sin(breathPos.x+breathPos.y+breathTime)*0.5+sin(breathPos.x-breathPos.y*0.7+breathTime*0.65+1.3)*0.5;\n' +
-        '  col*=1.0+breath*0.07;\n' +
-        // 9. Ambient caustic shimmer — multi-layer interference like light through thick glass
+        '  col*=1.0+breath*BREATH_AMOUNT;\n' +
+        // Multi-layer caustic interference — light through thick glass.
         '  vec2 st=gl_FragCoord.xy*0.005;\n' +
         '  float t_s=uTime*0.35;\n' +
         '  float c1=sin(dot(st,vec2(1.0,0.7))+t_s);\n' +
         '  float c2=sin(dot(st,vec2(-0.8,1.1))+t_s*1.3+2.1);\n' +
         '  float c3=sin(dot(st,vec2(0.6,-0.9))*1.8+t_s*0.7+4.3);\n' +
-        '  float causticRaw=c1+c2+c3;\n' +
-        '  float causticBright=max(causticRaw-0.8,0.0);\n' +
-        '  col+=col*causticBright*0.04;\n' +
-        // 10. Surface grain (Interleaved Gradient Noise — better quality than sin-hash)
+        '  float causticBright=max(c1+c2+c3-0.8,0.0);\n' +
+        '  col+=col*causticBright*CAUSTIC_INTENSITY;\n' +
+        // Surface grain (Interleaved Gradient Noise).
         '  float grain=fract(52.9829189*fract(dot(gl_FragCoord.xy,vec2(0.06711056,0.00583715))));\n' +
-        '  col+=col*(grain-0.5)*0.04;\n' +
-        // Output — alpha from SDF antialiasing, interior is opaque
+        '  col+=col*(grain-0.5)*GRAIN_INTENSITY;\n' +
         '  fragColor=vec4(col,alpha*vOpacity);\n' +
         '}\n';
 
@@ -605,7 +607,7 @@
     var panelRectBuf  = gl.createBuffer();
     var panelExtraBuf = gl.createBuffer();
     var panelORBuf    = gl.createBuffer();  // opacity + reveal packed as vec2
-    var panelMulBuf   = gl.createBuffer();  // scrollMul (Phase 1.1) — float per panel
+    var panelMulBuf   = gl.createBuffer();  // scrollMul — float per panel
     var panelRectData  = new Float32Array(MAX_PANELS * 4);  // draw buffer (GPU)
     var panelExtraData = new Float32Array(MAX_PANELS * 4);  // draw buffer (GPU)
     var panelORData    = new Float32Array(MAX_PANELS * 2);  // [opacity, reveal] per panel
@@ -636,7 +638,7 @@
     gl.enableVertexAttribArray(glassU.opacReveal);
     gl.vertexAttribPointer(glassU.opacReveal, 2, gl.FLOAT, false, 0, 0);
     gl.vertexAttribDivisor(glassU.opacReveal, 1);
-    // Per-panel scrollMul (float, instanced) — Phase 1.1
+    // Per-panel scrollMul (float, instanced)
     gl.bindBuffer(gl.ARRAY_BUFFER, panelMulBuf);
     gl.bufferData(gl.ARRAY_BUFFER, panelMulData.byteLength, gl.DYNAMIC_DRAW);
     gl.enableVertexAttribArray(glassU.scrollMul);
@@ -787,72 +789,11 @@
     }
 
     // ====================================================================
-    // Theme-aware tier system
+    // Theme-aware tier system — values + functions live in glass-core.js.
     // ====================================================================
-    var TIER_NAME_MAP = {
-        'article': 'surface', '.friend-card': 'surface', '.stat-card': 'surface',
-        '.timeline-event-card': 'surface', '.ach-grid-card': 'surface', '.ach-card': 'surface',
-        '.showcase-card': 'surface', '.near-completion-row': 'surface', '.lib-grid-card': 'surface',
-        '.grid-rows .game-row': 'nested', '.grid-rows .recent-row': 'nested',
-        '.captures-game-header': 'surface',
-        '.sidebar-widget': 'chrome',
-        '.cmd-panel': 'overlay', '.shortcuts-panel': 'overlay', '.calendar-dropdown': 'overlay',
-        'button.outline': 'button', 'button.secondary': 'button',
-        '[role="button"].outline': 'button', '[role="button"].secondary': 'button',
-        '.tracking-form select': 'control', '.tracking-form textarea': 'control', '.tracking-form input[type="date"]': 'control',
-        'input[type="search"]': 'button', 'select': 'button',
-        '.view-toggle': 'button', '.view-toggle-captures': 'button',
-        '.hm-tab': 'button', '.hm-year-btn': 'button', '.calendar-toggle-btn': 'button',
-        '.filters-inline button': 'button', '.rarity-strip-item': 'button',
-        '.cal-nav': 'button', '.quick-nav-pill': 'button'
-    };
-
-    var TIER_VALUES = {
-        // Canvas no longer dimmed by .aurora opacity — values tuned for direct output.
-        // Hierarchy: surface (recessive) < nested < chrome (persistent) < overlay (floating) < button (interactive)
-        dark: {
-            surface: {sat:1.80, bright:0.78, tint:0.04},
-            nested:  {sat:2.20, bright:0.88, tint:0.07},
-            control: {sat:1.90, bright:0.85, tint:0.05},
-            chrome:  {sat:2.00, bright:0.92, tint:0.06},
-            overlay: {sat:2.40, bright:0.96, tint:0.08},
-            button:  {sat:2.60, bright:1.00, tint:0.07}
-        },
-    };
-
-    // P3 gamut: cap saturation on sRGB displays to avoid oversaturation
-    var _hasP3 = window.matchMedia('(color-gamut: p3)').matches;
-    var SRGB_SAT_CAP = { button: 3.50, overlay: 3.10, chrome: 2.80, control: 2.60, nested: 3.20, surface: 2.40 };
-
-    // Reduced transparency: high tintAlpha for solid appearance
-    var _reducedTransparency = window.matchMedia('(prefers-reduced-transparency: reduce)').matches;
-
-    var _currentTheme = 'dark';
-
-    function detectTheme() {
-        _currentTheme = document.documentElement.getAttribute('data-theme') || 'dark';
-    }
-
-    function getTierValues(tierName) {
-        var themeVals = TIER_VALUES[_currentTheme] || TIER_VALUES.dark;
-        var v = themeVals[tierName] || themeVals.surface;
-        var sat = v.sat;
-        // Cap saturation on sRGB displays
-        if (!_hasP3 && SRGB_SAT_CAP[tierName] !== undefined) {
-            sat = Math.min(sat, SRGB_SAT_CAP[tierName]);
-        }
-        var tint = _reducedTransparency ? 0.92 : v.tint;
-        return { sat: sat, bright: v.bright, tint: tint };
-    }
-
-    function getTierName(el) {
-        for (var sel in TIER_NAME_MAP) {
-            if (el.matches(sel)) return TIER_NAME_MAP[sel];
-        }
-        return 'surface';
-    }
-
-    detectTheme();
+    var detectTheme = core.detectTheme;
+    var getTierName = core.getTierName;
+    var getTierValues = core.getTierValues;
 
     // MutationObserver for theme changes
     var _themeObserver = new MutationObserver(function () {
@@ -878,41 +819,10 @@
 
 
     // ====================================================================
-    // Panel position tracking
+    // Panel position tracking — selectors live in glass-core.js
     // ====================================================================
-    var GLASS_SEL = [
-        'article', '.friend-card', '.stat-card',
-        '.timeline-event-card', '.ach-grid-card',
-        '.ach-card', '.showcase-card', '.near-completion-row',
-        '.grid-rows .game-row', '.grid-rows .recent-row', '.lib-grid-card',
-        '.captures-game-header',
-        '.sidebar-widget',
-        '.cmd-panel', '.shortcuts-panel',
-        'button.outline', 'button.secondary',
-        '[role="button"].outline', '[role="button"].secondary',
-        'input[type="search"]', 'select',
-        '.tracking-form select', '.tracking-form textarea', '.tracking-form input[type="date"]',
-        '.view-toggle', '.view-toggle-captures',
-        '.hm-tab', '.hm-year-btn', '.calendar-toggle-btn',
-        '.filters-inline button', '.rarity-strip-item',
-        '.cal-nav', '.quick-nav-pill',
-        '.calendar-dropdown'
-    ].join(',');
-
-    // Elements that get the pointer reveal glow (interactive items, not structural containers)
-    var REVEAL_SEL = [
-        '.friend-card', '.timeline-event-card',
-        '.ach-grid-card', '.ach-card', '.showcase-card', '.near-completion-row',
-        '.grid-rows .game-row', '.grid-rows .recent-row', '.lib-grid-card',
-        '.captures-game-header',
-        'button.outline', 'button.secondary',
-        '[role="button"].outline', '[role="button"].secondary',
-        'input[type="search"]', 'select',
-        '.tracking-form select', '.tracking-form textarea', '.tracking-form input[type="date"]',
-        '.view-toggle', '.view-toggle-captures',
-        '.hm-tab', '.hm-year-btn', '.calendar-toggle-btn',
-        '.filters-inline button', '.cal-nav', '.quick-nav-pill'
-    ].join(',');
+    var GLASS_SEL = core.GLASS_SEL;
+    var REVEAL_SEL = core.REVEAL_SEL;
 
     var _isMobile = false;
 
@@ -941,7 +851,7 @@
     var _mainEl = null;
     var _layoutDirty  = true;
     var _anyAnimating = false; // true while any panel is mid-entrance or reveal-fading
-    // Phase 1.2: panel buffer dirty tracking. Pack site uses conditional cell writes
+    // Panel buffer dirty tracking. Pack site uses conditional cell writes
     // (only overwrite when the new value differs from the existing one); any write
     // flips _buffDirty=true; render() then uploads all four panel buffers only if dirty.
     // Sticky-stuck panels keep the same rTop frame after frame, so they cost a few
@@ -985,121 +895,39 @@
     // URL-keyed and refcounted cache: multiple panels showing the same art
     // share one GPU texture. LRU eviction caps memory at BACKDROP_MAX_TEXTURES.
     // ====================================================================
-    var _backdropCache = new Map();       // url → { tex, lastUsed, refs, aspect }
-    var _backdropPending = new Map();     // url → { promise }
-    var _backdropFailed = new Set();      // urls that failed to load — never retry
-    var _cachedBackdropUrl = new Array(MAX_CACHED);
+    // URL→texture cache lives in glass-core; driver supplies the WebGL2 bits.
+    var _backdrop = core.createBackdropManager({
+        createTexture: function (canvas, tw, th, url) {
+            var tex = gl.createTexture();
+            gl.bindTexture(gl.TEXTURE_2D, tex);
+            gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+            gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+            // RGBA8 (not SRGB8_ALPHA8) — the aurora/blur FBO is RGBA8 and the
+            // entire pipeline operates on sRGB-encoded values; image bytes are
+            // already sRGB-encoded so we want pass-through, not auto-linearize.
+            gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, canvas);
+            gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+            gl.bindTexture(gl.TEXTURE_2D, null);
+            return tex;
+        },
+        destroyTexture: function (tex) { if (tex) gl.deleteTexture(tex); },
+        onImageLoaded: function () { _layoutDirty = true; }
+    });
     var _backdropDrawCount = 0;
     var _backdropDrawRect    = new Float32Array(BACKDROP_MAX_TEXTURES * 4);
     var _backdropDrawRadius  = new Float32Array(BACKDROP_MAX_TEXTURES);
     var _backdropDrawOpacity = new Float32Array(BACKDROP_MAX_TEXTURES);
     var _backdropDrawTex     = new Array(BACKDROP_MAX_TEXTURES);
 
-    function _evictBackdropLRU() {
-        if (_backdropCache.size <= BACKDROP_MAX_TEXTURES) return;
-        var oldestUrl = null, oldestT = Infinity;
-        _backdropCache.forEach(function (entry, url) {
-            if (entry.refs > 0) return;
-            if (entry.lastUsed < oldestT) { oldestT = entry.lastUsed; oldestUrl = url; }
-        });
-        if (!oldestUrl) return;
-        var victim = _backdropCache.get(oldestUrl);
-        if (victim.tex) gl.deleteTexture(victim.tex);
-        _backdropCache.delete(oldestUrl);
-    }
-
-    function _loadBackdropImage(url) {
-        var existing = _backdropCache.get(url);
-        if (existing) { existing.lastUsed = performance.now(); return Promise.resolve(existing); }
-        if (_backdropFailed.has(url)) return Promise.resolve(null);
-        var pending = _backdropPending.get(url);
-        if (pending) return pending.promise;
-
-        var p = new Promise(function (resolve, reject) {
-            var img = new Image();
-            img.crossOrigin = 'anonymous';
-            img.decoding = 'async';
-            img.referrerPolicy = 'no-referrer';
-            img.onload = function () { resolve(img); };
-            img.onerror = function () { reject(new Error('image load failed')); };
-            img.src = url;
-        })
-            .then(function (img) { return img.decode ? img.decode().then(function () { return img; }) : img; })
-            .then(function (img) {
-                // Preserve native aspect — texture dimensions track the image's
-                // natural ratio (max side = BACKDROP_TEX_SIZE). The shader uses
-                // texAspect to do cover-style UV sampling against panel rects of
-                // varying aspect, matching CSS `background-size: cover`.
-                var iw = img.naturalWidth || img.width || 1;
-                var ih = img.naturalHeight || img.height || 1;
-                var scale = BACKDROP_TEX_SIZE / Math.max(iw, ih);
-                var tw = Math.max(1, Math.round(iw * scale));
-                var th = Math.max(1, Math.round(ih * scale));
-                var c = ('OffscreenCanvas' in window)
-                    ? new OffscreenCanvas(tw, th)
-                    : Object.assign(document.createElement('canvas'), { width: tw, height: th });
-                var cctx = c.getContext('2d');
-                cctx.filter = 'blur(' + BACKDROP_PREBLUR_PX + 'px) brightness(' + BACKDROP_BRIGHTNESS + ') saturate(' + BACKDROP_SATURATE + ')';
-                cctx.drawImage(img, 0, 0, tw, th);
-                var tex = gl.createTexture();
-                gl.bindTexture(gl.TEXTURE_2D, tex);
-                gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
-                gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
-                // RGBA8 (not SRGB8_ALPHA8) — the aurora/blur FBO is RGBA8 and the
-                // entire pipeline operates on sRGB-encoded values; image bytes are
-                // already sRGB-encoded so we want pass-through, not auto-linearize.
-                gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, c);
-                gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
-                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-                gl.bindTexture(gl.TEXTURE_2D, null);
-                var entry = { tex: tex, lastUsed: performance.now(), refs: 0, aspect: tw / th };
-                _backdropCache.set(url, entry);
-                _backdropPending.delete(url);
-                _evictBackdropLRU();
-                _layoutDirty = true;   // re-bind panels next collectPanels
-                return entry;
-            })
-            .catch(function () {
-                _backdropPending.delete(url);
-                _backdropFailed.add(url);   // permanent — silent CSS-overlay fallback
-                return null;
-            });
-        _backdropPending.set(url, { promise: p });
-        return p;
-    }
-
-    function _resolveBackdropUrl(el) {
-        var raw = el.getAttribute('data-glass-backdrop');
-        if (!raw) return null;
-        return new URL(raw, document.baseURI).href;
-    }
-
-    function _bindPanelBackdrop(idx, el) {
-        var url = _resolveBackdropUrl(el);
-        var prev = _cachedBackdropUrl[idx];
-        if (prev && prev !== url) {
-            var prevEntry = _backdropCache.get(prev);
-            if (prevEntry && prevEntry.refs > 0) prevEntry.refs--;
-        }
-        _cachedBackdropUrl[idx] = url || undefined;
-        if (!url) return;
-        var entry = _backdropCache.get(url);
-        if (entry) {
-            if (prev !== url) entry.refs++;
-            entry.lastUsed = performance.now();
-        } else {
-            _loadBackdropImage(url);
-        }
-    }
-
     window.__glassBackdrops = {
-        cache: _backdropCache,
-        pending: _backdropPending,
-        failed: _backdropFailed,
-        cachedUrl: _cachedBackdropUrl,
+        cache: _backdrop.cache,
+        pending: _backdrop.pending,
+        failed: _backdrop.failed,
+        cachedUrl: _backdrop.cachedUrl,
         get drawCount() { return _backdropDrawCount; },
         get drawList() {
             var out = [];
@@ -1114,25 +942,19 @@
         }
     };
 
-    function _resetBackdropBindings() {
-        _backdropCache.forEach(function (entry) { entry.refs = 0; });
-        for (var i = 0; i < MAX_CACHED; i++) _cachedBackdropUrl[i] = undefined;
-        document.documentElement.classList.remove('glass-refract-bd-active');
-    }
-
     // Pack visible backdropped panels into a draw list. Walks _cachedEls only
     // when at least one image is loaded; zero loaded images returns in O(1).
     // Geometry is stored in half-res pixels: the backdrop pass renders into
     // FBO_AURORA (which is 1/HALF_RES the viewport size).
     function _collectBackdrops(curScrollY) {
         _backdropDrawCount = 0;
-        if (_backdropCache.size === 0) return;
+        if (_backdrop.cache.size === 0) return;
         var n = _cachedEls.length;
         var inv = 1.0 / HALF_RES;
         for (var i = 0; i < n && _backdropDrawCount < BACKDROP_MAX_TEXTURES; i++) {
-            var url = _cachedBackdropUrl[i];
+            var url = _backdrop.cachedUrl[i];
             if (!url) continue;
-            var entry = _backdropCache.get(url);
+            var entry = _backdrop.cache.get(url);
             var elCl = _cachedEls[i].classList;
             if (!entry || !entry.tex) { elCl.remove('glass-bd-on'); continue; }
             // Skip panels that haven't entered yet (collectPanels skips these too).
@@ -1261,7 +1083,7 @@
         _fullyOpaque.fill(0);
         _revealAnim.fill(0);
         _cachedAnimAncestor = [];
-        _resetBackdropBindings();
+        _backdrop.resetBindings();
         if (_glassIO) _glassIO.disconnect();
         if (_glassRO) _glassRO.disconnect();
         _elIndex.clear();
@@ -1317,7 +1139,7 @@
                 : el.parentElement && el.parentElement.closest('.anim-blur-rise,.anim-drop,.anim-pop,.anim-blur-scale,.anim-slide-blur,.anim-grow');
             // Cache whether element is inside <main> (for exit animation detection)
             _cachedInMain[idx] = (_mainEl && _mainEl.contains(el)) ? 1 : 0;
-            _bindPanelBackdrop(idx, el);
+            _backdrop.bindPanel(idx, el);
             _cachedEls.push(el);
             _elIndex.set(el, idx);
             if (_cachedAnimAncestor[idx]) {
@@ -1372,7 +1194,7 @@
     var _sortRects   = new Float32Array(MAX_PANELS * 4);
     var _sortExtra   = new Float32Array(MAX_PANELS * 4);
     var _sortOR      = new Float32Array(MAX_PANELS * 2);
-    // Per-visible-panel scrollMul (Phase 1.1): 1.0 stable (rect.y is doc-top), 0.0 otherwise.
+    // Per-visible-panel scrollMul: 1.0 stable (rect.y is doc-top), 0.0 otherwise.
     var _sortMul     = new Float32Array(MAX_PANELS);
 
     // Per-frame opacity cache. Mirrors glass-webgpu.js: when N glass panels share
@@ -1508,7 +1330,7 @@
             // per-tier sat/bright/tint so the picture comes through close to its
             // source instead of being darkened and oversaturated by the glass pass.
             var _tvSat = tv.sat, _tvBright = tv.bright, _tvTint = tv.tint;
-            if (_cachedBackdropUrl[i]) {
+            if (_backdrop.cachedUrl[i]) {
                 _tvSat = Math.min(_tvSat, 1.20);
                 _tvBright = Math.max(_tvBright, 0.92);
                 _tvTint = Math.min(_tvTint, 0.02);
@@ -1578,7 +1400,7 @@
         }
 
         panelCount = visCount;
-        // Phase 1.2: cells beyond the previous upload boundary hold stale data that
+        // Cells beyond the previous upload boundary hold stale data that
         // was never on the GPU. Conditional-compare would falsely register them as
         // unchanged. Force-upload whenever panelCount grows.
         if (panelCount > _lastBuffPanelCount) _buffDirty = true;
@@ -1600,7 +1422,7 @@
                 _sortIndices[b + 1] = keyIdx;
             }
 
-            // Phase 1.2: conditional writes — only overwrite a cell if its new value
+            // Conditional writes — only overwrite a cell if its new value
             // differs from the existing one (which mirrors the GPU's current contents).
             // Any miss flips _buffDirty=true; render() uploads only if dirty.
             for (var s = 0; s < visCount; s++) {
@@ -1745,7 +1567,7 @@
             gl.uniform2f(glassU.viewport, vpW, vpH);
             gl.uniform2f(glassU.mouse, _mouseX, _mouseY);
             gl.uniform1f(glassU.time, _time);
-            gl.uniform1f(glassU.scrollY, frameScrollY);   // Phase 1.1: VS subtracts scrollY * scrollMul
+            gl.uniform1f(glassU.scrollY, frameScrollY);   // VS subtracts scrollY * scrollMul
 
             // Bind blurred aurora texture (last blur pass output)
             var lastBlur = (BLUR_PASSES - 1) % 2;
@@ -1753,7 +1575,7 @@
             gl.bindTexture(gl.TEXTURE_2D, texBlur[lastBlur]);
             gl.uniform1i(glassU.blurTex, 0);
 
-            // Phase 1.2: skip uploads when contents are bit-identical to the last
+            // Skip uploads when contents are bit-identical to the last
             // upload (only stable / sticky-stuck panels visible, no anim/reveal).
             if (_buffDirty) {
                 gl.bindBuffer(gl.ARRAY_BUFFER, panelRectBuf);
