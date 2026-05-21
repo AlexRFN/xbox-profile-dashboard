@@ -269,35 +269,8 @@
         'uniform float uTime;\n' +
         'uniform float uScrollY;\n' +    // doc-space scroll offset; mirrors VS uScrollY
         'out vec4 fragColor;\n' +
-        // ====================================================================
-        // Tuning constants — top-level knobs designers reach for first.
-        // ====================================================================
-        'const float EDGE_AA_PX=1.5;\n' +
-        'const float THICKNESS_EDGE_BOOST=0.4;\n' +
-        'const float SHADOW_BASE_ALPHA=0.22;\n' +
-        'const float SHADOW_FALLOFF_SIGMA2=18.0;\n' +
-        'const float SHADOW_LUM_SCALE=0.25;\n' +
-        'const float SHADOW_CHROMA_SCALE=0.9;\n' +
-        'const float ABSORPTION=0.06;\n' +
-        'const vec3 ABSORPTION_TINT=vec3(0.96,0.97,1.0);\n' +
-        'const float INNER_SHADOW_STRENGTH=0.3;\n' +
-        'const float INNER_SHADOW_FLOOR=0.7;\n' +
-        'const float HIGHLIGHT_BASE_MUL=3.50;\n' +
-        'const float HIGHLIGHT_BASE_ADD=0.375;\n' +
-        'const float HIGHLIGHT_CHROMA_MUL=1.50;\n' +
-        'const float HIGHLIGHT_LOCALPOS_DAMPEN=0.4;\n' +
-        'const float HIGHLIGHT_DARK_BACKDROP_FLOOR=0.30;\n' +
-        'const vec3 SPEC_CREST_COLOR=vec3(0.95,0.97,1.0);\n' +
-        'const float SPEC_CREST_INTENSITY=1.40;\n' +
-        'const float DIRECTIONAL_SHADOW_STRENGTH=0.45;\n' +
-        'const float INNER_RIM_INTENSITY=0.15;\n' +
-        'const vec3 ENV_COLOR_LOW=vec3(0.6,0.65,0.75);\n' +
-        'const vec3 ENV_COLOR_HIGH=vec3(0.85,0.9,1.0);\n' +
-        'const float ENV_INTENSITY=0.03;\n' +
-        'const vec3 REVEAL_RIM_COLOR=vec3(0.2,0.9,0.45);\n' +
-        'const float BREATH_AMOUNT=0.07;\n' +
-        'const float CAUSTIC_INTENSITY=0.04;\n' +
-        'const float GRAIN_INTENSITY=0.04;\n' +
+        // Tuning constants — synthesized from core.GLASS_TUNING (single source of truth).
+        core.emitGlassConstsGLSL() +
         // Signed-distance to a rounded box centered at origin, half-extents b,
         // radius r. Negative inside, zero on boundary, positive outside.
         'float rboxSDF(vec2 p,vec2 b,float r){\n' +

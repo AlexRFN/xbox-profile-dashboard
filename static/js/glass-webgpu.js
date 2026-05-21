@@ -266,46 +266,8 @@ struct VSOutput {
 @group(0) @binding(2) var blurSampler: sampler;
 @group(0) @binding(3) var blurTex: texture_2d<f32>;
 
-// ====================================================================
-// Tuning constants — top-level knobs designers reach for first.
-// ====================================================================
-const EDGE_AA_PX: f32 = 1.5;
-const THICKNESS_EDGE_BOOST: f32 = 0.4;        // +40% optical thickness at rim
-
-const SHADOW_BASE_ALPHA: f32 = 0.22;
-const SHADOW_FALLOFF_SIGMA2: f32 = 18.0;
-const SHADOW_LUM_SCALE: f32 = 0.25;           // darken backdrop in shadow
-const SHADOW_CHROMA_SCALE: f32 = 0.9;         // preserve color cast
-
-const ABSORPTION: f32 = 0.06;
-const ABSORPTION_TINT: vec3f = vec3f(0.96, 0.97, 1.0);
-
-const INNER_SHADOW_STRENGTH: f32 = 0.3;       // 0=off, 1=fully dark at rim
-const INNER_SHADOW_FLOOR: f32 = 0.7;
-
-const HIGHLIGHT_BASE_MUL: f32 = 3.50;         // brightness amplification
-const HIGHLIGHT_BASE_ADD: f32 = 0.375;
-const HIGHLIGHT_CHROMA_MUL: f32 = 1.50;
-const HIGHLIGHT_LOCALPOS_DAMPEN: f32 = 0.4;   // 0=panel-uniform, 1=point-light
-const HIGHLIGHT_DARK_BACKDROP_FLOOR: f32 = 0.30;
-
-const SPEC_CREST_COLOR: vec3f = vec3f(0.95, 0.97, 1.0);
-const SPEC_CREST_INTENSITY: f32 = 1.40;
-
-const DIRECTIONAL_SHADOW_STRENGTH: f32 = 0.45;
-
-const INNER_RIM_INTENSITY: f32 = 0.15;        // multiplied by SPECULAR JS const
-
-const ENV_COLOR_LOW: vec3f = vec3f(0.6, 0.65, 0.75);
-const ENV_COLOR_HIGH: vec3f = vec3f(0.85, 0.9, 1.0);
-const ENV_INTENSITY: f32 = 0.03;
-
-const REVEAL_RIM_COLOR: vec3f = vec3f(0.2, 0.9, 0.45);
-
-const BREATH_AMOUNT: f32 = 0.07;
-const CAUSTIC_INTENSITY: f32 = 0.04;
-const GRAIN_INTENSITY: f32 = 0.04;
-
+// Tuning constants — synthesized from core.GLASS_TUNING (single source of truth).
+${core.emitGlassConstsWGSL()}
 // Signed-distance to a rounded box centered at origin, half-extents b, radius r.
 // Negative inside, zero on the boundary, positive outside.
 fn rboxSDF(p: vec2f, b: vec2f, r: f32) -> f32 {

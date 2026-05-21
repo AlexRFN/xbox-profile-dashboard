@@ -135,6 +135,89 @@
     detectTheme();
 
     // ====================================================================
+    // Glass FS tuning constants — single source of truth for both shaders.
+    //
+    // Each entry is { type: 'float'|'vec3', value: number | [r,g,b] }. The
+    // emitter functions synthesize the const block in WGSL or GLSL ES 300
+    // syntax; drivers prepend the result to their FS source before compile.
+    // Keep keys ordered intentionally — emission order matches insertion order
+    // (ES2015+ string-key iteration), which preserves the section grouping.
+    // ====================================================================
+    var GLASS_TUNING = {
+        EDGE_AA_PX:                   { type: 'float', value: 1.5 },
+        THICKNESS_EDGE_BOOST:         { type: 'float', value: 0.4 },
+
+        SHADOW_BASE_ALPHA:            { type: 'float', value: 0.22 },
+        SHADOW_FALLOFF_SIGMA2:        { type: 'float', value: 18.0 },
+        SHADOW_LUM_SCALE:             { type: 'float', value: 0.25 },
+        SHADOW_CHROMA_SCALE:          { type: 'float', value: 0.9 },
+
+        ABSORPTION:                   { type: 'float', value: 0.06 },
+        ABSORPTION_TINT:              { type: 'vec3',  value: [0.96, 0.97, 1.0] },
+
+        INNER_SHADOW_STRENGTH:        { type: 'float', value: 0.3 },
+        INNER_SHADOW_FLOOR:           { type: 'float', value: 0.7 },
+
+        HIGHLIGHT_BASE_MUL:           { type: 'float', value: 3.5 },
+        HIGHLIGHT_BASE_ADD:           { type: 'float', value: 0.375 },
+        HIGHLIGHT_CHROMA_MUL:         { type: 'float', value: 1.5 },
+        HIGHLIGHT_LOCALPOS_DAMPEN:    { type: 'float', value: 0.4 },
+        HIGHLIGHT_DARK_BACKDROP_FLOOR:{ type: 'float', value: 0.3 },
+
+        SPEC_CREST_COLOR:             { type: 'vec3',  value: [0.95, 0.97, 1.0] },
+        SPEC_CREST_INTENSITY:         { type: 'float', value: 1.4 },
+
+        DIRECTIONAL_SHADOW_STRENGTH:  { type: 'float', value: 0.45 },
+        INNER_RIM_INTENSITY:          { type: 'float', value: 0.15 },
+
+        ENV_COLOR_LOW:                { type: 'vec3',  value: [0.6, 0.65, 0.75] },
+        ENV_COLOR_HIGH:               { type: 'vec3',  value: [0.85, 0.9, 1.0] },
+        ENV_INTENSITY:                { type: 'float', value: 0.03 },
+
+        REVEAL_RIM_COLOR:             { type: 'vec3',  value: [0.2, 0.9, 0.45] },
+
+        BREATH_AMOUNT:                { type: 'float', value: 0.07 },
+        CAUSTIC_INTENSITY:            { type: 'float', value: 0.04 },
+        GRAIN_INTENSITY:              { type: 'float', value: 0.04 }
+    };
+
+    // GLSL/WGSL require literals like `1.0`, not `1` — toString drops the
+    // decimal point on integer-valued floats.
+    function fmtFloat(v) {
+        var s = v.toString();
+        if (s.indexOf('.') === -1) s += '.0';
+        return s;
+    }
+
+    function emitGlassConstsWGSL() {
+        var out = '';
+        for (var name in GLASS_TUNING) {
+            var c = GLASS_TUNING[name];
+            if (c.type === 'float') {
+                out += 'const ' + name + ': f32 = ' + fmtFloat(c.value) + ';\n';
+            } else if (c.type === 'vec3') {
+                out += 'const ' + name + ': vec3f = vec3f(' +
+                    fmtFloat(c.value[0]) + ', ' + fmtFloat(c.value[1]) + ', ' + fmtFloat(c.value[2]) + ');\n';
+            }
+        }
+        return out;
+    }
+
+    function emitGlassConstsGLSL() {
+        var out = '';
+        for (var name in GLASS_TUNING) {
+            var c = GLASS_TUNING[name];
+            if (c.type === 'float') {
+                out += 'const float ' + name + '=' + fmtFloat(c.value) + ';\n';
+            } else if (c.type === 'vec3') {
+                out += 'const vec3 ' + name + '=vec3(' +
+                    fmtFloat(c.value[0]) + ',' + fmtFloat(c.value[1]) + ',' + fmtFloat(c.value[2]) + ');\n';
+            }
+        }
+        return out;
+    }
+
+    // ====================================================================
     // Backdrop image cache (URL-keyed + refcounted + LRU).
     //
     // Driver supplies texture create/destroy callbacks; the rest is shared.
@@ -286,6 +369,9 @@
         detectTheme: detectTheme,
         getTierName: getTierName,
         getTierValues: getTierValues,
-        createBackdropManager: createBackdropManager
+        createBackdropManager: createBackdropManager,
+        GLASS_TUNING: GLASS_TUNING,
+        emitGlassConstsWGSL: emitGlassConstsWGSL,
+        emitGlassConstsGLSL: emitGlassConstsGLSL
     };
 })(window);
