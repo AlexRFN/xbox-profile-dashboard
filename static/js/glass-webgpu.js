@@ -153,12 +153,14 @@ fn l2s(c: f32) -> f32 {
 `;
 
     // -- Blit fragment (with dithering) --
+    // Prepend the full tuning block — shader compiler dead-strips unused consts.
     var BLIT_FS_WGSL = /* wgsl */`
 @group(0) @binding(0) var texSampler: sampler;
 @group(0) @binding(1) var tex: texture_2d<f32>;
 
+${core.emitGlassConstsWGSL()}
 fn ign(p: vec2f) -> f32 {
-    return fract(52.9829189 * fract(dot(p, vec2f(0.06711056, 0.00583715))));
+    return fract(IGN_HASH * fract(dot(p, IGN_DOT)));
 }
 
 @fragment fn fs(@builtin(position) fragCoord: vec4f, @location(0) uv: vec2f) -> @location(0) vec4f {
@@ -305,7 +307,7 @@ fn surfaceHeight(t: f32) -> f32 {
         let shadowBackdrop = textureSampleLevel(blurTex, blurSampler, blurUV, 0.0).rgb;
         // Boost chroma while preserving low luminance — keeps the shadow dark
         // but emphasizes color cast from whatever's behind the panel.
-        let shadowLum = dot(shadowBackdrop, vec3f(0.2126, 0.7152, 0.0722));
+        let shadowLum = dot(shadowBackdrop, LUMA_WEIGHTS);
         let shadowChroma = shadowBackdrop - vec3f(shadowLum);
         let shadowColor = max(vec3f(shadowLum) * SHADOW_LUM_SCALE + shadowChroma * SHADOW_CHROMA_SCALE, vec3f(0.0));
         return vec4f(shadowColor, shadowAlpha * opacity);
@@ -364,7 +366,7 @@ fn surfaceHeight(t: f32) -> f32 {
     );
 
     // === Color grading ===
-    let lum = dot(blurred, vec3f(0.2126, 0.7152, 0.0722));
+    let lum = dot(blurred, LUMA_WEIGHTS);
     let saturated = mix(vec3f(lum), blurred, saturation);
     var transmitted = saturated * brightness;
     // Beer's law absorption — slight cool tint at thicker (lower-h) areas.
@@ -392,12 +394,12 @@ fn surfaceHeight(t: f32) -> f32 {
     // Backdrop-adaptive intensity: bright backdrop = emphasized highlight,
     // dark backdrop = subdued. Uses pre-tint saturated sample so the response
     // tracks transmitted content, not the post-rim-effects color.
-    let backdropLum = max(dot(saturated, vec3f(0.2126, 0.7152, 0.0722)), 0.0);
+    let backdropLum = max(dot(saturated, LUMA_WEIGHTS), 0.0);
     let backdropFactor = smoothstep(0.05, 0.25, backdropLum);
     // Hue-preserving target: cap luminance at 1.0 to prevent white-out,
     // then re-add amplified chroma so channels stay differentiated.
     let highlightBase = col * HIGHLIGHT_BASE_MUL + vec3f(HIGHLIGHT_BASE_ADD);
-    let highlightBaseLum = dot(highlightBase, vec3f(0.2126, 0.7152, 0.0722));
+    let highlightBaseLum = dot(highlightBase, LUMA_WEIGHTS);
     let highlightBaseChroma = highlightBase - vec3f(highlightBaseLum);
     let highlightTarget = vec3f(min(highlightBaseLum, 1.0)) + highlightBaseChroma * HIGHLIGHT_CHROMA_MUL;
     col = mix(col, highlightTarget, highlightAlpha * mix(HIGHLIGHT_DARK_BACKDROP_FLOOR, 1.0, backdropFactor));
@@ -494,7 +496,7 @@ fn surfaceHeight(t: f32) -> f32 {
     let causticBright = max(c1 + c2 + c3 - 0.8, 0.0);
     col += col * causticBright * CAUSTIC_INTENSITY;
     // Surface grain (Interleaved Gradient Noise).
-    let grain = fract(52.9829189 * fract(dot(screenPos, vec2f(0.06711056, 0.00583715))));
+    let grain = fract(IGN_HASH * fract(dot(screenPos, IGN_DOT)));
     col += col * (grain - 0.5) * GRAIN_INTENSITY;
 
     return vec4f(col, alpha * opacity);

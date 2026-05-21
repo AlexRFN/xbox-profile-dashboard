@@ -178,7 +178,12 @@
 
         BREATH_AMOUNT:                { type: 'float', value: 0.07 },
         CAUSTIC_INTENSITY:            { type: 'float', value: 0.04 },
-        GRAIN_INTENSITY:              { type: 'float', value: 0.04 }
+        GRAIN_INTENSITY:              { type: 'float', value: 0.04 },
+
+        // Shared math constants used in the FS body (luminance weights, IGN hash).
+        LUMA_WEIGHTS:                 { type: 'vec3',  value: [0.2126, 0.7152, 0.0722] },
+        IGN_DOT:                      { type: 'vec2',  value: [0.06711056, 0.00583715] },
+        IGN_HASH:                     { type: 'float', value: 52.9829189 }
     };
 
     // GLSL/WGSL require literals like `1.0`, not `1` — toString drops the
@@ -195,6 +200,9 @@
             var c = GLASS_TUNING[name];
             if (c.type === 'float') {
                 out += 'const ' + name + ': f32 = ' + fmtFloat(c.value) + ';\n';
+            } else if (c.type === 'vec2') {
+                out += 'const ' + name + ': vec2f = vec2f(' +
+                    fmtFloat(c.value[0]) + ', ' + fmtFloat(c.value[1]) + ');\n';
             } else if (c.type === 'vec3') {
                 out += 'const ' + name + ': vec3f = vec3f(' +
                     fmtFloat(c.value[0]) + ', ' + fmtFloat(c.value[1]) + ', ' + fmtFloat(c.value[2]) + ');\n';
@@ -209,6 +217,9 @@
             var c = GLASS_TUNING[name];
             if (c.type === 'float') {
                 out += 'const float ' + name + '=' + fmtFloat(c.value) + ';\n';
+            } else if (c.type === 'vec2') {
+                out += 'const vec2 ' + name + '=vec2(' +
+                    fmtFloat(c.value[0]) + ',' + fmtFloat(c.value[1]) + ');\n';
             } else if (c.type === 'vec3') {
                 out += 'const vec3 ' + name + '=vec3(' +
                     fmtFloat(c.value[0]) + ',' + fmtFloat(c.value[1]) + ',' + fmtFloat(c.value[2]) + ');\n';

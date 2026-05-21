@@ -100,15 +100,17 @@
         '  fragColor=vec4(clamp(col,0.0,1.0),1.0);\n' +
         '}\n';
 
+    // Prepend the full tuning block — shader compiler dead-strips unused consts.
     var BLIT_FS =
         '#version 300 es\n' +
         'precision mediump float;\n' +
         'in vec2 vUV;\n' +
         'out vec4 fragColor;\n' +
         'uniform sampler2D uTex;\n' +
+        core.emitGlassConstsGLSL() +
         // Interleaved gradient noise (Jorge Jimenez, 2014) — no texture tap, no banding
         'float ign(vec2 p){\n' +
-        '  return fract(52.9829189*fract(dot(p,vec2(0.06711056,0.00583715))));\n' +
+        '  return fract(IGN_HASH*fract(dot(p,IGN_DOT)));\n' +
         '}\n' +
         'void main(){\n' +
         '  vec3 col=texture(uTex,vUV).rgb;\n' +
@@ -294,7 +296,7 @@
         '    vec3 shadowBackdrop=texture(uBlurTex,vBlurUV).rgb;\n' +
         // Boost chroma while preserving low luminance — keeps the shadow dark
         // but emphasizes color cast from whatever's behind the panel.
-        '    float shadowLum=dot(shadowBackdrop,vec3(0.2126,0.7152,0.0722));\n' +
+        '    float shadowLum=dot(shadowBackdrop,LUMA_WEIGHTS);\n' +
         '    vec3 shadowChroma=shadowBackdrop-vec3(shadowLum);\n' +
         '    vec3 shadowColor=max(vec3(shadowLum)*SHADOW_LUM_SCALE+shadowChroma*SHADOW_CHROMA_SCALE,vec3(0.0));\n' +
         '    fragColor=vec4(shadowColor,shadowAlpha*vOpacity);\n' +
@@ -347,7 +349,7 @@
         '    texture(uBlurTex,vBlurUV+baseOffset*0.95).b\n' +
         '  );\n' +
         // === Color grading ===
-        '  float lum=dot(blurred,vec3(0.2126,0.7152,0.0722));\n' +
+        '  float lum=dot(blurred,LUMA_WEIGHTS);\n' +
         '  vec3 saturated=mix(vec3(lum),blurred,vSaturation);\n' +
         '  vec3 transmitted=saturated*vBrightness;\n' +
         // Beer's law absorption — slight cool tint at thicker (lower-h) areas.
@@ -374,12 +376,12 @@
         // Backdrop-adaptive intensity: bright backdrop = emphasized highlight,
         // dark backdrop = subdued. Uses pre-tint saturated sample so the response
         // tracks transmitted content, not the post-rim-effects color.
-        '  float backdropLum=max(dot(saturated,vec3(0.2126,0.7152,0.0722)),0.0);\n' +
+        '  float backdropLum=max(dot(saturated,LUMA_WEIGHTS),0.0);\n' +
         '  float backdropFactor=smoothstep(0.05,0.25,backdropLum);\n' +
         // Hue-preserving target: cap luminance at 1.0 to prevent white-out,
         // then re-add amplified chroma so channels stay differentiated.
         '  vec3 highlightBase=col*HIGHLIGHT_BASE_MUL+vec3(HIGHLIGHT_BASE_ADD);\n' +
-        '  float highlightBaseLum=dot(highlightBase,vec3(0.2126,0.7152,0.0722));\n' +
+        '  float highlightBaseLum=dot(highlightBase,LUMA_WEIGHTS);\n' +
         '  vec3 highlightBaseChroma=highlightBase-vec3(highlightBaseLum);\n' +
         '  vec3 highlightTarget=vec3(min(highlightBaseLum,1.0))+highlightBaseChroma*HIGHLIGHT_CHROMA_MUL;\n' +
         '  col=mix(col,highlightTarget,highlightAlpha*mix(HIGHLIGHT_DARK_BACKDROP_FLOOR,1.0,backdropFactor));\n' +
@@ -462,7 +464,7 @@
         '  float causticBright=max(c1+c2+c3-0.8,0.0);\n' +
         '  col+=col*causticBright*CAUSTIC_INTENSITY;\n' +
         // Surface grain (Interleaved Gradient Noise).
-        '  float grain=fract(52.9829189*fract(dot(gl_FragCoord.xy,vec2(0.06711056,0.00583715))));\n' +
+        '  float grain=fract(IGN_HASH*fract(dot(gl_FragCoord.xy,IGN_DOT)));\n' +
         '  col+=col*(grain-0.5)*GRAIN_INTENSITY;\n' +
         '  fragColor=vec4(col,alpha*vOpacity);\n' +
         '}\n';
