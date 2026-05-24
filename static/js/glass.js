@@ -43,10 +43,8 @@
     var BLUR_PASSES = core.BLUR_PASSES;
     var MAX_PANELS = core.MAX_PANELS;
     var MAX_CACHED = core.MAX_CACHED;
-    var IOR = core.IOR;
-    var THICKNESS = core.THICKNESS;
-    var BEZEL = core.BEZEL;
-    var SPECULAR = core.SPECULAR;
+    // IOR / THICKNESS / BEZEL / SPECULAR / SHADOW_MARGIN / REVEAL_MULT are
+    // emitted into the shader const block via core.emitGlassConstsGLSL().
     var BACKDROP_TEX_SIZE = core.BACKDROP_TEX_SIZE;
     var BACKDROP_PREBLUR_PX = core.BACKDROP_PREBLUR_PX;
     var BACKDROP_BRIGHTNESS = core.BACKDROP_BRIGHTNESS;
@@ -202,8 +200,6 @@
         '  fragColor=vec4(col*a,a);\n' +    // pre-multiplied
         '}\n';
 
-    var SHADOW_MARGIN = core.SHADOW_MARGIN;  // px — quad expansion for drop shadow
-
     var GLASS_VS =
         '#version 300 es\n' +
         'precision mediump float;\n' +
@@ -225,6 +221,9 @@
         'out float vTintAlpha;\n' +
         'out float vOpacity;\n' +
         'out float vReveal;\n' +
+        // Tuning constants — synthesized from core.GLASS_TUNING (single source of truth).
+        // VS only needs SHADOW_MARGIN, but the compiler dead-strips the rest.
+        core.emitGlassConstsGLSL() +
         'void main(){\n' +
         // Stable panels store doc-relative y; shader subtracts scrollY each frame so
         // the buffer stays bit-identical during pure scroll. Non-stable panels have
@@ -233,7 +232,7 @@
         '  vec2 hs=aPanelRect.zw*0.5;\n' +
         '  vec2 ctr=vec2(aPanelRect.x, panelY)+hs;\n' +
         // Expand quad by shadow margin so exterior drop shadow has room to render
-        '  vec2 hsExpanded=hs+' + SHADOW_MARGIN.toFixed(1) + ';\n' +
+        '  vec2 hsExpanded=hs+SHADOW_MARGIN;\n' +
         '  vec2 pos=ctr+aPos*hsExpanded;\n' +
         '  vLocalPos=aPos*hsExpanded;\n' +  // local coords include shadow margin
         '  vPanelSize=hs;\n' +              // SDF uses actual panel half-size (not expanded)
@@ -285,188 +284,7 @@
         '  return sqrt(sqrt(1.0-s*s*s*s));\n' +
         '}\n' +
         'void main(){\n' +
-        '  float sd=rboxSDF(vLocalPos,vPanelSize,vRadius);\n' +
-        // === Drop shadow (outside panel) ===
-        // Color-matched to local backdrop so the cast shadow takes on the hue
-        // of what's behind the panel instead of being flat black.
-        '  if(sd>0.0){\n' +
-        '    if(sd>' + SHADOW_MARGIN.toFixed(1) + ')discard;\n' +
-        '    float shadowFalloff=exp(-sd*sd/SHADOW_FALLOFF_SIGMA2);\n' +
-        '    float shadowAlpha=SHADOW_BASE_ALPHA*shadowFalloff;\n' +
-        '    vec3 shadowBackdrop=texture(uBlurTex,vBlurUV).rgb;\n' +
-        // Boost chroma while preserving low luminance — keeps the shadow dark
-        // but emphasizes color cast from whatever's behind the panel.
-        '    float shadowLum=dot(shadowBackdrop,LUMA_WEIGHTS);\n' +
-        '    vec3 shadowChroma=shadowBackdrop-vec3(shadowLum);\n' +
-        '    vec3 shadowColor=max(vec3(shadowLum)*SHADOW_LUM_SCALE+shadowChroma*SHADOW_CHROMA_SCALE,vec3(0.0));\n' +
-        '    fragColor=vec4(shadowColor,shadowAlpha*vOpacity);\n' +
-        '    return;\n' +
-        '  }\n' +
-        // === Edge alpha + bezel zone ===
-        '  float distFromEdge=-sd;\n' +
-        '  float alpha=smoothstep(0.0,EDGE_AA_PX,distFromEdge);\n' +
-        // Bezel slab clamped by both corner radius and panel size — keeps it
-        // inside the rounded area so the SDF's diagonal discontinuity stays
-        // hidden, and scales down on small panels so buttons act like small glass.
-        '  float bezel=max(1.0,min(' + BEZEL.toFixed(1) + ',min(vRadius,min(vPanelSize.x,vPanelSize.y))-1.0));\n' +
-        '  float t=clamp(distFromEdge/bezel,0.0,1.0);\n' +
-        // === Surface profile + slope ===
-        '  float h=surfaceHeight(t);\n' +
-        '  float dt=0.001;\n' +
-        '  float h2=surfaceHeight(min(t+dt,1.0));\n' +
-        '  float dh=(h2-h)/dt;\n' +
-        // Depth-varying thickness — edge gets a boost to strengthen rim bending.
-        '  float thicknessLocal=' + THICKNESS.toFixed(1) + '*(1.0+(1.0-h*h)*THICKNESS_EDGE_BOOST);\n' +
-        // === Snell refraction (algebraic) ===
-        // tan(slope) = dh directly — no atan/asin/tan needed.
-        '  float x_s=dh;\n' +
-        '  float invSqrtX2p1=inversesqrt(1.0+x_s*x_s);\n' +
-        '  float sinI=x_s*invSqrtX2p1;\n' +
-        '  float sinR=sinI/' + IOR.toFixed(1) + ';\n' +
-        '  sinR=clamp(sinR,-1.0,1.0);\n' +
-        '  float cosR=sqrt(1.0-sinR*sinR);\n' +
-        '  float displacement=h*thicknessLocal*(x_s-sinR/max(cosR,0.001));\n' +
-        // === Fresnel (Schlick) ===
-        '  float cosTheta=invSqrtX2p1;\n' +
-        '  float omc=1.0-cosTheta;\n' +
-        '  float omc2=omc*omc;\n' +
-        '  float fresnel=0.04+0.96*omc2*omc2*omc;\n' +
-        // === SDF gradient (finite differences) ===
-        // Used as the surface-normal direction for refraction sampling. Continuous
-        // everywhere on the SDF, so wide bezels don't expose the axis-switch seam
-        // the analytical formulation produced near diagonals.
-        '  float sd_dx=rboxSDF(vLocalPos+vec2(0.5,0.0),vPanelSize,vRadius);\n' +
-        '  float sd_dy=rboxSDF(vLocalPos+vec2(0.0,0.5),vPanelSize,vRadius);\n' +
-        '  vec2 grad=normalize(vec2(sd_dx-sd,sd_dy-sd));\n' +
-        // === Backdrop sampling with chromatic aberration ===
-        // CA at ±5% — wide enough to read as wet-glass shimmer at the rim, narrow
-        // enough that the SDF gradient's pixel-quantization doesn't expose colored
-        // fringes on corners.
-        '  vec2 baseOffset=-grad*displacement/uViewport;\n' +
-        '  vec3 blurred=vec3(\n' +
-        '    texture(uBlurTex,vBlurUV+baseOffset*1.05).r,\n' +
-        '    texture(uBlurTex,vBlurUV+baseOffset).g,\n' +
-        '    texture(uBlurTex,vBlurUV+baseOffset*0.95).b\n' +
-        '  );\n' +
-        // === Color grading ===
-        '  float lum=dot(blurred,LUMA_WEIGHTS);\n' +
-        '  vec3 saturated=mix(vec3(lum),blurred,vSaturation);\n' +
-        '  vec3 transmitted=saturated*vBrightness;\n' +
-        // Beer's law absorption — slight cool tint at thicker (lower-h) areas.
-        '  float absorption=(1.0-h)*ABSORPTION;\n' +
-        '  transmitted*=mix(vec3(1.0),ABSORPTION_TINT,absorption);\n' +
-        // Frosted glass haze (per-panel, independent of Fresnel).
-        '  vec3 col=mix(transmitted,vec3(1.0),vTintAlpha);\n' +
-        // Inner shadow — darkens transmitted light before specular is added.
-        '  float innerShadow=1.0-smoothstep(0.0,bezel*0.6,distFromEdge);\n' +
-        '  col*=mix(1.0,INNER_SHADOW_FLOOR,innerShadow*INNER_SHADOW_STRENGTH);\n' +
-        // === Cursor-driven rim highlight ===
-        // Each rim pixel computes its own vector toward the cursor; abs(dot) gives
-        // a symmetric dual hot spot. Edge proximity gates the effect to the rim.
-        '  float edgeProx=1.0-smoothstep(0.0,3.0,distFromEdge);\n' +
-        '  vec2 highlightPanelCenter=vScreenPos-vLocalPos;\n' +
-        '  vec2 highlightMouseRel=uMouse-highlightPanelCenter;\n' +
-        // localPos contribution dampened — pure per-pixel gives point-light focus
-        // as the cursor approaches; pure per-panel is uniform along edges.
-        '  vec2 highlightPixelToCursor=highlightMouseRel-vLocalPos*HIGHLIGHT_LOCALPOS_DAMPEN+vec2(0.5,0.5);\n' +
-        '  vec2 highlightMouseDir=normalize(highlightPixelToCursor);\n' +
-        '  float directional=abs(dot(grad,highlightMouseDir));\n' +
-        '  float directionalPeaked=smoothstep(0.35,0.80,directional);\n' +
-        '  float highlightAlpha=edgeProx*directionalPeaked;\n' +
-        // Backdrop-adaptive intensity: bright backdrop = emphasized highlight,
-        // dark backdrop = subdued. Uses pre-tint saturated sample so the response
-        // tracks transmitted content, not the post-rim-effects color.
-        '  float backdropLum=max(dot(saturated,LUMA_WEIGHTS),0.0);\n' +
-        '  float backdropFactor=smoothstep(0.05,0.25,backdropLum);\n' +
-        // Hue-preserving target: cap luminance at 1.0 to prevent white-out,
-        // then re-add amplified chroma so channels stay differentiated.
-        '  vec3 highlightBase=col*HIGHLIGHT_BASE_MUL+vec3(HIGHLIGHT_BASE_ADD);\n' +
-        '  float highlightBaseLum=dot(highlightBase,LUMA_WEIGHTS);\n' +
-        '  vec3 highlightBaseChroma=highlightBase-vec3(highlightBaseLum);\n' +
-        '  vec3 highlightTarget=vec3(min(highlightBaseLum,1.0))+highlightBaseChroma*HIGHLIGHT_CHROMA_MUL;\n' +
-        '  col=mix(col,highlightTarget,highlightAlpha*mix(HIGHLIGHT_DARK_BACKDROP_FLOOR,1.0,backdropFactor));\n' +
-        // White Fresnel specular crest — sits on top of the color rim. Wider falloff
-        // (directional²) than the color rim's smoothstep so it stays visible alongside.
-        '  float specLobe=directional*directional;\n' +
-        '  float specAlpha=edgeProx*specLobe*fresnel;\n' +
-        '  col+=SPEC_CREST_COLOR*specAlpha*SPEC_CREST_INTENSITY;\n' +
-        // === Directional dark falloff ===
-        // Perpendicular rim arc (normal sideways to light direction) darkens, giving
-        // the panel a sense of being lit from a specific direction. Wider edge band
-        // than the highlight for a softer gradient.
-        '  float shadowEdgeProx=1.0-smoothstep(0.0,6.0,distFromEdge);\n' +
-        '  float shadowDirectional=1.0-directional;\n' +
-        '  float shadowPeaked=smoothstep(0.50,0.85,shadowDirectional);\n' +
-        '  float shadowAlpha=shadowEdgeProx*shadowPeaked;\n' +
-        '  col*=1.0-shadowAlpha*DIRECTIONAL_SHADOW_STRENGTH;\n' +
-        // === Inner rim hairline ===
-        // Continuous 2–5 px stripe inside the edge — defines panel shape
-        // independent of cursor lighting.
-        '  float innerRim=smoothstep(0.0,2.0,distFromEdge)*(1.0-smoothstep(2.0,5.0,distFromEdge));\n' +
-        '  col+=vec3(innerRim*INNER_RIM_INTENSITY*' + SPECULAR.toFixed(2) + ');\n' +
-        // === Environment reflection ===
-        // Subtle sky gradient modulated by Fresnel.
-        '  float envUp=grad.y*-0.5+0.5;\n' +
-        '  vec3 envColor=mix(ENV_COLOR_LOW,ENV_COLOR_HIGH,envUp);\n' +
-        '  col+=envColor*fresnel*ENV_INTENSITY;\n' +
-        // === Pointer reveal (early-exit when inactive) ===
-        // Saves 9 exp() calls on the ~70% of fragments with no active reveal.
-        '  if(vReveal>0.001){\n' +
-        '    vec2 panelCenter=vScreenPos-vLocalPos;\n' +
-        '    vec2 mouseLocal=uMouse-panelCenter;\n' +
-        '    vec2 refractedPos=vLocalPos-grad*displacement*0.18;\n' +
-        '    float fragDist=length(refractedPos-mouseLocal);\n' +
-        '    float panelDiag=length(vPanelSize);\n' +
-        '    float ps=max(panelDiag/280.0,0.25);\n' +
-        '    float ps2=ps*ps;\n' +
-        '    float caustic=1.0+abs(dh)*h*1.5;\n' +
-        '    float d2=fragDist*fragDist;\n' +
-        '    float g0=exp(-d2/(80.0*ps2));\n' +
-        '    float g1=exp(-d2/(250.0*ps2));\n' +
-        '    float g2=exp(-d2/(800.0*ps2));\n' +
-        '    float g3=exp(-d2/(2500.0*ps2));\n' +
-        '    float g4=exp(-d2/(8000.0*ps2));\n' +
-        '    float g5=exp(-d2/(25000.0*ps2));\n' +
-        '    float g6=exp(-d2/(80000.0*ps2));\n' +
-        '    float g7=exp(-d2/(250000.0*ps2));\n' +
-        '    float surfaceMod=h*h;\n' +
-        '    vec3 revealLight=(\n' +
-        '      vec3(0.85,1.0,0.88)*g0*1.8+\n' +
-        '      vec3(0.60,0.98,0.70)*g1*1.2+\n' +
-        '      vec3(0.38,0.94,0.52)*g2*0.85+\n' +
-        '      vec3(0.22,0.88,0.40)*g3*0.60+\n' +
-        '      vec3(0.12,0.75,0.32)*g4*0.40+\n' +
-        '      vec3(0.06,0.55,0.22)*g5*0.25+\n' +
-        '      vec3(0.03,0.38,0.14)*g6*0.15+\n' +
-        '      vec3(0.01,0.22,0.08)*g7*0.08\n' +
-        '    )*caustic*surfaceMod;\n' +
-        // Reveal light transmits through glass — attenuate by Fresnel exit.
-        '    float revealTransmit=1.0-fresnel;\n' +
-        '    col+=vReveal*revealLight*2.5*revealTransmit;\n' +
-        '    float revealEdgeProx=1.0-smoothstep(0.0,4.0,distFromEdge);\n' +
-        '    float rimCaustic=abs(dh)*h*2.0;\n' +
-        '    float rimDist=exp(-d2/(2000.0*ps2));\n' +
-        '    col+=vReveal*REVEAL_RIM_COLOR*rimCaustic*rimDist*revealEdgeProx*2.5*revealTransmit;\n' +
-        '  }\n' +
-        // === Ambient surface life ===
-        // Low-frequency breathing (~±7%, ~3.5s cycle) so the surface feels alive
-        // instead of printed. Two decorrelated sines on panel-local space.
-        '  vec2 breathPos=vLocalPos*0.012;\n' +
-        '  float breathTime=uTime*0.45;\n' +
-        '  float breath=sin(breathPos.x+breathPos.y+breathTime)*0.5+sin(breathPos.x-breathPos.y*0.7+breathTime*0.65+1.3)*0.5;\n' +
-        '  col*=1.0+breath*BREATH_AMOUNT;\n' +
-        // Multi-layer caustic interference — light through thick glass.
-        '  vec2 st=gl_FragCoord.xy*0.005;\n' +
-        '  float t_s=uTime*0.35;\n' +
-        '  float c1=sin(dot(st,vec2(1.0,0.7))+t_s);\n' +
-        '  float c2=sin(dot(st,vec2(-0.8,1.1))+t_s*1.3+2.1);\n' +
-        '  float c3=sin(dot(st,vec2(0.6,-0.9))*1.8+t_s*0.7+4.3);\n' +
-        '  float causticBright=max(c1+c2+c3-0.8,0.0);\n' +
-        '  col+=col*causticBright*CAUSTIC_INTENSITY;\n' +
-        // Surface grain (Interleaved Gradient Noise).
-        '  float grain=fract(IGN_HASH*fract(dot(gl_FragCoord.xy,IGN_DOT)));\n' +
-        '  col+=col*(grain-0.5)*GRAIN_INTENSITY;\n' +
-        '  fragColor=vec4(col,alpha*vOpacity);\n' +
+        core.buildGlassFSBody('glsl') +
         '}\n';
 
     // ====================================================================

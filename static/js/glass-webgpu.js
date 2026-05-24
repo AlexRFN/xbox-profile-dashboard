@@ -71,12 +71,8 @@
     var BLUR_PASSES = core.BLUR_PASSES;
     var MAX_PANELS = core.MAX_PANELS;
     var MAX_CACHED = core.MAX_CACHED;
-    var IOR = core.IOR;
-    var THICKNESS = core.THICKNESS;
-    var BEZEL = core.BEZEL;
-    var SPECULAR = core.SPECULAR;
-    var SHADOW_MARGIN = core.SHADOW_MARGIN;
-    var REVEAL_MULT = core.REVEAL_MULT;
+    // IOR / THICKNESS / BEZEL / SPECULAR / SHADOW_MARGIN / REVEAL_MULT are
+    // emitted into the shader const block via core.emitGlassConstsWGSL().
 
     // ====================================================================
     // WGSL Shaders
@@ -195,7 +191,11 @@ struct BlurUniforms {
 `;
 
     // -- Glass vertex (instanced panels) --
+    // Tuning constants — synthesized from core.GLASS_TUNING (single source of truth).
+    // Emitted at the top of the VS so they're visible to the FS too, since
+    // WebGPU concatenates VS+FS into one shader module below.
     var GLASS_VS_WGSL = /* wgsl */`
+${core.emitGlassConstsWGSL()}
 struct GlassUniforms {
     viewport: vec2f,
     mouse: vec2f,
@@ -239,7 +239,7 @@ struct VSOutput {
     let panelY = panel.rect.y - uniforms.scrollY * panel.scrollPad.x;
     let hs = panel.rect.zw * 0.5;
     let ctr = vec2f(panel.rect.x, panelY) + hs;
-    let hsExpanded = hs + ${SHADOW_MARGIN.toFixed(1)};
+    let hsExpanded = hs + SHADOW_MARGIN;
     let pos = ctr + aPos * hsExpanded;
 
     var out: VSOutput;
@@ -268,8 +268,9 @@ struct VSOutput {
 @group(0) @binding(2) var blurSampler: sampler;
 @group(0) @binding(3) var blurTex: texture_2d<f32>;
 
-// Tuning constants — synthesized from core.GLASS_TUNING (single source of truth).
-${core.emitGlassConstsWGSL()}
+// Tuning constants are emitted at the top of GLASS_VS_WGSL — both shaders
+// share the same WebGPU module so the const block is visible here too.
+
 // Signed-distance to a rounded box centered at origin, half-extents b, radius r.
 // Negative inside, zero on the boundary, positive outside.
 fn rboxSDF(p: vec2f, b: vec2f, r: f32) -> f32 {
@@ -295,211 +296,7 @@ fn surfaceHeight(t: f32) -> f32 {
     @location(8) opacity: f32,
     @location(9) reveal: f32,
 ) -> @location(0) vec4f {
-    let sd = rboxSDF(localPos, panelSize, radius);
-
-    // === Drop shadow (outside panel) ===
-    // Color-matched to local backdrop so the cast shadow takes on the hue
-    // of what's behind the panel instead of being flat black.
-    if (sd > 0.0) {
-        if (sd > ${SHADOW_MARGIN.toFixed(1)}) { discard; }
-        let shadowFalloff = exp(-sd * sd / SHADOW_FALLOFF_SIGMA2);
-        let shadowAlpha = SHADOW_BASE_ALPHA * shadowFalloff;
-        let shadowBackdrop = textureSampleLevel(blurTex, blurSampler, blurUV, 0.0).rgb;
-        // Boost chroma while preserving low luminance — keeps the shadow dark
-        // but emphasizes color cast from whatever's behind the panel.
-        let shadowLum = dot(shadowBackdrop, LUMA_WEIGHTS);
-        let shadowChroma = shadowBackdrop - vec3f(shadowLum);
-        let shadowColor = max(vec3f(shadowLum) * SHADOW_LUM_SCALE + shadowChroma * SHADOW_CHROMA_SCALE, vec3f(0.0));
-        return vec4f(shadowColor, shadowAlpha * opacity);
-    }
-
-    // === Edge alpha + bezel zone ===
-    let distFromEdge = -sd;
-    let alpha = smoothstep(0.0, EDGE_AA_PX, distFromEdge);
-    // Bezel slab clamped by both corner radius and panel size — keeps it
-    // inside the rounded area so the SDF's diagonal discontinuity stays
-    // hidden, and scales down on small panels so buttons act like small glass.
-    let bezel = max(1.0, min(${BEZEL.toFixed(1)}, min(radius, min(panelSize.x, panelSize.y)) - 1.0));
-    let t = clamp(distFromEdge / bezel, 0.0, 1.0);
-
-    // === Surface profile + slope ===
-    let h = surfaceHeight(t);
-    let dt: f32 = 0.001;
-    let h2 = surfaceHeight(min(t + dt, 1.0));
-    let dh = (h2 - h) / dt;
-    // Depth-varying thickness — edge gets a boost to strengthen rim bending.
-    let thicknessLocal = ${THICKNESS.toFixed(1)} * (1.0 + (1.0 - h * h) * THICKNESS_EDGE_BOOST);
-
-    // === Snell refraction (algebraic) ===
-    // tan(slope) = dh directly — no atan/asin/tan needed.
-    let x_s = dh;
-    let invSqrtX2p1 = inverseSqrt(1.0 + x_s * x_s);
-    let sinI = x_s * invSqrtX2p1;
-    var sinR = sinI / ${IOR.toFixed(1)};
-    sinR = clamp(sinR, -1.0, 1.0);
-    let cosR = sqrt(1.0 - sinR * sinR);
-    let displacement = h * thicknessLocal * (x_s - sinR / max(cosR, 0.001));
-
-    // === Fresnel (Schlick) ===
-    let cosTheta = invSqrtX2p1;
-    let omc = 1.0 - cosTheta;
-    let omc2 = omc * omc;
-    let fresnel = 0.04 + 0.96 * omc2 * omc2 * omc;
-
-    // === SDF gradient (finite differences) ===
-    // Used as the surface-normal direction for refraction sampling. Continuous
-    // everywhere on the SDF, so wide bezels don't expose the axis-switch seam
-    // the analytical formulation produced near diagonals.
-    let sd_dx = rboxSDF(localPos + vec2f(0.5, 0.0), panelSize, radius);
-    let sd_dy = rboxSDF(localPos + vec2f(0.0, 0.5), panelSize, radius);
-    let grad = normalize(vec2f(sd_dx - sd, sd_dy - sd));
-
-    // === Backdrop sampling with chromatic aberration ===
-    // CA at ±5% — wide enough to read as wet-glass shimmer at the rim, narrow
-    // enough that the SDF gradient's pixel-quantization doesn't expose colored
-    // fringes on corners.
-    let baseOffset = -grad * displacement / uniforms.viewport;
-    let blurred = vec3f(
-        textureSampleLevel(blurTex, blurSampler, blurUV + baseOffset * 1.05, 0.0).r,
-        textureSampleLevel(blurTex, blurSampler, blurUV + baseOffset, 0.0).g,
-        textureSampleLevel(blurTex, blurSampler, blurUV + baseOffset * 0.95, 0.0).b
-    );
-
-    // === Color grading ===
-    let lum = dot(blurred, LUMA_WEIGHTS);
-    let saturated = mix(vec3f(lum), blurred, saturation);
-    var transmitted = saturated * brightness;
-    // Beer's law absorption — slight cool tint at thicker (lower-h) areas.
-    let absorption = (1.0 - h) * ABSORPTION;
-    transmitted *= mix(vec3f(1.0), ABSORPTION_TINT, absorption);
-    // Frosted glass haze (per-panel, independent of Fresnel).
-    var col = mix(transmitted, vec3f(1.0), tintAlpha);
-    // Inner shadow — darkens transmitted light before specular is added.
-    let innerShadow = 1.0 - smoothstep(0.0, bezel * 0.6, distFromEdge);
-    col *= mix(1.0, INNER_SHADOW_FLOOR, innerShadow * INNER_SHADOW_STRENGTH);
-
-    // === Cursor-driven rim highlight ===
-    // Each rim pixel computes its own vector toward the cursor; abs(dot) gives
-    // a symmetric dual hot spot. Edge proximity gates the effect to the rim.
-    let edgeProx = 1.0 - smoothstep(0.0, 3.0, distFromEdge);
-    let highlightPanelCenter = screenPos - localPos;
-    let highlightMouseRel = uniforms.mouse - highlightPanelCenter;
-    // localPos contribution dampened — pure per-pixel gives point-light focus
-    // as the cursor approaches; pure per-panel is uniform along edges.
-    let highlightPixelToCursor = highlightMouseRel - localPos * HIGHLIGHT_LOCALPOS_DAMPEN + vec2f(0.5, 0.5);
-    let highlightMouseDir = normalize(highlightPixelToCursor);
-    let directional = abs(dot(grad, highlightMouseDir));
-    let directionalPeaked = smoothstep(0.35, 0.80, directional);
-    let highlightAlpha = edgeProx * directionalPeaked;
-    // Backdrop-adaptive intensity: bright backdrop = emphasized highlight,
-    // dark backdrop = subdued. Uses pre-tint saturated sample so the response
-    // tracks transmitted content, not the post-rim-effects color.
-    let backdropLum = max(dot(saturated, LUMA_WEIGHTS), 0.0);
-    let backdropFactor = smoothstep(0.05, 0.25, backdropLum);
-    // Hue-preserving target: cap luminance at 1.0 to prevent white-out,
-    // then re-add amplified chroma so channels stay differentiated.
-    let highlightBase = col * HIGHLIGHT_BASE_MUL + vec3f(HIGHLIGHT_BASE_ADD);
-    let highlightBaseLum = dot(highlightBase, LUMA_WEIGHTS);
-    let highlightBaseChroma = highlightBase - vec3f(highlightBaseLum);
-    let highlightTarget = vec3f(min(highlightBaseLum, 1.0)) + highlightBaseChroma * HIGHLIGHT_CHROMA_MUL;
-    col = mix(col, highlightTarget, highlightAlpha * mix(HIGHLIGHT_DARK_BACKDROP_FLOOR, 1.0, backdropFactor));
-
-    // White Fresnel specular crest — sits on top of the color rim. Wider falloff
-    // (directional²) than the color rim's smoothstep so it stays visible alongside.
-    let specLobe = directional * directional;
-    let specAlpha = edgeProx * specLobe * fresnel;
-    col += SPEC_CREST_COLOR * specAlpha * SPEC_CREST_INTENSITY;
-
-    // === Directional dark falloff ===
-    // Perpendicular rim arc (normal sideways to light direction) darkens, giving
-    // the panel a sense of being lit from a specific direction. Wider edge band
-    // than the highlight for a softer gradient.
-    let shadowEdgeProx = 1.0 - smoothstep(0.0, 6.0, distFromEdge);
-    let shadowDirectional = 1.0 - directional;
-    let shadowPeaked = smoothstep(0.50, 0.85, shadowDirectional);
-    let shadowAlpha = shadowEdgeProx * shadowPeaked;
-    col *= 1.0 - shadowAlpha * DIRECTIONAL_SHADOW_STRENGTH;
-
-    // === Inner rim hairline ===
-    // Continuous 2–5 px stripe inside the edge — defines panel shape
-    // independent of cursor lighting.
-    let innerRim = smoothstep(0.0, 2.0, distFromEdge) * (1.0 - smoothstep(2.0, 5.0, distFromEdge));
-    col += vec3f(innerRim * INNER_RIM_INTENSITY * ${SPECULAR.toFixed(2)});
-
-    // === Environment reflection ===
-    // Subtle sky gradient modulated by Fresnel.
-    let envUp = grad.y * -0.5 + 0.5;
-    let envColor = mix(ENV_COLOR_LOW, ENV_COLOR_HIGH, envUp);
-    col += envColor * fresnel * ENV_INTENSITY;
-
-    // === Pointer reveal (early-exit when inactive) ===
-    // Saves 9 exp() calls on the ~70% of fragments with no active reveal.
-    if (reveal > 0.001) {
-        let panelCenter = screenPos - localPos;
-        let mouseLocal = uniforms.mouse - panelCenter;
-        let refractedPos = localPos - grad * displacement * 0.18;
-        let fragDist = length(refractedPos - mouseLocal);
-
-        let panelDiag = length(panelSize);
-        let ps = max(panelDiag / 280.0, 0.25);
-        let ps2 = ps * ps;
-
-        let caustic = 1.0 + abs(dh) * h * 1.5;
-
-        let d2 = fragDist * fragDist;
-        let g0 = exp(-d2 / (80.0 * ps2));
-        let g1 = exp(-d2 / (250.0 * ps2));
-        let g2 = exp(-d2 / (800.0 * ps2));
-        let g3 = exp(-d2 / (2500.0 * ps2));
-        let g4 = exp(-d2 / (8000.0 * ps2));
-        let g5 = exp(-d2 / (25000.0 * ps2));
-        let g6 = exp(-d2 / (80000.0 * ps2));
-        let g7 = exp(-d2 / (250000.0 * ps2));
-
-        let surfaceMod = h * h;
-
-        let revealLight = (
-            vec3f(0.85, 1.0, 0.88) * g0 * 1.8 +
-            vec3f(0.60, 0.98, 0.70) * g1 * 1.2 +
-            vec3f(0.38, 0.94, 0.52) * g2 * 0.85 +
-            vec3f(0.22, 0.88, 0.40) * g3 * 0.60 +
-            vec3f(0.12, 0.75, 0.32) * g4 * 0.40 +
-            vec3f(0.06, 0.55, 0.22) * g5 * 0.25 +
-            vec3f(0.03, 0.38, 0.14) * g6 * 0.15 +
-            vec3f(0.01, 0.22, 0.08) * g7 * 0.08
-        ) * caustic * surfaceMod;
-
-        // Reveal light transmits through glass — attenuate by Fresnel exit.
-        let revealTransmit = 1.0 - fresnel;
-        col += reveal * revealLight * ${REVEAL_MULT.toFixed(2)} * revealTransmit;
-
-        let revealEdgeProx = 1.0 - smoothstep(0.0, 4.0, distFromEdge);
-        let rimCaustic = abs(dh) * h * 2.0;
-        let rimDist = exp(-d2 / (2000.0 * ps2));
-        col += reveal * REVEAL_RIM_COLOR * rimCaustic * rimDist * revealEdgeProx * ${REVEAL_MULT.toFixed(2)} * revealTransmit;
-    }
-
-    // === Ambient surface life ===
-    // Low-frequency breathing (~±7%, ~3.5s cycle) so the surface feels alive
-    // instead of printed. Two decorrelated sines on panel-local space.
-    let breathPos = localPos * 0.012;
-    let breathTime = uniforms.time * 0.45;
-    let breath = sin(breathPos.x + breathPos.y + breathTime) * 0.5
-               + sin(breathPos.x - breathPos.y * 0.7 + breathTime * 0.65 + 1.3) * 0.5;
-    col *= 1.0 + breath * BREATH_AMOUNT;
-    // Multi-layer caustic interference — light through thick glass.
-    let st = screenPos * 0.005;
-    let t_s = uniforms.time * 0.35;
-    let c1 = sin(dot(st, vec2f(1.0, 0.7)) + t_s);
-    let c2 = sin(dot(st, vec2f(-0.8, 1.1)) + t_s * 1.3 + 2.1);
-    let c3 = sin(dot(st, vec2f(0.6, -0.9)) * 1.8 + t_s * 0.7 + 4.3);
-    let causticBright = max(c1 + c2 + c3 - 0.8, 0.0);
-    col += col * causticBright * CAUSTIC_INTENSITY;
-    // Surface grain (Interleaved Gradient Noise).
-    let grain = fract(IGN_HASH * fract(dot(screenPos, IGN_DOT)));
-    col += col * (grain - 0.5) * GRAIN_INTENSITY;
-
-    return vec4f(col, alpha * opacity);
+${core.buildGlassFSBody('wgsl')}
 }
 `;
 
