@@ -132,8 +132,13 @@ def test_error_shape_does_not_leak_internals():
 
     from main import app as _app
 
-    # raise_server_exceptions=False lets the 500 response reach us instead of re-raising
-    with _TC(_app, raise_server_exceptions=False) as c, \
+    # `with TestClient` runs the lifespan, which calls xbox_api.resolve_identity()
+    # (a real OpenXBL network request) when an API key is set. Patch it to a no-op
+    # so the test stays offline and deterministic — patched first so it is active
+    # when the TestClient enters and triggers startup.
+    # raise_server_exceptions=False lets the 500 response reach us instead of re-raising.
+    with patch("xbox_api.resolve_identity", new_callable=AsyncMock), \
+         _TC(_app, raise_server_exceptions=False) as c, \
          patch("routers.sync_routes.sync_game_details",
                new_callable=AsyncMock,
                side_effect=RuntimeError("something broke")):
