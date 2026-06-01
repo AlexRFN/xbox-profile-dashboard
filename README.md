@@ -199,7 +199,11 @@ To add a column: add an `ALTER TABLE` entry to the `MIGRATIONS` list in `databas
 - **Rarity:** Common (gray) · Rare (blue) · Epic (purple) · Legendary (amber)
 - **Tracking status:** Unset (gray) · Backlog (blue) · Playing (green) · Finished (purple) · Dropped (red)
 - **Themes:** light / dark / OLED — toggled via `data-theme` + `data-oled` attributes, persisted in `localStorage`
-- **Glass renderer:** WebGPU primary (`glass-webgpu.js`), WebGL2 fallback (`glass.js`) — stylized IOR 3.0 (intentionally past real glass for stronger lensing), Fresnel, chromatic aberration, aurora background
+- **Glass renderer:** WebGPU primary (`glass-webgpu.js`), WebGL2 fallback (`glass.js`) — slope-field refraction (IOR 1.5), Fresnel, adaptive Gaussian blur pyramid, chromatic aberration, edge reflection, aurora background
+
+## Credits
+
+The glass renderer's refraction model is adapted from [**liquid-dom**](https://github.com/AndrewPrifer/liquid-dom) by Andrew Prifer — specifically the pre-blurred slope-field displacement (`refract()` + slab projection), the adaptive separable-Gaussian blur pyramid, the luma-gated edge reflection, and the directional specular rim. The shader logic was re-derived and re-tuned for this project's quarter-resolution aurora backdrop and dual WebGPU/WebGL2 pipeline rather than copied verbatim. Thanks to Andrew for the reference implementation and the writeups (`ADAPTIVE_BLUR_PERF.md`, `ADAPTIVE_TINT.md`) in that repo.
 
 ## Testing
 

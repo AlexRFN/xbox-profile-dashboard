@@ -7,6 +7,11 @@
  *
  * Drivers destructure into local vars at the top of their IIFE so the rest of
  * their code is unchanged — single source of truth, zero rename churn.
+ *
+ * Refraction model (slope-field displacement, adaptive Gaussian blur pyramid,
+ * luma-gated edge reflection, directional specular rim) adapted from liquid-dom
+ * by Andrew Prifer — https://github.com/AndrewPrifer/liquid-dom. Re-derived and
+ * re-tuned for this project's quarter-res aurora backdrop; not a verbatim copy.
  */
 (function (global) {
     'use strict';
@@ -15,10 +20,27 @@
     // Algorithm constants — must match the values baked into shader strings.
     // ====================================================================
     var HALF_RES = 4;            // quarter-res aurora + blur
-    var BLUR_PASSES = 1;
     var MAX_PANELS = 128;
+
+    // Adaptive blur pyramid (ported from AndrewPrifer/liquid-dom — ADAPTIVE_BLUR_PERF.md).
+    // Level 0 is a separable 13-tap σ=3 Gaussian at half-res; each higher level is a
+    // box-downsample (one level at a time) followed by the same Gaussian, so effective
+    // full-res radius ≈ DENSE_RADIUS_PX * 2^level. Per-tier blur radii select a level via
+    // log2(radius / DENSE_RADIUS_PX); panels sample that (fractional) level by LOD.
+    // Max pyramid levels (bounded again by the actual half-res dimensions at runtime).
+    var BLUR_MIP_MAX = 4;
+    var DENSE_RADIUS_PX = 6;     // radius represented by level 0 (their 13-tap dense radius)
+    // Separable Gaussian — liquid-dom's 13-tap σ=3 default. Collapsed to 7 texture
+    // fetches via bilinear tap pairing: one centre sample + three symmetric pairs.
+    // Weights are normalized to sum to 1; offsets are in texels of the source level.
+    var GAUSS = {
+        center: 0.137020,
+        pairWeight: [0.239336, 0.139439, 0.052710],
+        pairOffset: [1.458430, 3.403984, 5.351689]
+    };
+
     var MAX_CACHED = 512;
-    var IOR = 3.0;
+    var IOR = 1.5;   // liquid-dom Container.ior default (ground truth; was 3.0 stylized)
     var THICKNESS = 50.0;
     var BEZEL = 60.0;
     var SPECULAR = 0.50;
@@ -92,14 +114,19 @@
         '.cal-nav': 'button', '.quick-nav-pill': 'button'
     };
 
+    // `blurRadius` is the desired backdrop blur radius in CSS px, mirroring the
+    // per-tier radii declared in tokens.css that the GPU path previously ignored.
+    // getTierValues() converts it to a pyramid level via log2(radius/DENSE_RADIUS_PX)
+    // (their radius→level selection); panels sample that fractional level by LOD.
+    // DENSE_RADIUS_PX (6) is the level-0 radius, so radii <= 6 read the base level.
     var TIER_VALUES = {
         dark: {
-            surface: {sat:1.80, bright:0.78, tint:0.04},
-            nested:  {sat:2.20, bright:0.88, tint:0.07},
-            control: {sat:1.90, bright:0.85, tint:0.05},
-            chrome:  {sat:2.00, bright:0.92, tint:0.06},
-            overlay: {sat:2.40, bright:0.96, tint:0.08},
-            button:  {sat:2.60, bright:1.00, tint:0.07}
+            surface: {sat:1.80, bright:0.78, tint:0.04, blurRadius:6.0},
+            nested:  {sat:2.20, bright:0.88, tint:0.07, blurRadius:6.0},
+            control: {sat:1.90, bright:0.85, tint:0.05, blurRadius:6.0},
+            chrome:  {sat:2.00, bright:0.92, tint:0.06, blurRadius:7.6},
+            overlay: {sat:2.40, bright:0.96, tint:0.08, blurRadius:9.4},
+            button:  {sat:2.60, bright:1.00, tint:0.07, blurRadius:7.4}
         }
     };
 
@@ -122,7 +149,10 @@
             sat = Math.min(sat, SRGB_SAT_CAP[tierName]);
         }
         var tint = _reducedTransparency ? 0.92 : v.tint;
-        return { sat: sat, bright: v.bright, tint: tint };
+        // Radius → fractional pyramid level (their selection: log2(radius/denseRadius)).
+        var r = v.blurRadius || DENSE_RADIUS_PX;
+        var blurLod = Math.max(0, Math.log2(r / DENSE_RADIUS_PX));
+        return { sat: sat, bright: v.bright, tint: tint, blur: blurLod };
     }
 
     function getTierName(el) {
@@ -155,6 +185,20 @@
         EDGE_AA_PX:                   { type: 'float', value: 1.5 },
         THICKNESS_EDGE_BOOST:         { type: 'float', value: 0.4 },
 
+        // Refraction normal sourced from a pre-blurred float slope field (liquid-dom).
+        // The field stores raw signed slope premultiplied by fill in rgba16float
+        // (≈ their displacement field); SLOPE_ENCODE_MAX just clamps the bevel slope
+        // to avoid extreme grazing angles (~tan 85°). DISP_SLAB_SCALE tunes the
+        // refract()+slab displacement magnitude (ray.xy/-ray.z * surfaceHeight * scale).
+        SLOPE_ENCODE_MAX:             { type: 'float', value: 12.0 },
+        // liquid-dom ground-truth displacement model (renderer/core.ts + GLASS_SHADER):
+        //   surfaceHeight = REFRACT_THICKNESS + convexSquircleHeight(distFromEdge/REFRACT_BEZEL)*REFRACT_BEZEL
+        //   displacement  = refractedRay.xy / -refractedRay.z * surfaceHeight * DISP_SLAB_SCALE
+        // Their Container defaults: thickness 90, bezelWidth 14, displacementFactor 1 (CSS px).
+        DISP_SLAB_SCALE:              { type: 'float', value: 1.0 },  // their displacementFactor
+        REFRACT_THICKNESS:            { type: 'float', value: 90.0 }, // their thickness (base height, px)
+        REFRACT_BEZEL:                { type: 'float', value: 14.0 }, // their bezelWidth (rim band, px)
+
         SHADOW_BASE_ALPHA:            { type: 'float', value: 0.22 },
         SHADOW_FALLOFF_SIGMA2:        { type: 'float', value: 18.0 },
         SHADOW_LUM_SCALE:             { type: 'float', value: 0.25 },
@@ -163,9 +207,30 @@
         // Fresnel (Schlick) — F0 is dielectric base reflectance; F90 ≈ 1−F0.
         FRESNEL_F0:                   { type: 'float', value: 0.04 },
 
-        // Chromatic aberration — R/B channel sample-offset multipliers.
-        CA_R_SCALE:                   { type: 'float', value: 1.05 },
-        CA_B_SCALE:                   { type: 'float', value: 0.95 },
+        // Chromatic aberration strength — R/B sample the backdrop at (1 ± CA_STRENGTH)×
+        // the green refraction offset. NOTE: physical per-channel dispersion (refract at
+        // IOR ± δ) is invisible here — the backdrop is the heavily-blurred low-frequency
+        // aurora (σ ≈ 12px screen), so the sub-σ per-channel offset difference carries no
+        // color to split, and IOR−δ caps out near 1.0 (~δ=0.4) before it could overcome
+        // the blur. A direct ± multiplier on the offset is what actually reads. Defaulted
+        // strong because IOR=1.5 displaces less than the old 3.0. Dial: 0.2 (subtle) →
+        // 0.35 (clear) → 0.6 (prismatic). Most visible between aurora blobs / on art panels.
+        CA_STRENGTH:                  { type: 'float', value: 0.35 },
+
+        // Luma-gated edge reflection (liquid-dom GLASS_SHADER reflection term).
+        // Sample the blurred backdrop offset along the rim normal; reveal it only
+        // where the reflected sample is bright AND the refracted sample beneath is
+        // dark. REFLECTION_OFFSET_PX = their reflectionOffset (specularSecondary.z).
+        // PRESENCE/ACCEPT bands are their exact smoothstep thresholds.
+        REFLECTION_OFFSET_PX:         { type: 'float', value: 18.0 },
+        REFLECT_PRESENCE_LO:          { type: 'float', value: 0.2 },
+        REFLECT_PRESENCE_HI:          { type: 'float', value: 0.85 },
+        REFLECT_ACCEPT_LO:            { type: 'float', value: 0.35 },
+        REFLECT_ACCEPT_HI:            { type: 'float', value: 0.85 },
+        // Rim band the reflection is confined to (px from edge). Their gate is a
+        // ~1px directional specular band; we use a small distance band since our
+        // specular model is cursor-driven, not static-light.
+        REFLECT_BAND_PX:              { type: 'float', value: 8.0 },
 
         ABSORPTION:                   { type: 'float', value: 0.06 },
         ABSORPTION_TINT:              { type: 'vec3',  value: [0.96, 0.97, 1.0] },
@@ -294,7 +359,8 @@
     //   Stages run in one shared function scope. Variables declared in earlier
     //   stages are visible in later ones:
     //     surfaceSlope produces  h, dh, thicknessLocal
-    //     refraction   produces  displacement, cosR
+    //     refraction   produces  dispR, dispG, dispB, displacement, invSqrtX2p1
+    //                            (normal sourced from the pre-blurred slope field)
     //     fresnel      produces  fresnel
     //     sdfGradient  produces  grad
     //     colorGrade   produces  col (mutated by rim/shadow/reveal/ambient)
@@ -302,10 +368,10 @@
     //
     // IDENTIFIER CONVENTIONS
     //   WGSL: localPos, panelSize, blurUV, screenPos, radius, saturation,
-    //         brightness, tintAlpha, opacity, reveal,
+    //         brightness, tintAlpha, opacity, reveal, blurLod,
     //         uniforms.viewport, uniforms.mouse, uniforms.time
     //   GLSL: vLocalPos, vPanelSize, vBlurUV, vScreenPos, vRadius, vSaturation,
-    //         vBrightness, vTintAlpha, vOpacity, vReveal,
+    //         vBrightness, vTintAlpha, vOpacity, vReveal, vBlurLod,
     //         uViewport, uMouse, uTime
     //
     // ADDING A NEW STAGE
@@ -354,7 +420,7 @@
     if(sd>SHADOW_MARGIN)discard;
     float shadowFalloff=exp(-sd*sd/SHADOW_FALLOFF_SIGMA2);
     float shadowAlpha=SHADOW_BASE_ALPHA*shadowFalloff;
-    vec3 shadowBackdrop=texture(uBlurTex,vBlurUV).rgb;
+    vec3 shadowBackdrop=textureLod(uBlurTex,vBlurUV,0.0).rgb;
     float shadowLum=dot(shadowBackdrop,LUMA_WEIGHTS);
     vec3 shadowChroma=shadowBackdrop-vec3(shadowLum);
     vec3 shadowColor=max(vec3(shadowLum)*SHADOW_LUM_SCALE+shadowChroma*SHADOW_CHROMA_SCALE,vec3(0.0));
@@ -406,25 +472,59 @@
         {
             name: 'refraction',
             wgsl: `
-    // === Snell refraction (algebraic) ===
-    // tan(slope) = dh directly — no atan/asin/tan needed.
-    let x_s = dh;
-    let invSqrtX2p1 = inverseSqrt(1.0 + x_s * x_s);
-    let sinI = x_s * invSqrtX2p1;
-    var sinR = sinI / IOR;
-    sinR = clamp(sinR, -1.0, 1.0);
-    let cosR = sqrt(1.0 - sinR * sinR);
-    let displacement = h * thicknessLocal * (x_s - sinR / max(cosR, 0.001));
+    // === Refraction (clean normal from pre-blurred slope field; refract()+slab) ===
+    // Decode the premultiplied slope field, rebuild a 3D normal, refract a
+    // straight-down ray, and project it through the local glass height. Ported from
+    // liquid-dom — the pre-blurred normal removes the inline-gradient quantization
+    // that limited the effect before. (Chromatic aberration is applied below as an
+    // offset multiplier, not per-channel IOR — see CA_STRENGTH for why.)
+    let slopeField = textureSampleLevel(slopeTex, blurSampler, blurUV, 0.0);
+    // Float field stores raw premultiplied slope (slope*fill, fill) — un-premultiply.
+    let surfaceSlope = select(
+        vec2f(0.0),
+        slopeField.xy / max(slopeField.a, 0.0001),
+        slopeField.a > 0.001
+    );
+    let refractNormal = normalize(vec3f(surfaceSlope, 1.0));
+    let invSqrtX2p1 = refractNormal.z;                 // incidence cosine → Fresnel
+    // surfaceHeight = thickness + convexSquircleHeight(bezelProgress)*bezelWidth (their
+    // globals.glass.x + profileHeight). Thickness dominates (~90px); the bevel adds a
+    // small ramp. Displacement = bend(normal) × height, concentrated in the rim band.
+    let bezelProg = clamp(distFromEdge / REFRACT_BEZEL, 0.0, 1.0);
+    let csU = 1.0 - bezelProg;
+    let profH = sqrt(max(1.0 - csU * csU * csU * csU, 0.0001));   // convexSquircle height
+    let surfaceHeightVal = REFRACT_THICKNESS + profH * REFRACT_BEZEL;
+    let down = vec3f(0.0, 0.0, -1.0);
+    let rayG = refract(down, refractNormal, 1.0 / IOR);
+    let dispG = rayG.xy / max(-rayG.z, 0.0001) * surfaceHeightVal * DISP_SLAB_SCALE;
+    // Chromatic aberration: spread R/B along the SAME refraction vector. Physical
+    // per-channel refract(IOR ± δ) is washed out here — the backdrop is the heavily-
+    // blurred low-frequency aurora, so sub-σ per-channel offsets carry no color to
+    // separate. A direct ± multiplier on the offset is what actually reads (see CA_STRENGTH).
+    let dispR = dispG * (1.0 + CA_STRENGTH);
+    let dispB = dispG * (1.0 - CA_STRENGTH);
+    let displacement = length(dispG);                  // scalar for reveal/secondary
 `,
             glsl: `
-  // === Snell refraction (algebraic) ===
-  float x_s=dh;
-  float invSqrtX2p1=inversesqrt(1.0+x_s*x_s);
-  float sinI=x_s*invSqrtX2p1;
-  float sinR=sinI/IOR;
-  sinR=clamp(sinR,-1.0,1.0);
-  float cosR=sqrt(1.0-sinR*sinR);
-  float displacement=h*thicknessLocal*(x_s-sinR/max(cosR,0.001));
+  // === Refraction (clean normal from pre-blurred slope field; refract()+slab) ===
+  vec4 slopeField=textureLod(uSlopeTex,vBlurUV,0.0);
+  vec2 surfaceSlope=slopeField.a>0.001
+    ? slopeField.xy/max(slopeField.a,0.0001)
+    : vec2(0.0);
+  vec3 refractNormal=normalize(vec3(surfaceSlope,1.0));
+  float invSqrtX2p1=refractNormal.z;
+  float bezelProg=clamp(distFromEdge/REFRACT_BEZEL,0.0,1.0);
+  float csU=1.0-bezelProg;
+  float profH=sqrt(max(1.0-csU*csU*csU*csU,0.0001));
+  float surfaceHeightVal=REFRACT_THICKNESS+profH*REFRACT_BEZEL;
+  vec3 down=vec3(0.0,0.0,-1.0);
+  vec3 rayG=refract(down,refractNormal,1.0/IOR);
+  vec2 dispG=rayG.xy/max(-rayG.z,0.0001)*surfaceHeightVal*DISP_SLAB_SCALE;
+  // CA: spread R/B along the same vector (physical dispersion is washed out by the
+  // blurred aurora — see WGSL note + CA_STRENGTH).
+  vec2 dispR=dispG*(1.0+CA_STRENGTH);
+  vec2 dispB=dispG*(1.0-CA_STRENGTH);
+  float displacement=length(dispG);
 `
         },
         {
@@ -453,37 +553,66 @@
     // the analytical formulation produced near diagonals.
     let sd_dx = rboxSDF(localPos + vec2f(0.5, 0.0), panelSize, radius);
     let sd_dy = rboxSDF(localPos + vec2f(0.0, 0.5), panelSize, radius);
-    let grad = normalize(vec2f(sd_dx - sd, sd_dy - sd));
+    // Length-guard the normalize: along a wide panel's horizontal medial axis the
+    // forward +0.5 difference straddles the abs() vertex symmetrically, so both
+    // components are exactly 0 → normalize(0,0) = NaN → black band after blur.
+    let gradVec = vec2f(sd_dx - sd, sd_dy - sd);
+    let gradLen = length(gradVec);
+    let grad = select(vec2f(0.0, 0.0), gradVec / gradLen, gradLen > 1e-5);
 `,
             glsl: `
   // === SDF gradient (finite differences) ===
   float sd_dx=rboxSDF(vLocalPos+vec2(0.5,0.0),vPanelSize,vRadius);
   float sd_dy=rboxSDF(vLocalPos+vec2(0.0,0.5),vPanelSize,vRadius);
-  vec2 grad=normalize(vec2(sd_dx-sd,sd_dy-sd));
+  // Length-guard the normalize (see WGSL note): medial-axis forward diff → (0,0) → NaN → black.
+  vec2 gradVec=vec2(sd_dx-sd,sd_dy-sd);
+  float gradLen=length(gradVec);
+  vec2 grad=gradLen>1e-5 ? gradVec/gradLen : vec2(0.0);
 `
         },
         {
             name: 'backdropSample',
             wgsl: `
-    // === Backdrop sampling with chromatic aberration ===
-    // CA at ±5% — wide enough to read as wet-glass shimmer at the rim, narrow
-    // enough that the SDF gradient's pixel-quantization doesn't expose colored
-    // fringes on corners.
-    let baseOffset = -grad * displacement / uniforms.viewport;
-    let blurred = vec3f(
-        textureSampleLevel(blurTex, blurSampler, blurUV + baseOffset * CA_R_SCALE, 0.0).r,
-        textureSampleLevel(blurTex, blurSampler, blurUV + baseOffset, 0.0).g,
-        textureSampleLevel(blurTex, blurSampler, blurUV + baseOffset * CA_B_SCALE, 0.0).b
+    // === Backdrop sampling (per-channel refracted offset) ===
+    // Each channel samples the blurred backdrop at its own refracted displacement
+    // (vectors from the refraction stage). blurLod selects the mip level; clamped.
+    let invVp = 1.0 / uniforms.viewport;
+    var blurred = vec3f(
+        textureSampleLevel(blurTex, blurSampler, blurUV + dispR * invVp, blurLod).r,
+        textureSampleLevel(blurTex, blurSampler, blurUV + dispG * invVp, blurLod).g,
+        textureSampleLevel(blurTex, blurSampler, blurUV + dispB * invVp, blurLod).b
     );
+    // Sharp backdrop art: panels flagged with blurLod < 0 carry a full-res image
+    // in backdropTex (screen-space). Sample it sharp PER CHANNEL at the same R/G/B
+    // refracted offsets as the aurora — the art has real edges/contrast, so this is
+    // where chromatic aberration actually reads (the smooth aurora can't show it).
+    // Coverage (alpha) is taken from the green/true sample.
+    if (blurLod < 0.0) {
+        let artR = textureSampleLevel(backdropTex, blurSampler, blurUV + dispR * invVp, 0.0);
+        let artG = textureSampleLevel(backdropTex, blurSampler, blurUV + dispG * invVp, 0.0);
+        let artB = textureSampleLevel(backdropTex, blurSampler, blurUV + dispB * invVp, 0.0);
+        let artRGB = vec3f(artR.r, artG.g, artB.b);
+        blurred = blurred * (1.0 - artG.a) + artRGB;
+    }
 `,
             glsl: `
-  // === Backdrop sampling with chromatic aberration ===
-  vec2 baseOffset=-grad*displacement/uViewport;
+  // === Backdrop sampling (per-channel refracted offset) ===
+  vec2 invVp=1.0/uViewport;
   vec3 blurred=vec3(
-    texture(uBlurTex,vBlurUV+baseOffset*CA_R_SCALE).r,
-    texture(uBlurTex,vBlurUV+baseOffset).g,
-    texture(uBlurTex,vBlurUV+baseOffset*CA_B_SCALE).b
+    textureLod(uBlurTex,vBlurUV+dispR*invVp,vBlurLod).r,
+    textureLod(uBlurTex,vBlurUV+dispG*invVp,vBlurLod).g,
+    textureLod(uBlurTex,vBlurUV+dispB*invVp,vBlurLod).b
   );
+  // Sharp backdrop art: panels flagged with vBlurLod < 0 carry a full-res image
+  // in uBackdropTex (screen-space). Sample PER CHANNEL so chromatic aberration reads
+  // on the art's real edges (the smooth aurora can't show it). Alpha from green.
+  if (vBlurLod < 0.0) {
+    vec4 artR = texture(uBackdropTex, vBlurUV + dispR*invVp);
+    vec4 artG = texture(uBackdropTex, vBlurUV + dispG*invVp);
+    vec4 artB = texture(uBackdropTex, vBlurUV + dispB*invVp);
+    vec3 artRGB = vec3(artR.r, artG.g, artB.b);
+    blurred = blurred * (1.0 - artG.a) + artRGB;
+  }
 `
         },
         {
@@ -512,6 +641,36 @@
   vec3 col=mix(transmitted,vec3(1.0),vTintAlpha);
   float innerShadow=1.0-smoothstep(0.0,bezel*INNER_SHADOW_BEZEL_FRAC,distFromEdge);
   col*=mix(1.0,INNER_SHADOW_FLOOR,innerShadow*INNER_SHADOW_STRENGTH);
+`
+        },
+        {
+            name: 'edgeReflection',
+            wgsl: `
+    // === Edge reflection (luma-gated rim reflection) ===
+    // Sample the blurred backdrop offset along the rim normal (grad). Reveal it
+    // where the reflected sample is bright AND the refracted sample beneath is
+    // dark (presence × acceptance). Spatially gated to the rim by a distance band.
+    let reflectedUv = blurUV + grad * REFLECTION_OFFSET_PX * invVp;
+    let reflectedColor = textureSampleLevel(blurTex, blurSampler, reflectedUv, blurLod).rgb;
+    let refractedLuma = dot(blurred, LUMA_WEIGHTS);
+    let reflectedLuma = dot(reflectedColor, LUMA_WEIGHTS);
+    let reflectionPresence = smoothstep(REFLECT_PRESENCE_LO, REFLECT_PRESENCE_HI, reflectedLuma);
+    let refractionAcceptance = 1.0 - smoothstep(REFLECT_ACCEPT_LO, REFLECT_ACCEPT_HI, refractedLuma);
+    let reflectionBlend = reflectionPresence * refractionAcceptance;
+    let edgeReflectMask = 1.0 - smoothstep(0.0, REFLECT_BAND_PX, distFromEdge);
+    col = mix(col, reflectedColor, edgeReflectMask * reflectionBlend);
+`,
+            glsl: `
+  // === Edge reflection (luma-gated rim reflection) ===
+  vec2 reflectedUv=vBlurUV+grad*REFLECTION_OFFSET_PX*invVp;
+  vec3 reflectedColor=textureLod(uBlurTex,reflectedUv,vBlurLod).rgb;
+  float refractedLuma=dot(blurred,LUMA_WEIGHTS);
+  float reflectedLuma=dot(reflectedColor,LUMA_WEIGHTS);
+  float reflectionPresence=smoothstep(REFLECT_PRESENCE_LO,REFLECT_PRESENCE_HI,reflectedLuma);
+  float refractionAcceptance=1.0-smoothstep(REFLECT_ACCEPT_LO,REFLECT_ACCEPT_HI,refractedLuma);
+  float reflectionBlend=reflectionPresence*refractionAcceptance;
+  float edgeReflectMask=1.0-smoothstep(0.0,REFLECT_BAND_PX,distFromEdge);
+  col=mix(col,reflectedColor,edgeReflectMask*reflectionBlend);
 `
         },
         {
@@ -909,7 +1068,9 @@
     global.__glassCore = {
         // Algorithm constants
         HALF_RES: HALF_RES,
-        BLUR_PASSES: BLUR_PASSES,
+        BLUR_MIP_MAX: BLUR_MIP_MAX,
+        DENSE_RADIUS_PX: DENSE_RADIUS_PX,
+        GAUSS: GAUSS,
         MAX_PANELS: MAX_PANELS,
         MAX_CACHED: MAX_CACHED,
         IOR: IOR,

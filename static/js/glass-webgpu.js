@@ -68,7 +68,6 @@
     if (!core) { console.error('Glass: glass-core.js must load before this script'); return; }
     var PI = Math.PI, TAU = PI * 2;
     var HALF_RES = core.HALF_RES;
-    var BLUR_PASSES = core.BLUR_PASSES;
     var MAX_PANELS = core.MAX_PANELS;
     var MAX_CACHED = core.MAX_CACHED;
     // IOR / THICKNESS / BEZEL / SPECULAR / SHADOW_MARGIN / REVEAL_MULT are
@@ -167,26 +166,29 @@ fn ign(p: vec2f) -> f32 {
 }
 `;
 
-    // -- Kawase blur fragment --
-    var BLUR_FS_WGSL = /* wgsl */`
-struct BlurUniforms {
+    // -- Separable Gaussian fragment (σ=2, 7 bilinear fetches) --
+    // Ported from liquid-dom. `dir` is (1,0) for the horizontal pass, (0,1) for
+    // vertical; offsets are in source texels. Run H then V for a full 2D Gaussian.
+    var GAUSS_FS_WGSL = /* wgsl */`
+struct GaussUniforms {
     texelSize: vec2f,
-    offset: f32,
-    _pad: f32,
+    dir: vec2f,
 };
 
 @group(0) @binding(0) var texSampler: sampler;
 @group(0) @binding(1) var tex: texture_2d<f32>;
-@group(0) @binding(2) var<uniform> params: BlurUniforms;
+@group(0) @binding(2) var<uniform> params: GaussUniforms;
 
 @fragment fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
-    let o = (params.offset + 0.5) * params.texelSize;
-    return 0.25 * (
-        textureSampleLevel(tex, texSampler, uv + vec2f(-o.x, -o.y), 0.0) +
-        textureSampleLevel(tex, texSampler, uv + vec2f(-o.x,  o.y), 0.0) +
-        textureSampleLevel(tex, texSampler, uv + vec2f( o.x, -o.y), 0.0) +
-        textureSampleLevel(tex, texSampler, uv + vec2f( o.x,  o.y), 0.0)
-    );
+    let d = params.dir * params.texelSize;
+    var acc = textureSampleLevel(tex, texSampler, uv, 0.0) * ${core.GAUSS.center};
+    let o0 = d * ${core.GAUSS.pairOffset[0]};
+    acc += (textureSampleLevel(tex, texSampler, uv + o0, 0.0) + textureSampleLevel(tex, texSampler, uv - o0, 0.0)) * ${core.GAUSS.pairWeight[0]};
+    let o1 = d * ${core.GAUSS.pairOffset[1]};
+    acc += (textureSampleLevel(tex, texSampler, uv + o1, 0.0) + textureSampleLevel(tex, texSampler, uv - o1, 0.0)) * ${core.GAUSS.pairWeight[1]};
+    let o2 = d * ${core.GAUSS.pairOffset[2]};
+    acc += (textureSampleLevel(tex, texSampler, uv + o2, 0.0) + textureSampleLevel(tex, texSampler, uv - o2, 0.0)) * ${core.GAUSS.pairWeight[2]};
+    return acc;
 }
 `;
 
@@ -207,7 +209,7 @@ struct PanelData {
     rect: vec4f,        // x, docY-or-screenY, w, h. y is doc-relative when scrollMul=1, viewport-relative when scrollMul=0.
     extra: vec4f,       // radius, saturation, brightness, tintAlpha
     opacReveal: vec2f,  // opacity, reveal
-    scrollPad: vec2f,   // x = scrollMul (0 fixed/sticky/animating/exit, 1 stable), y = reserved
+    scrollPad: vec2f,   // x = scrollMul (0 fixed/sticky/animating/exit, 1 stable), y = blurLod (tier mip LOD)
 };
 
 @group(0) @binding(0) var<uniform> uniforms: GlassUniforms;
@@ -225,6 +227,7 @@ struct VSOutput {
     @location(7) tintAlpha: f32,
     @location(8) opacity: f32,
     @location(9) reveal: f32,
+    @location(10) blurLod: f32,
 };
 
 @vertex fn vs(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> VSOutput {
@@ -252,6 +255,7 @@ struct VSOutput {
     out.tintAlpha = panel.extra.w;
     out.opacity = panel.opacReveal.x;
     out.reveal = panel.opacReveal.y;
+    out.blurLod = panel.scrollPad.y;
     // UV into blur texture: viewport-relative (WebGPU: no Y-flip needed,
     // texture UV(0,0) = top-left = viewport Y=0)
     out.blurUV = vec2f(pos.x / uniforms.viewport.x, pos.y / uniforms.viewport.y);
@@ -267,6 +271,8 @@ struct VSOutput {
     var GLASS_FS_WGSL = /* wgsl */`
 @group(0) @binding(2) var blurSampler: sampler;
 @group(0) @binding(3) var blurTex: texture_2d<f32>;
+@group(0) @binding(4) var backdropTex: texture_2d<f32>;
+@group(0) @binding(5) var slopeTex: texture_2d<f32>;
 
 // Tuning constants are emitted at the top of GLASS_VS_WGSL — both shaders
 // share the same WebGPU module so the const block is visible here too.
@@ -295,15 +301,66 @@ fn surfaceHeight(t: f32) -> f32 {
     @location(7) tintAlpha: f32,
     @location(8) opacity: f32,
     @location(9) reveal: f32,
+    @location(10) blurLod: f32,
 ) -> @location(0) vec4f {
 ${core.buildGlassFSBody('wgsl')}
 }
 `;
 
-    // -- Backdrop pass (per-panel image into RT_AURORA before blur) --
-    // Operates in half-res pixel space throughout: caller divides viewport-pixel
-    // rect/radius by HALF_RES before upload so SDF, geometry, and target all share
-    // the same coordinate system.
+    // -- Slope-field fragment (per-panel bevel normal prepass, liquid-dom-style) --
+    // Reuses the glass VS (same instanced panel data). Writes the 2D surface slope
+    // (SDF gradient × profile derivative) encoded + premultiplied by fill into a
+    // screen-space field. The renderer blurs this so the glass pass reads a clean,
+    // de-quantized normal instead of an inline 1px finite-difference gradient.
+    var SLOPE_FS_WGSL = /* wgsl */`
+fn rboxSDF(p: vec2f, b: vec2f, r: f32) -> f32 {
+    let q = abs(p) - b + r;
+    return min(max(q.x, q.y), 0.0) + length(max(q, vec2f(0.0))) - r;
+}
+
+@fragment fn fs(
+    @location(0) localPos: vec2f,
+    @location(1) panelSize: vec2f,
+    @location(2) blurUV: vec2f,
+    @location(3) screenPos: vec2f,
+    @location(4) radius: f32,
+    @location(5) saturation: f32,
+    @location(6) brightness: f32,
+    @location(7) tintAlpha: f32,
+    @location(8) opacity: f32,
+    @location(9) reveal: f32,
+    @location(10) blurLod: f32,
+) -> @location(0) vec4f {
+    let sd = rboxSDF(localPos, panelSize, radius);
+    let distFromEdge = -sd;
+    let fill = smoothstep(0.0, EDGE_AA_PX, distFromEdge);
+    if (fill <= 0.0) { return vec4f(0.0); }
+    // liquid-dom DISPLACEMENT_FIELD_SHADER: slope = SDF gradient × convexSquircle
+    // derivative over their bezelWidth, clamped at ~tan85°. Premultiplied by fill.
+    let bezelProg = clamp(distFromEdge / REFRACT_BEZEL, 0.0, 1.0);
+    let u = 1.0 - bezelProg;
+    let inside = max(1.0 - u * u * u * u, 0.0001);
+    let deriv = 2.0 * u * u * u / sqrt(inside);        // convexSquircle derivative
+    let dh = min(deriv, SLOPE_ENCODE_MAX);
+    let sd_dx = rboxSDF(localPos + vec2f(0.5, 0.0), panelSize, radius);
+    let sd_dy = rboxSDF(localPos + vec2f(0.0, 0.5), panelSize, radius);
+    // Length-guard the normalize: on a wide panel's horizontal medial axis the
+    // forward +0.5 diff straddles the abs() vertex symmetrically → both components
+    // exactly 0 → normalize(0,0) = NaN. The NaN then gets Gaussian-blurred into a
+    // band and the glass pass renders it black (NaN→black). Flat medial axis = slope 0.
+    let gradVec = vec2f(sd_dx - sd, sd_dy - sd);
+    let gradLen = length(gradVec);
+    let grad = select(vec2f(0.0, 0.0), gradVec / gradLen, gradLen > 1e-5);
+    let surfaceSlope = grad * dh;
+    // Raw signed slope, premultiplied by fill (float field — coverage-weighted blur).
+    return vec4f(surfaceSlope * fill, 0.0, fill);
+}
+`;
+
+    // -- Backdrop pass (per-panel art image into the full-res RT_BACKDROP) --
+    // Operates in full-res screen-pixel space: the glass shader later samples this
+    // target sharp for art panels (blurLod < 0), so the art bypasses the quarter-res
+    // blurred aurora. SDF mask + cover-style UV + pre-multiplied alpha output.
     var BACKDROP_WGSL = /* wgsl */`
 struct BackdropU {
     rect: vec4f,        // x, y, w, h — half-res pixels
@@ -452,14 +509,25 @@ fn rboxSDF(p: vec2f, b: vec2f, r: f32) -> f32 {
         ]
     });
 
-    // Glass: uniform + storage + sampler + texture
+    // Glass: uniform + storage + sampler + blur + sharp backdrop + slope field
     var glassLayout = device.createBindGroupLayout({
         label: 'glass',
         entries: [
             { binding: 0, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
             { binding: 1, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } },
             { binding: 2, visibility: GPUShaderStage.FRAGMENT, sampler: {} },
-            { binding: 3, visibility: GPUShaderStage.FRAGMENT, texture: {} }
+            { binding: 3, visibility: GPUShaderStage.FRAGMENT, texture: {} },
+            { binding: 4, visibility: GPUShaderStage.FRAGMENT, texture: {} },
+            { binding: 5, visibility: GPUShaderStage.FRAGMENT, texture: {} }
+        ]
+    });
+
+    // Slope prepass: uniform + panel storage (reuses the glass VS, no textures).
+    var slopeLayout = device.createBindGroupLayout({
+        label: 'slope',
+        entries: [
+            { binding: 0, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
+            { binding: 1, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } }
         ]
     });
 
@@ -477,19 +545,29 @@ fn rboxSDF(p: vec2f, b: vec2f, r: f32) -> f32 {
     });
 
     // Declared here, assigned inside Promise.all below.
-    var auroraPipeline, blitPipeline, blurPipeline, glassPipeline, backdropPipeline;
+    var auroraPipeline, blitPipeline, gaussPipeline, glassPipeline, backdropPipeline, slopePipeline, gaussFloatPipeline;
 
     var backdropModule = device.createShaderModule({
         label: 'backdrop',
         code: BACKDROP_WGSL
     });
 
+    // Slope prepass shares the glass vertex shader (instanced panel geometry).
+    var slopeModule = device.createShaderModule({
+        label: 'slope',
+        code: GLASS_VS_WGSL + '\n' + SLOPE_FS_WGSL
+    });
+
     // ====================================================================
     // Shared sampler
     // ====================================================================
+    // mipmapFilter 'linear' lets the glass shader's textureSampleLevel sample
+    // fractional LODs across the blur mip chain (per-tier backdrop blur). Single-
+    // mip-view consumers (aurora blit, Kawase, downsample) are unaffected.
     var linearSampler = device.createSampler({
         magFilter: 'linear',
         minFilter: 'linear',
+        mipmapFilter: 'linear',
         addressModeU: 'clamp-to-edge',
         addressModeV: 'clamp-to-edge'
     });
@@ -504,14 +582,6 @@ fn rboxSDF(p: vec2f, b: vec2f, r: f32) -> f32 {
         usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
     });
     var auroraUniformData = new Float32Array(40); // 10 vec4s
-
-    // Blur uniforms: vec2 texelSize + f32 offset + f32 pad = 16 bytes
-    // Two buffers — one per blur pass — so both are correct when GPU executes the command buffer
-    var blurUniformBufs = [
-        device.createBuffer({ label: 'blur uniforms 0', size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST }),
-        device.createBuffer({ label: 'blur uniforms 1', size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST })
-    ];
-    var blurUniformData = new Float32Array(4);
 
     // Glass uniforms: vec2 viewport + vec2 mouse + f32 time + f32 scrollY = 24 bytes (round to 32)
     var glassUniformBuf = device.createBuffer({
@@ -558,19 +628,65 @@ fn rboxSDF(p: vec2f, b: vec2f, r: f32) -> f32 {
     // ====================================================================
     var vpW = 0, vpH = 0, halfW = 0, halfH = 0;
     var texAurora = null, viewAurora = null;
-    var texBlur = [null, null], viewBlur = [null, null];
     var auroraBindGroup = null;
     var blitBindGroup = null;
-    var blurBindGroups = [null, null]; // [pass0: aurora→blur0, pass1: blur0→blur1]
     var glassBindGroup = null; // cached — only recreated on resize
 
-    function createRT(w, h) {
+    // Adaptive Gaussian blur pyramid (liquid-dom ADAPTIVE_BLUR_PERF.md).
+    //   texBlurA — the final pyramid (glass samples it by per-tier LOD).
+    //   texBlurB — scratch, holds the horizontal-pass result between H and V.
+    // Level 0 is a separable Gaussian over the aurora; each higher level is a
+    // box-downsample of the level below followed by the same Gaussian. All passes
+    // run at the target level's resolution via per-mip single-level views.
+    var BLUR_MIP_MAX = core.BLUR_MIP_MAX;
+    var blurMipCount = 1;
+    var texBlurA = null, texBlurB = null;
+    var viewBlurAAll = null;           // all-mips view of A — glass tier-LOD sampling
+    var viewBlurAMip = [];             // per-level single-mip views of A
+    var viewBlurBMip = [];             // per-level single-mip views of B (H-pass scratch)
+    // Ordered blur passes built at resize. Each: { kind:'gauss'|'box', bindGroup, dstView }.
+    var blurSteps = [];
+    var blurStepBufs = [];             // uniform buffers (lifetime owner; destroyed on resize)
+
+    // Sharp backdrop target — full-res, screen-space. Backdrop-art panels sample this
+    // (not the quarter-res blurred aurora), so product art reads crisp under the glass.
+    var texBackdrop = null, viewBackdrop = null;
+
+    // Slope field (liquid-dom-style): per-panel bevel slope rendered + blurred so the
+    // glass pass reads a clean normal. Half-res; rebuilt every frame (panels move).
+    // NOTE: the slope-blur kernel is in TEXELS, so screen-space blur radius scales with
+    // SLOPE_RES (~pairOffset × SLOPE_RES). At RES=2 the ~11px blur spreads the bevel
+    // slope inward so displacement warps a broad rim; RES=1 halves it (~5px) and
+    // collapses displacement to a thin edge strip. Keep 2 — do NOT "match" their
+    // full-res field without also widening the blur, or the displacement dies.
+    var SLOPE_RES = 2;
+    var slopeW = 0, slopeH = 0;
+    var texSlope = null, viewSlope = null;            // blurred result (glass binding 5)
+    var texSlopeScratch = null, viewSlopeScratch = null; // H-pass scratch
+    var slopeBindGroup = null;                        // slope prepass (uniform + storage)
+    var slopeBlurBindH = null, slopeBlurBindV = null; // gauss H/V over the slope field
+    var slopeBlurBufH = null, slopeBlurBufV = null;
+
+    function createRT(w, h, mips, format) {
         var tex = device.createTexture({
             size: [w, h],
-            format: halfResFormat,
+            format: format || halfResFormat,
+            mipLevelCount: mips || 1,
             usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING
         });
         return tex;
+    }
+
+    // Slope field stores raw signed slope premultiplied by fill — needs a signed
+    // (float) format. rgba16float is filterable + renderable in core WebGPU.
+    var slopeFormat = 'rgba16float';
+
+    // Half-res dimensions of a given pyramid level.
+    function mipDims(level) {
+        return [
+            Math.max(1, Math.floor(halfW / Math.pow(2, level))),
+            Math.max(1, Math.floor(halfH / Math.pow(2, level)))
+        ];
     }
 
     // Track canvas size via ResizeObserver to avoid forced reflow every frame
@@ -610,17 +726,80 @@ fn rboxSDF(p: vec2f, b: vec2f, r: f32) -> f32 {
         // blit would show a blank frame if the render happens to be a non-aurora frame.
         _auroraFrame = 0;
 
-        // Destroy old textures
+        // Destroy old textures + uniform buffers
         if (texAurora) texAurora.destroy();
-        if (texBlur[0]) texBlur[0].destroy();
-        if (texBlur[1]) texBlur[1].destroy();
+        if (texBlurA) texBlurA.destroy();
+        if (texBlurB) texBlurB.destroy();
+        if (texBackdrop) texBackdrop.destroy();
+        for (var ob = 0; ob < blurStepBufs.length; ob++) blurStepBufs[ob].destroy();
+        blurStepBufs = [];
+        blurSteps = [];
 
-        // Create new render targets
+        // Full-res screen-space backdrop target (art panels sample this sharp).
+        texBackdrop = device.createTexture({
+            size: [vpW, vpH],
+            format: halfResFormat,
+            usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING
+        });
+        viewBackdrop = texBackdrop.createView();
+
+        // Slope field (half-res) + H-pass scratch.
+        if (texSlope) texSlope.destroy();
+        if (texSlopeScratch) texSlopeScratch.destroy();
+        slopeW = Math.max(Math.round(vpW / SLOPE_RES), 1);
+        slopeH = Math.max(Math.round(vpH / SLOPE_RES), 1);
+        texSlope = createRT(slopeW, slopeH, 1, slopeFormat);
+        texSlopeScratch = createRT(slopeW, slopeH, 1, slopeFormat);
+        viewSlope = texSlope.createView();
+        viewSlopeScratch = texSlopeScratch.createView();
+
+        // Pyramid level count — capped, and bounded by the half-res dimensions. >=1.
+        blurMipCount = Math.max(1, Math.min(
+            BLUR_MIP_MAX,
+            Math.floor(Math.log2(Math.max(halfW, halfH))) + 1
+        ));
+
+        // Aurora source + A (final pyramid, glass samples it) + B (H-pass scratch).
+        // A and B both carry the full mip chain; pyramid level L lives in mip L.
         texAurora = createRT(halfW, halfH);
         viewAurora = texAurora.createView();
-        for (var j = 0; j < 2; j++) {
-            texBlur[j] = createRT(halfW, halfH);
-            viewBlur[j] = texBlur[j].createView();
+        texBlurA = createRT(halfW, halfH, blurMipCount);
+        texBlurB = createRT(halfW, halfH, blurMipCount);
+        viewBlurAAll = texBlurA.createView();
+        viewBlurAMip = [];
+        viewBlurBMip = [];
+        for (var mv = 0; mv < blurMipCount; mv++) {
+            viewBlurAMip.push(texBlurA.createView({ baseMipLevel: mv, mipLevelCount: 1 }));
+            viewBlurBMip.push(texBlurB.createView({ baseMipLevel: mv, mipLevelCount: 1 }));
+        }
+
+        // Append one separable-Gaussian pass (uniform buffer + bind group + dst view).
+        // texW/texH are the *destination* texel sizes; the H pass that crosses levels
+        // reads the finer source at these (coarser) offsets, folding the box
+        // downsample into the blur — a standard separable-Gaussian pyramid step.
+        function addGauss(srcView, dstView, texW, texH, dirX, dirY) {
+            var buf = device.createBuffer({ label: 'gauss u', size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+            device.queue.writeBuffer(buf, 0, new Float32Array([texW, texH, dirX, dirY]));
+            blurStepBufs.push(buf);
+            blurSteps.push({ dstView: dstView, bindGroup: device.createBindGroup({
+                layout: blurLayout,
+                entries: [
+                    { binding: 0, resource: linearSampler },
+                    { binding: 1, resource: srcView },
+                    { binding: 2, resource: { buffer: buf } }
+                ]
+            }) });
+        }
+
+        // Level 0: separable Gaussian over the aurora — H (→B.mip0) then V (→A.mip0).
+        addGauss(viewAurora,      viewBlurBMip[0], 1.0 / halfW, 1.0 / halfH, 1.0, 0.0);
+        addGauss(viewBlurBMip[0], viewBlurAMip[0], 1.0 / halfW, 1.0 / halfH, 0.0, 1.0);
+        // Higher levels: H reads the finer level A.mip(L-1) at the coarser level's
+        // texel size (downsample folded in) → B.mipL; V blurs B.mipL → A.mipL.
+        for (var L = 1; L < blurMipCount; L++) {
+            var td = mipDims(L);
+            addGauss(viewBlurAMip[L - 1], viewBlurBMip[L], 1.0 / td[0], 1.0 / td[1], 1.0, 0.0);
+            addGauss(viewBlurBMip[L], viewBlurAMip[L], 1.0 / td[0], 1.0 / td[1], 0.0, 1.0);
         }
 
         // Rebuild bind groups that reference these textures
@@ -637,34 +816,48 @@ fn rboxSDF(p: vec2f, b: vec2f, r: f32) -> f32 {
             ]
         });
 
-        // Blur bind groups: pass 0 reads aurora, pass 1 reads blur[0]
-        // Each uses its own uniform buffer so offset values are correct at GPU execution time
-        blurBindGroups[0] = device.createBindGroup({
-            layout: blurLayout,
-            entries: [
-                { binding: 0, resource: linearSampler },
-                { binding: 1, resource: viewAurora },
-                { binding: 2, resource: { buffer: blurUniformBufs[0] } }
-            ]
-        });
-        blurBindGroups[1] = device.createBindGroup({
-            layout: blurLayout,
-            entries: [
-                { binding: 0, resource: linearSampler },
-                { binding: 1, resource: viewBlur[0] },
-                { binding: 2, resource: { buffer: blurUniformBufs[1] } }
-            ]
-        });
-
-        // Glass bind group references blur texture view
-        var lastBlur = (BLUR_PASSES - 1) % 2;
+        // Glass bind group references the all-mips view of A so the shader can
+        // select a per-panel (fractional) pyramid level via LOD.
         glassBindGroup = device.createBindGroup({
             layout: glassLayout,
             entries: [
                 { binding: 0, resource: { buffer: glassUniformBuf } },
                 { binding: 1, resource: { buffer: panelStorageBuf } },
                 { binding: 2, resource: linearSampler },
-                { binding: 3, resource: viewBlur[lastBlur] }
+                { binding: 3, resource: viewBlurAAll },
+                { binding: 4, resource: viewBackdrop },
+                { binding: 5, resource: viewSlope }
+            ]
+        });
+
+        // Slope prepass bind group (reuses glass VS bindings) + slope blur (H/V).
+        slopeBindGroup = device.createBindGroup({
+            layout: slopeLayout,
+            entries: [
+                { binding: 0, resource: { buffer: glassUniformBuf } },
+                { binding: 1, resource: { buffer: panelStorageBuf } }
+            ]
+        });
+        if (!slopeBlurBufH) {
+            slopeBlurBufH = device.createBuffer({ label: 'slope blur H', size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+            slopeBlurBufV = device.createBuffer({ label: 'slope blur V', size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+        }
+        device.queue.writeBuffer(slopeBlurBufH, 0, new Float32Array([1.0 / slopeW, 1.0 / slopeH, 1.0, 0.0]));
+        device.queue.writeBuffer(slopeBlurBufV, 0, new Float32Array([1.0 / slopeW, 1.0 / slopeH, 0.0, 1.0]));
+        slopeBlurBindH = device.createBindGroup({
+            layout: blurLayout,
+            entries: [
+                { binding: 0, resource: linearSampler },
+                { binding: 1, resource: viewSlope },
+                { binding: 2, resource: { buffer: slopeBlurBufH } }
+            ]
+        });
+        slopeBlurBindV = device.createBindGroup({
+            layout: blurLayout,
+            entries: [
+                { binding: 0, resource: linearSampler },
+                { binding: 1, resource: viewSlopeScratch },
+                { binding: 2, resource: { buffer: slopeBlurBufV } }
             ]
         });
     }
@@ -908,14 +1101,14 @@ fn rboxSDF(p: vec2f, b: vec2f, r: f32) -> f32 {
     // when at least one image is loaded; with zero loaded images this returns
     // in O(1) — the goal is "feature has zero cost when nobody opted in".
     //
-    // Geometry is stored in half-res pixels: the backdrop pass renders into
-    // RT_AURORA (which is 1/HALF_RES the viewport size), and the shader's
-    // SDF + UV math all share that coordinate space.
+    // Geometry is stored in full-res screen pixels: the backdrop pass renders into
+    // RT_BACKDROP (full viewport size), and the backdrop shader's SDF + UV math
+    // share that coordinate space.
     function _collectBackdrops(curScrollY) {
         _backdropDrawCount = 0;
         if (_backdrop.cache.size === 0) return;
         var n = _cachedEls.length;
-        var inv = 1.0 / HALF_RES;
+        var inv = 1.0; // RT_BACKDROP is full-res screen-space (was 1/HALF_RES for the aurora)
         for (var i = 0; i < n && _backdropDrawCount < BACKDROP_MAX_TEXTURES; i++) {
             var url = _backdrop.cachedUrl[i];
             if (!url) continue;
@@ -1182,6 +1375,7 @@ fn rboxSDF(p: vec2f, b: vec2f, r: f32) -> f32 {
     // subtracts scrollY each frame), 0.0 for animating/sticky/fixed/exit (rect.y is
     // viewport-relative). Lets stable panels' buffer entries be scroll-invariant.
     var _sortMul = new Float32Array(MAX_PANELS);
+    var _sortBlur = new Float32Array(MAX_PANELS); // per-panel tier blur LOD → PanelData slot 11
 
     // Per-frame opacity cache. When N glass panels share the same animTarget (e.g.
     // children of one animated parent during entrance), each previously paid its own
@@ -1336,16 +1530,18 @@ fn rboxSDF(p: vec2f, b: vec2f, r: f32) -> f32 {
             // Backdrop-bearing panels show real product imagery — soften the
             // per-tier sat/bright/tint so the picture comes through close to its
             // source instead of being darkened and oversaturated by the glass pass.
-            var _tvSat = tv.sat, _tvBright = tv.bright, _tvTint = tv.tint;
+            var _tvSat = tv.sat, _tvBright = tv.bright, _tvTint = tv.tint, _tvBlur = tv.blur;
             if (_backdrop.cachedUrl[i]) {
                 _tvSat = Math.min(_tvSat, 1.20);
                 _tvBright = Math.max(_tvBright, 0.92);
                 _tvTint = Math.min(_tvTint, 0.02);
+                _tvBlur = -1.0; // sentinel: sample the sharp full-res RT_BACKDROP, not the blurred aurora
             }
             _sortExtra[idx4]     = Math.min(_cachedRadius[i], rWidth * 0.5, rHeight * 0.5);
             _sortExtra[idx4 + 1] = _tvSat;
             _sortExtra[idx4 + 2] = _tvBright;
             _sortExtra[idx4 + 3] = _tvTint;
+            _sortBlur[visCount]  = _tvBlur;
 
             var animTarget = isExiting ? _cachedEls[i]
                 : (_cachedHasAnim[i] ? _cachedEls[i] : _cachedAnimAncestor[i]);
@@ -1455,7 +1651,7 @@ fn rboxSDF(p: vec2f, b: vec2f, r: f32) -> f32 {
                 nv = _sortOR[s2];         if (panelStorageData[dOff + 8]  !== nv) { panelStorageData[dOff + 8]  = nv; _buffDirty = true; }
                 nv = _sortOR[s2 + 1];     if (panelStorageData[dOff + 9]  !== nv) { panelStorageData[dOff + 9]  = nv; _buffDirty = true; }
                 nv = _sortMul[si];        if (panelStorageData[dOff + 10] !== nv) { panelStorageData[dOff + 10] = nv; _buffDirty = true; }
-                // slot 11 is reserved/zero and never changes — skip.
+                nv = _sortBlur[si];       if (panelStorageData[dOff + 11] !== nv) { panelStorageData[dOff + 11] = nv; _buffDirty = true; }
             }
         } else {
             for (var p = 0; p < visCount; p++) {
@@ -1473,6 +1669,7 @@ fn rboxSDF(p: vec2f, b: vec2f, r: f32) -> f32 {
                 nv2 = _sortOR[p2];         if (panelStorageData[pOff + 8]  !== nv2) { panelStorageData[pOff + 8]  = nv2; _buffDirty = true; }
                 nv2 = _sortOR[p2 + 1];     if (panelStorageData[pOff + 9]  !== nv2) { panelStorageData[pOff + 9]  = nv2; _buffDirty = true; }
                 nv2 = _sortMul[p];         if (panelStorageData[pOff + 10] !== nv2) { panelStorageData[pOff + 10] = nv2; _buffDirty = true; }
+                nv2 = _sortBlur[p];        if (panelStorageData[pOff + 11] !== nv2) { panelStorageData[pOff + 11] = nv2; _buffDirty = true; }
             }
         }
     }
@@ -1531,43 +1728,49 @@ fn rboxSDF(p: vec2f, b: vec2f, r: f32) -> f32 {
             // Each backdropped panel draws its pre-blurred image into the panel rect with
             // a rounded-rect mask. The subsequent blur passes treat the composite as one
             // image, and the glass shader's refraction + CA samples through it naturally.
-            if (_backdropDrawCount > 0 && backdropPipeline) {
+            // Backdrop art → RT_BACKDROP (full-res, screen-space), cleared transparent
+            // each aurora frame. Art panels sample this sharp instead of the quarter-res
+            // blurred aurora; the aurora itself stays a pure gradient (blurs cleanly).
+            {
                 var bdPass = encoder.beginRenderPass({
                     label: 'backdrop',
                     colorAttachments: [{
-                        view: viewAurora,
-                        loadOp: 'load',
-                        storeOp: 'store'
+                        view: viewBackdrop,
+                        loadOp: 'clear',
+                        storeOp: 'store',
+                        clearValue: { r: 0, g: 0, b: 0, a: 0 }
                     }]
                 });
-                bdPass.setPipeline(backdropPipeline);
-                for (var bd = 0; bd < _backdropDrawCount; bd++) {
-                    var d4 = bd * 4;
-                    backdropScratch[0]  = _backdropDrawRect[d4];
-                    backdropScratch[1]  = _backdropDrawRect[d4 + 1];
-                    backdropScratch[2]  = _backdropDrawRect[d4 + 2];
-                    backdropScratch[3]  = _backdropDrawRect[d4 + 3];
-                    backdropScratch[4]  = _backdropDrawRadius[bd];
-                    backdropScratch[5]  = _backdropDrawOpacity[bd];
-                    backdropScratch[6]  = _backdropDrawTex[bd].aspect || 1.0;
-                    backdropScratch[7]  = 0;
-                    backdropScratch[8]  = halfW;
-                    backdropScratch[9]  = halfH;
-                    backdropScratch[10] = 0;
-                    backdropScratch[11] = 0;
-                    device.queue.writeBuffer(backdropUniformBufs[bd], 0, backdropScratch);
-                    var entry = _backdropDrawTex[bd];
-                    if (!entry._view) entry._view = entry.tex.createView();
-                    var bg = device.createBindGroup({
-                        layout: backdropLayout,
-                        entries: [
-                            { binding: 0, resource: { buffer: backdropUniformBufs[bd] } },
-                            { binding: 1, resource: linearSampler },
-                            { binding: 2, resource: entry._view }
-                        ]
-                    });
-                    bdPass.setBindGroup(0, bg);
-                    bdPass.draw(4);
+                if (_backdropDrawCount > 0 && backdropPipeline) {
+                    bdPass.setPipeline(backdropPipeline);
+                    for (var bd = 0; bd < _backdropDrawCount; bd++) {
+                        var d4 = bd * 4;
+                        backdropScratch[0]  = _backdropDrawRect[d4];
+                        backdropScratch[1]  = _backdropDrawRect[d4 + 1];
+                        backdropScratch[2]  = _backdropDrawRect[d4 + 2];
+                        backdropScratch[3]  = _backdropDrawRect[d4 + 3];
+                        backdropScratch[4]  = _backdropDrawRadius[bd];
+                        backdropScratch[5]  = _backdropDrawOpacity[bd];
+                        backdropScratch[6]  = _backdropDrawTex[bd].aspect || 1.0;
+                        backdropScratch[7]  = 0;
+                        backdropScratch[8]  = vpW;
+                        backdropScratch[9]  = vpH;
+                        backdropScratch[10] = 0;
+                        backdropScratch[11] = 0;
+                        device.queue.writeBuffer(backdropUniformBufs[bd], 0, backdropScratch);
+                        var entry = _backdropDrawTex[bd];
+                        if (!entry._view) entry._view = entry.tex.createView();
+                        var bg = device.createBindGroup({
+                            layout: backdropLayout,
+                            entries: [
+                                { binding: 0, resource: { buffer: backdropUniformBufs[bd] } },
+                                { binding: 1, resource: linearSampler },
+                                { binding: 2, resource: entry._view }
+                            ]
+                        });
+                        bdPass.setBindGroup(0, bg);
+                        bdPass.draw(4);
+                    }
                 }
                 bdPass.end();
             }
@@ -1579,31 +1782,86 @@ fn rboxSDF(p: vec2f, b: vec2f, r: f32) -> f32 {
             if (clsWant && !clsHas) document.documentElement.classList.add('glass-refract-bd-active');
             else if (!clsWant && clsHas) document.documentElement.classList.remove('glass-refract-bd-active');
 
-            // Pass 2: Kawase blur (ping-pong)
-            for (var bpu = 0; bpu < BLUR_PASSES; bpu++) {
-                blurUniformData[0] = 1.0 / halfW;
-                blurUniformData[1] = 1.0 / halfH;
-                blurUniformData[2] = bpu;
-                blurUniformData[3] = 0;
-                device.queue.writeBuffer(blurUniformBufs[bpu], 0, blurUniformData);
-            }
-            for (var bp = 0; bp < BLUR_PASSES; bp++) {
-
-                var dst = bp % 2;
+            // Pass 2: Adaptive Gaussian blur pyramid. blurSteps is the pre-built
+            // ordered list: level-0 H/V over the aurora, then per level a box
+            // downsample + Gaussian H/V. Each step renders one fullscreen quad into
+            // its destination mip; uniforms are baked at resize.
+            for (var bs = 0; bs < blurSteps.length; bs++) {
+                var step = blurSteps[bs];
                 var blurPass = encoder.beginRenderPass({
-                    label: 'blur ' + bp,
+                    label: 'blur-step ' + bs,
                     colorAttachments: [{
-                        view: viewBlur[dst],
+                        view: step.dstView,
                         loadOp: 'clear',
                         storeOp: 'store',
                         clearValue: { r: 0, g: 0, b: 0, a: 1 }
                     }]
                 });
-                blurPass.setPipeline(blurPipeline);
-                blurPass.setBindGroup(0, blurBindGroups[bp]);
+                blurPass.setPipeline(gaussPipeline);
+                blurPass.setBindGroup(0, step.bindGroup);
                 blurPass.draw(4);
                 blurPass.end();
             }
+        }
+
+        // Upload glass uniforms + panel storage now so BOTH the slope prepass and
+        // the glass pass read this frame's scroll/positions (slope VS reuses the
+        // glass VS, so a stale upload would lag the slope field by one frame).
+        if (panelCount > 0) {
+            glassUniformData[0] = vpW;
+            glassUniformData[1] = vpH;
+            glassUniformData[2] = _mouseX;
+            glassUniformData[3] = _mouseY;
+            glassUniformData[4] = _time;
+            glassUniformData[5] = frameScrollY;   // VS subtracts scrollY * scrollMul
+            device.queue.writeBuffer(glassUniformBuf, 0, glassUniformData);
+            if (_buffDirty) {
+                device.queue.writeBuffer(panelStorageBuf, 0,
+                    panelStorageData, 0, panelCount * PANEL_STRIDE);
+                _lastBuffPanelCount = panelCount;
+                _buffDirty = false;
+            }
+        }
+
+        // Pass 2c: Slope field — runs every frame (panels move on scroll) so the
+        // glass pass reads a clean, pre-blurred bevel normal. Prepass renders each
+        // panel's slope into texSlope, then a separable Gaussian (H→scratch, V→texSlope).
+        if (panelCount > 0 && slopePipeline) {
+            var slopePass = encoder.beginRenderPass({
+                label: 'slope',
+                colorAttachments: [{
+                    view: viewSlope, loadOp: 'clear', storeOp: 'store',
+                    clearValue: { r: 0, g: 0, b: 0, a: 0 }
+                }]
+            });
+            slopePass.setPipeline(slopePipeline);
+            slopePass.setBindGroup(0, slopeBindGroup);
+            slopePass.draw(4, panelCount);
+            slopePass.end();
+
+            var slopeH2 = encoder.beginRenderPass({
+                label: 'slope-blur-h',
+                colorAttachments: [{
+                    view: viewSlopeScratch, loadOp: 'clear', storeOp: 'store',
+                    clearValue: { r: 0, g: 0, b: 0, a: 0 }
+                }]
+            });
+            slopeH2.setPipeline(gaussFloatPipeline);
+            slopeH2.setBindGroup(0, slopeBlurBindH);
+            slopeH2.draw(4);
+            slopeH2.end();
+
+            var slopeV2 = encoder.beginRenderPass({
+                label: 'slope-blur-v',
+                colorAttachments: [{
+                    view: viewSlope, loadOp: 'clear', storeOp: 'store',
+                    clearValue: { r: 0, g: 0, b: 0, a: 0 }
+                }]
+            });
+            slopeV2.setPipeline(gaussFloatPipeline);
+            slopeV2.setBindGroup(0, slopeBlurBindV);
+            slopeV2.draw(4);
+            slopeV2.end();
         }
 
         // Pass 3: Composite → screen
@@ -1621,26 +1879,8 @@ fn rboxSDF(p: vec2f, b: vec2f, r: f32) -> f32 {
         compositePass.setBindGroup(0, blitBindGroup);
         compositePass.draw(4);
 
-        // 3b: Glass panels (instanced)
+        // 3b: Glass panels (instanced) — uniforms + storage already uploaded above.
         if (panelCount > 0) {
-            // Upload glass uniforms
-            glassUniformData[0] = vpW;
-            glassUniformData[1] = vpH;
-            glassUniformData[2] = _mouseX;
-            glassUniformData[3] = _mouseY;
-            glassUniformData[4] = _time;
-            glassUniformData[5] = frameScrollY;   // VS subtracts scrollY * scrollMul
-            device.queue.writeBuffer(glassUniformBuf, 0, glassUniformData);
-
-            // Skip panel storage upload when contents are bit-identical to
-            // the last upload (only stable panels visible, no anim/reveal, mouse still).
-            if (_buffDirty) {
-                device.queue.writeBuffer(panelStorageBuf, 0,
-                    panelStorageData, 0, panelCount * PANEL_STRIDE);
-                _lastBuffPanelCount = panelCount;
-                _buffDirty = false;
-            }
-
             compositePass.setPipeline(glassPipeline);
             compositePass.setBindGroup(0, glassBindGroup);
             compositePass.draw(4, panelCount);
@@ -1770,7 +2010,7 @@ fn rboxSDF(p: vec2f, b: vec2f, r: f32) -> f32 {
     Promise.all([
         createFullscreenPipelineAsync('aurora', AURORA_FS_WGSL, auroraLayout, halfResFormat, null),
         createFullscreenPipelineAsync('blit',   BLIT_FS_WGSL,   blitLayout,   presentFormat, null),
-        createFullscreenPipelineAsync('blur',   BLUR_FS_WGSL,   blurLayout,   halfResFormat, null),
+        createFullscreenPipelineAsync('gauss',  GAUSS_FS_WGSL,  blurLayout,   halfResFormat, null),
         device.createRenderPipelineAsync({
             label: 'glass',
             layout: device.createPipelineLayout({ bindGroupLayouts: [glassLayout] }),
@@ -1805,13 +2045,36 @@ fn rboxSDF(p: vec2f, b: vec2f, r: f32) -> f32 {
                 }]
             },
             primitive: { topology: 'triangle-strip' }
-        })
+        }),
+        device.createRenderPipelineAsync({
+            label: 'slope',
+            layout: device.createPipelineLayout({ bindGroupLayouts: [slopeLayout] }),
+            vertex: { module: slopeModule, entryPoint: 'vs' },
+            fragment: {
+                module: slopeModule,
+                entryPoint: 'fs',
+                targets: [{
+                    format: slopeFormat,
+                    blend: {
+                        // Pre-multiplied alpha — slope is stored × fill, so non-fill
+                        // fragments (alpha 0) leave the field untouched.
+                        color: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha' },
+                        alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha' }
+                    }
+                }]
+            },
+            primitive: { topology: 'triangle-strip' }
+        }),
+        // Gaussian blur targeting the float slope field.
+        createFullscreenPipelineAsync('gaussFloat', GAUSS_FS_WGSL, blurLayout, slopeFormat, null)
     ]).then(function (pipelines) {
-        auroraPipeline   = pipelines[0];
-        blitPipeline     = pipelines[1];
-        blurPipeline     = pipelines[2];
-        glassPipeline    = pipelines[3];
-        backdropPipeline = pipelines[4];
+        auroraPipeline    = pipelines[0];
+        blitPipeline      = pipelines[1];
+        gaussPipeline     = pipelines[2];
+        glassPipeline     = pipelines[3];
+        backdropPipeline  = pipelines[4];
+        slopePipeline     = pipelines[5];
+        gaussFloatPipeline = pipelines[6];
 
         // First render — deferred one frame so the browser can paint LCP first.
         requestAnimationFrame(function () {

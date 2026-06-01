@@ -31,6 +31,11 @@
     });
     if (!gl) return;
 
+    // Float render targets (slope field stores raw signed slope). Near-universal in
+    // WebGL2; if absent the slope field falls back to rgba8 and refraction goes flat
+    // (no artifacts, just no lensing) rather than breaking.
+    var _floatRT = gl.getExtension('EXT_color_buffer_float');
+
     document.documentElement.classList.add('glass-refract');
 
     // ====================================================================
@@ -40,7 +45,6 @@
     if (!core) { console.error('Glass: glass-core.js must load before this script'); return; }
     var PI = Math.PI, TAU = PI * 2;
     var HALF_RES = core.HALF_RES;
-    var BLUR_PASSES = core.BLUR_PASSES;
     var MAX_PANELS = core.MAX_PANELS;
     var MAX_CACHED = core.MAX_CACHED;
     // IOR / THICKNESS / BEZEL / SPECULAR / SHADOW_MARGIN / REVEAL_MULT are
@@ -118,21 +122,29 @@
         '  fragColor=vec4(col,1.0);\n' +
         '}\n';
 
-    var BLUR_FS =
+    // -- Separable Gaussian (σ=2, 7 bilinear fetches) — ported from liquid-dom --
+    // uDir is (1,0) for horizontal, (0,1) for vertical; offsets in destination texels.
+    // uSrcLod selects the source mip level (the H pass reads the finer level at the
+    // coarser texel size, folding the pyramid downsample into the blur).
+    var GAUSS_FS =
         '#version 300 es\n' +
         'precision mediump float;\n' +
         'in vec2 vUV;\n' +
         'out vec4 fragColor;\n' +
         'uniform sampler2D uTex;\n' +
         'uniform vec2 uTexelSize;\n' +
-        'uniform float uOffset;\n' +
+        'uniform vec2 uDir;\n' +
+        'uniform float uSrcLod;\n' +
         'void main(){\n' +
-        '  vec2 o=(uOffset+0.5)*uTexelSize;\n' +
-        '  fragColor=0.25*(\n' +
-        '    texture(uTex,vUV+vec2(-o.x,-o.y))+\n' +
-        '    texture(uTex,vUV+vec2(-o.x, o.y))+\n' +
-        '    texture(uTex,vUV+vec2( o.x,-o.y))+\n' +
-        '    texture(uTex,vUV+vec2( o.x, o.y)));\n' +
+        '  vec2 d=uDir*uTexelSize;\n' +
+        '  vec4 acc=textureLod(uTex,vUV,uSrcLod)*' + core.GAUSS.center + ';\n' +
+        '  vec2 o0=d*' + core.GAUSS.pairOffset[0] + ';\n' +
+        '  acc+=(textureLod(uTex,vUV+o0,uSrcLod)+textureLod(uTex,vUV-o0,uSrcLod))*' + core.GAUSS.pairWeight[0] + ';\n' +
+        '  vec2 o1=d*' + core.GAUSS.pairOffset[1] + ';\n' +
+        '  acc+=(textureLod(uTex,vUV+o1,uSrcLod)+textureLod(uTex,vUV-o1,uSrcLod))*' + core.GAUSS.pairWeight[1] + ';\n' +
+        '  vec2 o2=d*' + core.GAUSS.pairOffset[2] + ';\n' +
+        '  acc+=(textureLod(uTex,vUV+o2,uSrcLod)+textureLod(uTex,vUV-o2,uSrcLod))*' + core.GAUSS.pairWeight[2] + ';\n' +
+        '  fragColor=acc;\n' +
         '}\n';
 
     // -- Backdrop pass (per-panel image into FBO_AURORA before blur) --
@@ -200,6 +212,41 @@
         '  fragColor=vec4(col*a,a);\n' +    // pre-multiplied
         '}\n';
 
+    // -- Slope-field prepass FS (liquid-dom DISPLACEMENT_FIELD_SHADER, per-panel) --
+    // Reuses GLASS_VS. Writes the bevel slope (SDF gradient × profile derivative)
+    // encoded + premultiplied by fill; the renderer blurs it so the glass pass reads
+    // a clean normal instead of an inline finite-difference gradient.
+    var SLOPE_FS =
+        '#version 300 es\n' +
+        'precision mediump float;\n' +
+        'in vec2 vLocalPos;\n' +
+        'in vec2 vPanelSize;\n' +
+        'in float vRadius;\n' +
+        'out vec4 fragColor;\n' +
+        core.emitGlassConstsGLSL() +
+        'float rboxSDF(vec2 p, vec2 b, float r){ vec2 q=abs(p)-b+r; return min(max(q.x,q.y),0.0)+length(max(q,vec2(0.0)))-r; }\n' +
+        'void main(){\n' +
+        '  float sd=rboxSDF(vLocalPos,vPanelSize,vRadius);\n' +
+        '  float distFromEdge=-sd;\n' +
+        '  float fill=smoothstep(0.0,EDGE_AA_PX,distFromEdge);\n' +
+        '  if(fill<=0.0){ discard; }\n' +
+        // liquid-dom: slope = SDF gradient × convexSquircle derivative over bezelWidth.
+        '  float bezelProg=clamp(distFromEdge/REFRACT_BEZEL,0.0,1.0);\n' +
+        '  float u=1.0-bezelProg;\n' +
+        '  float inside=max(1.0-u*u*u*u,0.0001);\n' +
+        '  float deriv=2.0*u*u*u/sqrt(inside);\n' +
+        '  float dh=min(deriv,SLOPE_ENCODE_MAX);\n' +
+        '  float sx=rboxSDF(vLocalPos+vec2(0.5,0.0),vPanelSize,vRadius);\n' +
+        '  float sy=rboxSDF(vLocalPos+vec2(0.0,0.5),vPanelSize,vRadius);\n' +
+        // Length-guard the normalize (see WGSL slope FS note): wide-panel medial axis
+        // → forward diff (0,0) → NaN → Gaussian-blurred into a black band.
+        '  vec2 gradVec=vec2(sx-sd,sy-sd);\n' +
+        '  float gradLen=length(gradVec);\n' +
+        '  vec2 grad=gradLen>1e-5 ? gradVec/gradLen : vec2(0.0);\n' +
+        '  vec2 surfaceSlope=grad*dh;\n' +
+        '  fragColor=vec4(surfaceSlope*fill,0.0,fill);\n' +    // raw premultiplied slope (float field)
+        '}\n';
+
     var GLASS_VS =
         '#version 300 es\n' +
         'precision mediump float;\n' +
@@ -208,6 +255,7 @@
         'in vec4 aPanelExtra;\n' +  // radius, saturation, brightness, tintAlpha (instanced)
         'in vec2 aOpacReveal;\n' +    // x=CSS opacity, y=reveal flag (instanced)
         'in float aScrollMul;\n' +    // 0 fixed/sticky/animating/exit, 1 stable (instanced)
+        'in float aBlurLod;\n' +      // tier blur LOD into the blur mip chain (instanced)
         'uniform vec2 uViewport;\n' +
         'uniform float uScrollY;\n' +    // doc-space scroll (mirrors FS uniform)
 
@@ -221,6 +269,7 @@
         'out float vTintAlpha;\n' +
         'out float vOpacity;\n' +
         'out float vReveal;\n' +
+        'out float vBlurLod;\n' +
         // Tuning constants — synthesized from core.GLASS_TUNING (single source of truth).
         // VS only needs SHADOW_MARGIN, but the compiler dead-strips the rest.
         core.emitGlassConstsGLSL() +
@@ -243,6 +292,7 @@
         '  vTintAlpha=aPanelExtra.w;\n' +
         '  vOpacity=aOpacReveal.x;\n' +
         '  vReveal=aOpacReveal.y;\n' +
+        '  vBlurLod=aBlurLod;\n' +
         // UV into blur texture: viewport-relative, Y-flipped for GL
         '  vBlurUV=vec2(pos.x/uViewport.x, 1.0-pos.y/uViewport.y);\n' +
         // To NDC
@@ -264,7 +314,10 @@
         'in float vTintAlpha;\n' +
         'in float vOpacity;\n' +
         'in float vReveal;\n' +
+        'in float vBlurLod;\n' +
         'uniform sampler2D uBlurTex;\n' +
+        'uniform sampler2D uBackdropTex;\n' +
+        'uniform sampler2D uSlopeTex;\n' +
         'uniform vec2 uViewport;\n' +
         'uniform vec2 uMouse;\n' +       // screen-space mouse position (px)
         'uniform float uTime;\n' +
@@ -325,11 +378,12 @@
     // ====================================================================
     var auroraProg   = build(QUAD_VS, AURORA_FS);
     var blitProg     = build(QUAD_VS, BLIT_FS);
-    var blurProg     = build(QUAD_VS, BLUR_FS);
+    var gaussProg    = build(QUAD_VS, GAUSS_FS);
     var glassProg    = build(GLASS_VS, GLASS_FS);
+    var slopeProg    = build(GLASS_VS, SLOPE_FS);
     var backdropProg = build(BACKDROP_VS, BACKDROP_FS);
 
-    if (!auroraProg || !blitProg || !blurProg || !glassProg || !backdropProg) {
+    if (!auroraProg || !blitProg || !gaussProg || !glassProg || !slopeProg || !backdropProg) {
         console.error('Glass: shader compilation failed');
         document.documentElement.classList.remove('glass-refract');
         return;
@@ -345,10 +399,11 @@
         auroraU.k[i]      = gl.getUniformLocation(auroraProg, 'uK[' + i + ']');
     }
     var blitU = { tex: gl.getUniformLocation(blitProg, 'uTex') };
-    var blurU = {
-        tex: gl.getUniformLocation(blurProg, 'uTex'),
-        texelSize: gl.getUniformLocation(blurProg, 'uTexelSize'),
-        offset: gl.getUniformLocation(blurProg, 'uOffset')
+    var gaussU = {
+        tex: gl.getUniformLocation(gaussProg, 'uTex'),
+        texelSize: gl.getUniformLocation(gaussProg, 'uTexelSize'),
+        dir: gl.getUniformLocation(gaussProg, 'uDir'),
+        srcLod: gl.getUniformLocation(gaussProg, 'uSrcLod')
     };
     var glassU = {
         aPos:      gl.getAttribLocation(glassProg, 'aPos'),
@@ -356,11 +411,28 @@
         panelExtra:gl.getAttribLocation(glassProg, 'aPanelExtra'),
         opacReveal:gl.getAttribLocation(glassProg, 'aOpacReveal'),
         scrollMul: gl.getAttribLocation(glassProg, 'aScrollMul'),
+        blurLod:   gl.getAttribLocation(glassProg, 'aBlurLod'),
         blurTex:   gl.getUniformLocation(glassProg, 'uBlurTex'),
+        backdropTex: gl.getUniformLocation(glassProg, 'uBackdropTex'),
+        slopeTex:  gl.getUniformLocation(glassProg, 'uSlopeTex'),
         viewport:  gl.getUniformLocation(glassProg, 'uViewport'),
         mouse:     gl.getUniformLocation(glassProg, 'uMouse'),
         time:      gl.getUniformLocation(glassProg, 'uTime'),
         scrollY:   gl.getUniformLocation(glassProg, 'uScrollY')
+    };
+    // Slope prepass shares the glass VS; query its own attribute locations (a
+    // separate program may bind them differently, and unused ones may be dropped).
+    var slopeA = {
+        aPos:      gl.getAttribLocation(slopeProg, 'aPos'),
+        panelRect: gl.getAttribLocation(slopeProg, 'aPanelRect'),
+        panelExtra:gl.getAttribLocation(slopeProg, 'aPanelExtra'),
+        opacReveal:gl.getAttribLocation(slopeProg, 'aOpacReveal'),
+        scrollMul: gl.getAttribLocation(slopeProg, 'aScrollMul'),
+        blurLod:   gl.getAttribLocation(slopeProg, 'aBlurLod')
+    };
+    var slopeU = {
+        viewport: gl.getUniformLocation(slopeProg, 'uViewport'),
+        scrollY:  gl.getUniformLocation(slopeProg, 'uScrollY')
     };
     var backdropU = {
         rect:      gl.getUniformLocation(backdropProg, 'uRect'),
@@ -393,7 +465,7 @@
 
     var auroraVAO   = makeQuadVAO(auroraProg);
     var blitVAO     = makeQuadVAO(blitProg);
-    var blurVAO     = makeQuadVAO(blurProg);
+    var gaussVAO    = makeQuadVAO(gaussProg);
     var backdropVAO = makeQuadVAO(backdropProg);
 
     // Glass VAO with instanced panel data
@@ -401,10 +473,12 @@
     var panelExtraBuf = gl.createBuffer();
     var panelORBuf    = gl.createBuffer();  // opacity + reveal packed as vec2
     var panelMulBuf   = gl.createBuffer();  // scrollMul — float per panel
+    var panelBlurBuf  = gl.createBuffer();  // blurLod — float per panel
     var panelRectData  = new Float32Array(MAX_PANELS * 4);  // draw buffer (GPU)
     var panelExtraData = new Float32Array(MAX_PANELS * 4);  // draw buffer (GPU)
     var panelORData    = new Float32Array(MAX_PANELS * 2);  // [opacity, reveal] per panel
     var panelMulData   = new Float32Array(MAX_PANELS);      // scrollMul per panel
+    var panelBlurData  = new Float32Array(MAX_PANELS);      // blurLod per panel
     var panelCount = 0;
 
     var glassVAO = gl.createVertexArray();
@@ -437,6 +511,31 @@
     gl.enableVertexAttribArray(glassU.scrollMul);
     gl.vertexAttribPointer(glassU.scrollMul, 1, gl.FLOAT, false, 0, 0);
     gl.vertexAttribDivisor(glassU.scrollMul, 1);
+    // Per-panel blur LOD (float, instanced)
+    gl.bindBuffer(gl.ARRAY_BUFFER, panelBlurBuf);
+    gl.bufferData(gl.ARRAY_BUFFER, panelBlurData.byteLength, gl.DYNAMIC_DRAW);
+    gl.enableVertexAttribArray(glassU.blurLod);
+    gl.vertexAttribPointer(glassU.blurLod, 1, gl.FLOAT, false, 0, 0);
+    gl.vertexAttribDivisor(glassU.blurLod, 1);
+    gl.bindVertexArray(null);
+
+    // Slope prepass VAO — reuses the same instanced VBOs, bound to slopeProg's
+    // attribute locations (some VS-only attributes may be inactive → location -1).
+    var slopeVAO = gl.createVertexArray();
+    gl.bindVertexArray(slopeVAO);
+    function slopeAttr(loc, buf, size, instanced) {
+        if (loc < 0) return; // attribute optimized out of slopeProg
+        gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+        gl.enableVertexAttribArray(loc);
+        gl.vertexAttribPointer(loc, size, gl.FLOAT, false, 0, 0);
+        if (instanced) gl.vertexAttribDivisor(loc, 1);
+    }
+    slopeAttr(slopeA.aPos, quadBuf, 2, false);
+    slopeAttr(slopeA.panelRect, panelRectBuf, 4, true);
+    slopeAttr(slopeA.panelExtra, panelExtraBuf, 4, true);
+    slopeAttr(slopeA.opacReveal, panelORBuf, 2, true);
+    slopeAttr(slopeA.scrollMul, panelMulBuf, 1, true);
+    slopeAttr(slopeA.blurLod, panelBlurBuf, 1, true);
     gl.bindVertexArray(null);
 
     // ====================================================================
@@ -444,12 +543,36 @@
     // ====================================================================
     var vpW = 0, vpH = 0, halfW = 0, halfH = 0;
     var fboAurora = null, texAurora = null;
-    var fboBlur = [null, null], texBlur = [null, null];
+    // Sharp backdrop target — full-res, screen-space. Art panels sample this (not the
+    // quarter-res blurred aurora) so product art reads crisp under the glass.
+    var fboBackdrop = null, texBackdrop = null;
+    // Slope field (liquid-dom): per-panel bevel slope, blurred, so the glass pass
+    // reads a clean normal. Half-res; rebuilt every frame (panels move on scroll).
+    // NOTE: the slope-blur kernel is in TEXELS, so screen-space blur radius scales
+    // with SLOPE_RES (~pairOffset × SLOPE_RES). RES=2 → ~11px blur spreads the bevel
+    // slope inward (broad displaced rim); RES=1 halves it (~5px) and collapses
+    // displacement to a thin edge strip. Keep 2 — full-res field needs a wider blur.
+    var SLOPE_RES = 2;
+    var slopeW = 0, slopeH = 0;
+    var fboSlope = null, texSlope = null;
+    var fboSlopeScratch = null, texSlopeScratch = null;
+    // Adaptive Gaussian blur pyramid (liquid-dom). A = final pyramid (glass samples
+    // it by per-tier LOD); B = scratch holding the horizontal-pass result. Both are
+    // mip-complete via texStorage2D so each level is both an FBO target and a
+    // textureLod source.
+    var blurMipCount = 1;
+    var texBlurA = null, texBlurB = null;
+    var fboBlurA = [], fboBlurB = [];   // one framebuffer per pyramid level
 
-    function makeFBO(w, h) {
+    function makeFBO(w, h, float) {
         var tex = gl.createTexture();
         gl.bindTexture(gl.TEXTURE_2D, tex);
-        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+        // Float field (slope) needs signed storage; rgba16f if the ext is present.
+        if (float && _floatRT) {
+            gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, w, h, 0, gl.RGBA, gl.HALF_FLOAT, null);
+        } else {
+            gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+        }
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
@@ -459,6 +582,35 @@
         gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
         gl.bindFramebuffer(gl.FRAMEBUFFER, null);
         return { fbo: fbo, tex: tex };
+    }
+
+    // Mip-complete pyramid texture + one framebuffer per level. Trilinear min
+    // filter so the glass shader samples fractional pyramid levels via LOD.
+    function makePyramid(w, h, levels) {
+        var tex = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, tex);
+        gl.texStorage2D(gl.TEXTURE_2D, levels, gl.RGBA8, w, h);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        var fbos = [];
+        for (var L = 0; L < levels; L++) {
+            var fbo = gl.createFramebuffer();
+            gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+            gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, L);
+            fbos.push(fbo);
+        }
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        return { tex: tex, fbos: fbos };
+    }
+
+    // Half-res dimensions of pyramid level L.
+    function mipDims(level) {
+        return [
+            Math.max(1, Math.floor(halfW / Math.pow(2, level))),
+            Math.max(1, Math.floor(halfH / Math.pow(2, level)))
+        ];
     }
 
     // Track canvas size via ResizeObserver to avoid forced reflow every frame
@@ -498,18 +650,43 @@
         // blit would show a blank frame if the render happens to be a non-aurora frame.
         _auroraFrame = 0;
 
-        // Recreate FBOs at half-res
+        // Recreate aurora FBO at half-res
         if (texAurora) gl.deleteTexture(texAurora);
         if (fboAurora) gl.deleteFramebuffer(fboAurora);
         var a = makeFBO(halfW, halfH);
         fboAurora = a.fbo; texAurora = a.tex;
 
-        for (var j = 0; j < 2; j++) {
-            if (texBlur[j]) gl.deleteTexture(texBlur[j]);
-            if (fboBlur[j]) gl.deleteFramebuffer(fboBlur[j]);
-            var b = makeFBO(halfW, halfH);
-            fboBlur[j] = b.fbo; texBlur[j] = b.tex;
-        }
+        // Full-res screen-space backdrop target (art panels sample this sharp).
+        if (texBackdrop) gl.deleteTexture(texBackdrop);
+        if (fboBackdrop) gl.deleteFramebuffer(fboBackdrop);
+        var bdt = makeFBO(vpW, vpH);
+        fboBackdrop = bdt.fbo; texBackdrop = bdt.tex;
+
+        // Half-res slope field + H-pass scratch.
+        slopeW = Math.max(Math.round(vpW / SLOPE_RES), 1);
+        slopeH = Math.max(Math.round(vpH / SLOPE_RES), 1);
+        if (texSlope) gl.deleteTexture(texSlope);
+        if (fboSlope) gl.deleteFramebuffer(fboSlope);
+        if (texSlopeScratch) gl.deleteTexture(texSlopeScratch);
+        if (fboSlopeScratch) gl.deleteFramebuffer(fboSlopeScratch);
+        var sl = makeFBO(slopeW, slopeH, true);
+        fboSlope = sl.fbo; texSlope = sl.tex;
+        var sls = makeFBO(slopeW, slopeH, true);
+        fboSlopeScratch = sls.fbo; texSlopeScratch = sls.tex;
+
+        // Rebuild the blur pyramid (A = final, B = scratch), bounded by half-res dims.
+        blurMipCount = Math.max(1, Math.min(
+            core.BLUR_MIP_MAX,
+            Math.floor(Math.log2(Math.max(halfW, halfH))) + 1
+        ));
+        if (texBlurA) gl.deleteTexture(texBlurA);
+        if (texBlurB) gl.deleteTexture(texBlurB);
+        for (var da = 0; da < fboBlurA.length; da++) gl.deleteFramebuffer(fboBlurA[da]);
+        for (var db = 0; db < fboBlurB.length; db++) gl.deleteFramebuffer(fboBlurB[db]);
+        var pa = makePyramid(halfW, halfH, blurMipCount);
+        var pb = makePyramid(halfW, halfH, blurMipCount);
+        texBlurA = pa.tex; fboBlurA = pa.fbos;
+        texBlurB = pb.tex; fboBlurB = pb.fbos;
     }
 
     // ====================================================================
@@ -737,13 +914,13 @@
 
     // Pack visible backdropped panels into a draw list. Walks _cachedEls only
     // when at least one image is loaded; zero loaded images returns in O(1).
-    // Geometry is stored in half-res pixels: the backdrop pass renders into
-    // FBO_AURORA (which is 1/HALF_RES the viewport size).
+    // Geometry is stored in full-res screen pixels: the backdrop pass renders into
+    // FBO_BACKDROP (full viewport size).
     function _collectBackdrops(curScrollY) {
         _backdropDrawCount = 0;
         if (_backdrop.cache.size === 0) return;
         var n = _cachedEls.length;
-        var inv = 1.0 / HALF_RES;
+        var inv = 1.0; // RT_BACKDROP is full-res screen-space (was 1/HALF_RES for the aurora)
         for (var i = 0; i < n && _backdropDrawCount < BACKDROP_MAX_TEXTURES; i++) {
             var url = _backdrop.cachedUrl[i];
             if (!url) continue;
@@ -989,6 +1166,7 @@
     var _sortOR      = new Float32Array(MAX_PANELS * 2);
     // Per-visible-panel scrollMul: 1.0 stable (rect.y is doc-top), 0.0 otherwise.
     var _sortMul     = new Float32Array(MAX_PANELS);
+    var _sortBlur    = new Float32Array(MAX_PANELS); // per-panel tier blur LOD → aBlurLod
 
     // Per-frame opacity cache. Mirrors glass-webgpu.js: when N glass panels share
     // an animation ancestor (entrance cascade in a captures-game-group, dashboard
@@ -1122,16 +1300,18 @@
             // Backdrop-bearing panels show real product imagery — soften the
             // per-tier sat/bright/tint so the picture comes through close to its
             // source instead of being darkened and oversaturated by the glass pass.
-            var _tvSat = tv.sat, _tvBright = tv.bright, _tvTint = tv.tint;
+            var _tvSat = tv.sat, _tvBright = tv.bright, _tvTint = tv.tint, _tvBlur = tv.blur;
             if (_backdrop.cachedUrl[i]) {
                 _tvSat = Math.min(_tvSat, 1.20);
                 _tvBright = Math.max(_tvBright, 0.92);
                 _tvTint = Math.min(_tvTint, 0.02);
+                _tvBlur = -1.0; // sentinel: sample the sharp full-res RT_BACKDROP, not the blurred aurora
             }
             _sortExtra[idx4]     = Math.min(_cachedRadius[i], rWidth * 0.5, rHeight * 0.5);
             _sortExtra[idx4 + 1] = _tvSat;
             _sortExtra[idx4 + 2] = _tvBright;
             _sortExtra[idx4 + 3] = _tvTint;
+            _sortBlur[visCount]  = _tvBlur;
 
             var animTarget = isExiting ? _cachedEls[i]
                 : (_cachedHasAnim[i] ? _cachedEls[i] : _cachedAnimAncestor[i]);
@@ -1234,6 +1414,7 @@
                 nv = _sortOR[s2];         if (panelORData[d2]        !== nv) { panelORData[d2]        = nv; _buffDirty = true; }
                 nv = _sortOR[s2 + 1];     if (panelORData[d2 + 1]    !== nv) { panelORData[d2 + 1]    = nv; _buffDirty = true; }
                 nv = _sortMul[si];        if (panelMulData[s]        !== nv) { panelMulData[s]        = nv; _buffDirty = true; }
+                nv = _sortBlur[si];       if (panelBlurData[s]       !== nv) { panelBlurData[s]       = nv; _buffDirty = true; }
             }
         } else {
             // No z-index variation — index in dest matches index in source.
@@ -1251,6 +1432,7 @@
                 nv2 = _sortOR[pd2];         if (panelORData[pd2]        !== nv2) { panelORData[pd2]        = nv2; _buffDirty = true; }
                 nv2 = _sortOR[pd2 + 1];     if (panelORData[pd2 + 1]    !== nv2) { panelORData[pd2 + 1]    = nv2; _buffDirty = true; }
                 nv2 = _sortMul[p];          if (panelMulData[p]         !== nv2) { panelMulData[p]         = nv2; _buffDirty = true; }
+                nv2 = _sortBlur[p];         if (panelBlurData[p]        !== nv2) { panelBlurData[p]        = nv2; _buffDirty = true; }
             }
         }
     }
@@ -1283,15 +1465,19 @@
             gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
             gl.bindVertexArray(null);
 
-            // Pass 1b: Backdrop images → FBO_AURORA (preserves aurora — no clear)
-            // Each backdropped panel draws its pre-blurred image into the panel rect
-            // with a rounded-rect mask. Pre-multiplied alpha blending.
+            // Pass 1b: Backdrop art → FBO_BACKDROP (full-res, screen-space), cleared
+            // transparent each aurora frame. Art panels sample this sharp; the aurora
+            // itself stays a pure gradient so it blurs cleanly. Pre-multiplied alpha.
+            gl.bindFramebuffer(gl.FRAMEBUFFER, fboBackdrop);
+            gl.viewport(0, 0, vpW, vpH);
+            gl.clearColor(0, 0, 0, 0);
+            gl.clear(gl.COLOR_BUFFER_BIT);
             if (_backdropDrawCount > 0) {
                 gl.useProgram(backdropProg);
                 gl.bindVertexArray(backdropVAO);
                 gl.enable(gl.BLEND);
                 gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
-                gl.uniform2f(backdropU.vp, halfW, halfH);
+                gl.uniform2f(backdropU.vp, vpW, vpH);
                 gl.uniform1i(backdropU.tex, 0);
                 gl.activeTexture(gl.TEXTURE0);
                 for (var bd = 0; bd < _backdropDrawCount; bd++) {
@@ -1319,21 +1505,92 @@
             if (clsWant && !clsHas) document.documentElement.classList.add('glass-refract-bd-active');
             else if (!clsWant && clsHas) document.documentElement.classList.remove('glass-refract-bd-active');
 
-            // Kawase blur (ping-pong, 2 passes)
-            gl.useProgram(blurProg);
-            gl.bindVertexArray(blurVAO);
-            gl.uniform2f(blurU.texelSize, 1.0 / halfW, 1.0 / halfH);
-            var srcTex = texAurora;
-            for (var p = 0; p < BLUR_PASSES; p++) {
-                var dst = p % 2;
-                gl.bindFramebuffer(gl.FRAMEBUFFER, fboBlur[dst]);
-                gl.activeTexture(gl.TEXTURE0);
+            // Adaptive Gaussian blur pyramid (liquid-dom). Level 0: separable
+            // Gaussian over the aurora — H (→B.0) then V (→A.0). Each higher level:
+            // H reads the finer level A.(L-1) at the coarser texel size (downsample
+            // folded into the blur) → B.L; V blurs B.L → A.L. A holds all levels;
+            // glass selects a fractional level per tier via LOD.
+            gl.useProgram(gaussProg);
+            gl.bindVertexArray(gaussVAO);
+            gl.activeTexture(gl.TEXTURE0);
+            gl.uniform1i(gaussU.tex, 0);
+
+            function gaussPass(fbo, srcTex, dimW, dimH, dirX, dirY, srcLod) {
+                gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+                gl.viewport(0, 0, dimW, dimH);
                 gl.bindTexture(gl.TEXTURE_2D, srcTex);
-                gl.uniform1i(blurU.tex, 0);
-                gl.uniform1f(blurU.offset, p);
+                gl.uniform2f(gaussU.texelSize, 1.0 / dimW, 1.0 / dimH);
+                gl.uniform2f(gaussU.dir, dirX, dirY);
+                gl.uniform1f(gaussU.srcLod, srcLod);
                 gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
-                srcTex = texBlur[dst];
             }
+
+            // Level 0 (half-res).
+            gaussPass(fboBlurB[0], texAurora, halfW, halfH, 1.0, 0.0, 0.0); // H
+            gaussPass(fboBlurA[0], texBlurB,  halfW, halfH, 0.0, 1.0, 0.0); // V
+            // Higher levels.
+            for (var L = 1; L < blurMipCount; L++) {
+                var td = mipDims(L);
+                // H reads finer level L-1 of A at the coarser texel size → B.L.
+                gaussPass(fboBlurB[L], texBlurA, td[0], td[1], 1.0, 0.0, L - 1);
+                // V blurs B.L at its own resolution → A.L.
+                gaussPass(fboBlurA[L], texBlurB, td[0], td[1], 0.0, 1.0, L);
+            }
+            gl.bindVertexArray(null);
+        }
+
+        // Upload panel VBOs now so BOTH the slope prepass and the glass pass read this
+        // frame's positions (the slope prepass reuses the glass VS).
+        if (panelCount > 0 && _buffDirty) {
+            gl.bindBuffer(gl.ARRAY_BUFFER, panelRectBuf);
+            gl.bufferSubData(gl.ARRAY_BUFFER, 0, panelRectData.subarray(0, panelCount * 4));
+            gl.bindBuffer(gl.ARRAY_BUFFER, panelExtraBuf);
+            gl.bufferSubData(gl.ARRAY_BUFFER, 0, panelExtraData.subarray(0, panelCount * 4));
+            gl.bindBuffer(gl.ARRAY_BUFFER, panelORBuf);
+            gl.bufferSubData(gl.ARRAY_BUFFER, 0, panelORData.subarray(0, panelCount * 2));
+            gl.bindBuffer(gl.ARRAY_BUFFER, panelMulBuf);
+            gl.bufferSubData(gl.ARRAY_BUFFER, 0, panelMulData.subarray(0, panelCount));
+            gl.bindBuffer(gl.ARRAY_BUFFER, panelBlurBuf);
+            gl.bufferSubData(gl.ARRAY_BUFFER, 0, panelBlurData.subarray(0, panelCount));
+            _lastBuffPanelCount = panelCount;
+            _buffDirty = false;
+        }
+
+        // Pass 2c: Slope field — every frame (panels move on scroll). Prepass renders
+        // each panel's bevel slope into texSlope, then a separable Gaussian
+        // (H→scratch, V→texSlope) so the glass pass reads a clean normal.
+        if (panelCount > 0) {
+            gl.useProgram(slopeProg);
+            gl.uniform2f(slopeU.viewport, vpW, vpH);
+            gl.uniform1f(slopeU.scrollY, frameScrollY);
+            gl.bindFramebuffer(gl.FRAMEBUFFER, fboSlope);
+            gl.viewport(0, 0, slopeW, slopeH);
+            gl.clearColor(0, 0, 0, 0);
+            gl.clear(gl.COLOR_BUFFER_BIT);
+            gl.enable(gl.BLEND);
+            gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);  // premultiplied
+            gl.bindVertexArray(slopeVAO);
+            gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, panelCount);
+            gl.bindVertexArray(null);
+            gl.disable(gl.BLEND);
+
+            // Blur the slope field (separable Gaussian: H → scratch, V → slope).
+            gl.useProgram(gaussProg);
+            gl.bindVertexArray(gaussVAO);
+            gl.activeTexture(gl.TEXTURE0);
+            gl.uniform1i(gaussU.tex, 0);
+            gl.uniform1f(gaussU.srcLod, 0.0);
+            gl.uniform2f(gaussU.texelSize, 1.0 / slopeW, 1.0 / slopeH);
+            gl.bindFramebuffer(gl.FRAMEBUFFER, fboSlopeScratch);
+            gl.viewport(0, 0, slopeW, slopeH);
+            gl.bindTexture(gl.TEXTURE_2D, texSlope);
+            gl.uniform2f(gaussU.dir, 1.0, 0.0);
+            gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+            gl.bindFramebuffer(gl.FRAMEBUFFER, fboSlope);
+            gl.viewport(0, 0, slopeW, slopeH);
+            gl.bindTexture(gl.TEXTURE_2D, texSlopeScratch);
+            gl.uniform2f(gaussU.dir, 0.0, 1.0);
+            gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
             gl.bindVertexArray(null);
         }
 
@@ -1362,26 +1619,19 @@
             gl.uniform1f(glassU.time, _time);
             gl.uniform1f(glassU.scrollY, frameScrollY);   // VS subtracts scrollY * scrollMul
 
-            // Bind blurred aurora texture (last blur pass output)
-            var lastBlur = (BLUR_PASSES - 1) % 2;
+            // Bind the blur pyramid (texBlurA holds all levels; the shader selects
+            // a per-tier fractional level via LOD).
             gl.activeTexture(gl.TEXTURE0);
-            gl.bindTexture(gl.TEXTURE_2D, texBlur[lastBlur]);
+            gl.bindTexture(gl.TEXTURE_2D, texBlurA);
             gl.uniform1i(glassU.blurTex, 0);
-
-            // Skip uploads when contents are bit-identical to the last
-            // upload (only stable / sticky-stuck panels visible, no anim/reveal).
-            if (_buffDirty) {
-                gl.bindBuffer(gl.ARRAY_BUFFER, panelRectBuf);
-                gl.bufferSubData(gl.ARRAY_BUFFER, 0, panelRectData.subarray(0, panelCount * 4));
-                gl.bindBuffer(gl.ARRAY_BUFFER, panelExtraBuf);
-                gl.bufferSubData(gl.ARRAY_BUFFER, 0, panelExtraData.subarray(0, panelCount * 4));
-                gl.bindBuffer(gl.ARRAY_BUFFER, panelORBuf);
-                gl.bufferSubData(gl.ARRAY_BUFFER, 0, panelORData.subarray(0, panelCount * 2));
-                gl.bindBuffer(gl.ARRAY_BUFFER, panelMulBuf);
-                gl.bufferSubData(gl.ARRAY_BUFFER, 0, panelMulData.subarray(0, panelCount));
-                _lastBuffPanelCount = panelCount;
-                _buffDirty = false;
-            }
+            // Bind the sharp full-res backdrop (art panels sample this when blurLod < 0).
+            gl.activeTexture(gl.TEXTURE1);
+            gl.bindTexture(gl.TEXTURE_2D, texBackdrop);
+            gl.uniform1i(glassU.backdropTex, 1);
+            // Bind the blurred slope field (clean refraction normal).
+            gl.activeTexture(gl.TEXTURE2);
+            gl.bindTexture(gl.TEXTURE_2D, texSlope);
+            gl.uniform1i(glassU.slopeTex, 2);
 
             gl.bindVertexArray(glassVAO);
             gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, panelCount);
