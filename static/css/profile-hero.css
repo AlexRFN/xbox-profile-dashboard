@@ -276,16 +276,20 @@
     filter: blur(24px) brightness(0.35) saturate(1.3);
     transform: scale(1.15);
     z-index: 0;
-    transition: opacity 220ms var(--ease-out, ease);
 }
 
 /* When the GPU shader is rendering this panel's backdrop refracted through the
    bezel (per-element class toggled by glass-webgpu.js as each draw fires), hide
    the CSS overlay so they don't double up. Class is only on while the specific
    panel's draw is active — non-WebGPU browsers, mid-load panels, LRU-evicted
-   panels, and mobile keep the CSS layer. */
+   panels, and mobile keep the CSS layer.
+   Use `visibility: hidden` (matches .game-hero/.hero-bg) NOT `opacity: 0`: an
+   opacity:0 transformed layer stays composited and paints for a frame during
+   scroll/animation, and the opacity transition left a 220ms window where the CSS
+   blur faded out over the GPU backdrop — that was the "it looks like the CSS blur"
+   bug. visibility:hidden drops it from paint instantly, like every other card. */
 .profile-np.glass-bd-on .profile-np-bg {
-    opacity: 0;
+    visibility: hidden;
 }
 
 /* Content layer above the backdrop. The stretched-link overlay still wins
