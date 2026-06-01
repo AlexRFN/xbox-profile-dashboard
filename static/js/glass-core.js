@@ -235,6 +235,24 @@
         ABSORPTION:                   { type: 'float', value: 0.06 },
         ABSORPTION_TINT:              { type: 'vec3',  value: [0.96, 0.97, 1.0] },
 
+        // Adaptive tint (liquid-dom ADAPTIVE_TINT.md). The frosted-glass tint target
+        // is a NEUTRAL grayscale whose brightness tracks the backdrop luminance instead
+        // of a fixed white — so dark backdrops get dark tint (no milky fog) and bright
+        // backdrops brighten to match. luminance → smoothstep(LO,HI) → LEVEL_MIN + n*RANGE.
+        // We do it per-pixel in-shader (we already have `lum`), so no CPU metrics/debounce.
+        TINT_LUM_LO:                  { type: 'float', value: 0.08 },
+        TINT_LUM_HI:                  { type: 'float', value: 0.92 },
+        TINT_LEVEL_MIN:               { type: 'float', value: 0.10 },
+        TINT_LEVEL_RANGE:             { type: 'float', value: 0.75 },
+        // Their "optional floor": above this backdrop luminance, don't let the tint be
+        // darker than the backdrop itself (tintLevel = max(mapped, lum)). Keeps bright
+        // backdrops from being dulled by the tint. Below it, use the mapped value as-is.
+        TINT_FLOOR_LUM:               { type: 'float', value: 0.50 },
+        // Gamma fix: their thresholds are authored for LINEAR luminance, but our blur
+        // target is gamma-encoded (rgba8unorm). Linearize the tint luminance only
+        // (~sRGB→linear) so the curve sits where they intended. 1.0 = no conversion.
+        TINT_GAMMA:                   { type: 'float', value: 2.2 },
+
         INNER_SHADOW_STRENGTH:        { type: 'float', value: 0.3 },
         INNER_SHADOW_FLOOR:           { type: 'float', value: 0.7 },
         // Fraction of bezel width across which the inner shadow fades.
@@ -625,8 +643,15 @@
     // Beer's law absorption — slight cool tint at thicker (lower-h) areas.
     let absorption = (1.0 - h) * ABSORPTION;
     transmitted *= mix(vec3f(1.0), ABSORPTION_TINT, absorption);
-    // Frosted glass haze (per-panel, independent of Fresnel).
-    var col = mix(transmitted, vec3f(1.0), tintAlpha);
+    // Adaptive frosted tint (liquid-dom ADAPTIVE_TINT.md): tint toward a NEUTRAL gray
+    // whose level follows the backdrop luminance, not fixed white — dark backdrop gets
+    // dark tint (no white fog), bright backdrop brightens to match.
+    // Linearized luminance for the tint curve (their thresholds are linear; our blur is gamma).
+    let tintLum = dot(pow(blurred, vec3f(TINT_GAMMA)), LUMA_WEIGHTS);
+    let tintMapped = TINT_LEVEL_MIN + smoothstep(TINT_LUM_LO, TINT_LUM_HI, tintLum) * TINT_LEVEL_RANGE;
+    // Their floor: on bright backdrops (lum >= TINT_FLOOR_LUM) don't tint darker than the backdrop.
+    let tintLevel = select(tintMapped, max(tintMapped, tintLum), tintLum >= TINT_FLOOR_LUM);
+    var col = mix(transmitted, vec3f(tintLevel), tintAlpha);
     // Inner shadow — darkens transmitted light before specular is added.
     let innerShadow = 1.0 - smoothstep(0.0, bezel * INNER_SHADOW_BEZEL_FRAC, distFromEdge);
     col *= mix(1.0, INNER_SHADOW_FLOOR, innerShadow * INNER_SHADOW_STRENGTH);
@@ -638,7 +663,11 @@
   vec3 transmitted=saturated*vBrightness;
   float absorption=(1.0-h)*ABSORPTION;
   transmitted*=mix(vec3(1.0),ABSORPTION_TINT,absorption);
-  vec3 col=mix(transmitted,vec3(1.0),vTintAlpha);
+  // Adaptive frosted tint (see WGSL note): neutral gray tracking backdrop luminance.
+  float tintLum=dot(pow(blurred,vec3(TINT_GAMMA)),LUMA_WEIGHTS);  // linearize (their thresholds are linear)
+  float tintMapped=TINT_LEVEL_MIN+smoothstep(TINT_LUM_LO,TINT_LUM_HI,tintLum)*TINT_LEVEL_RANGE;
+  float tintLevel=tintLum>=TINT_FLOOR_LUM ? max(tintMapped,tintLum) : tintMapped;  // their bright-backdrop floor
+  vec3 col=mix(transmitted,vec3(tintLevel),vTintAlpha);
   float innerShadow=1.0-smoothstep(0.0,bezel*INNER_SHADOW_BEZEL_FRAC,distFromEdge);
   col*=mix(1.0,INNER_SHADOW_FLOOR,innerShadow*INNER_SHADOW_STRENGTH);
 `
