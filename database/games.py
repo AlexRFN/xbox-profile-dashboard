@@ -9,6 +9,7 @@ from .connection import get_connection
 
 log = logging.getLogger("xbox.db")
 
+
 async def upsert_games_bulk(games: list[dict]) -> int:
     conn = await get_connection()
     rows = []
@@ -16,23 +17,26 @@ async def upsert_games_bulk(games: list[dict]) -> int:
         image = game.get("display_image", "")
         if image and image.startswith("http://"):  # Xbox CDN sends http, rewrite
             image = "https://" + image[7:]
-        rows.append((
-            game["title_id"],
-            game["name"],
-            image,
-            orjson.dumps(game.get("devices", [])).decode(),
-            game.get("current_gamerscore", 0),
-            game.get("total_gamerscore", 0),
-            game.get("progress_percentage", 0),
-            game.get("current_achievements", 0),
-            game.get("total_achievements", 0),
-            game.get("last_played"),
-            game.get("xbox_live_tier"),
-            game.get("pfn"),
-            1 if game.get("is_gamepass") else 0,
-        ))
+        rows.append(
+            (
+                game["title_id"],
+                game["name"],
+                image,
+                orjson.dumps(game.get("devices", [])).decode(),
+                game.get("current_gamerscore", 0),
+                game.get("total_gamerscore", 0),
+                game.get("progress_percentage", 0),
+                game.get("current_achievements", 0),
+                game.get("total_achievements", 0),
+                game.get("last_played"),
+                game.get("xbox_live_tier"),
+                game.get("pfn"),
+                1 if game.get("is_gamepass") else 0,
+            )
+        )
 
-    await conn.executemany("""
+    await conn.executemany(
+        """
         INSERT INTO games (
             title_id, name, display_image, devices,
             current_gamerscore, total_gamerscore, progress_percentage,
@@ -59,7 +63,9 @@ async def upsert_games_bulk(games: list[dict]) -> int:
             is_gamepass = excluded.is_gamepass,
             updated_at = datetime('now')
             -- status, notes, finished_date, rating intentionally omitted — never overwritten by sync
-    """, rows)
+    """,
+        rows,
+    )
     await conn.commit()
     _cache_invalidate(CacheKey.DASHBOARD_STATS, CacheKey.ACHIEVEMENT_STATS, CacheKey.PAGE_CONTEXT)
     log.info("Upserted %d games", len(rows))
@@ -128,9 +134,7 @@ async def get_all_games(
     # idx_games_status_last_played serve the ORDER BY directly — no temp b-tree.)
     order_sql = f"{sort_col} ASC NULLS LAST" if direction == "ASC" else f"{sort_col} DESC"
 
-    cursor = await conn.execute(
-        f"SELECT COUNT(*) as cnt FROM games {where_sql}", params
-    )
+    cursor = await conn.execute(f"SELECT COUNT(*) as cnt FROM games {where_sql}", params)
     count_row = await cursor.fetchone()
     total = count_row["cnt"]
 
@@ -188,24 +192,30 @@ async def mark_game_fetched(title_id: str):
 
 async def recalc_game_from_achievements(title_id: str):
     conn = await get_connection()
-    cursor = await conn.execute("""
+    cursor = await conn.execute(
+        """
         SELECT SUM(CASE WHEN progress_state = 'Achieved' THEN 1 ELSE 0 END) as current_ach,
                SUM(CASE WHEN progress_state = 'Achieved' THEN gamerscore ELSE 0 END) as current_gs,
                MAX(CASE WHEN progress_state = 'Achieved' AND time_unlocked IS NOT NULL
                         THEN time_unlocked END) as latest_unlock
         FROM achievements WHERE title_id = ?
-    """, (title_id,))
+    """,
+        (title_id,),
+    )
     row = await cursor.fetchone()
     if not row or row["current_ach"] is None:
         return
-    await conn.execute("""
+    await conn.execute(
+        """
         UPDATE games SET
             current_achievements = ?, current_gamerscore = ?,
             last_achievement_unlock = COALESCE(?, last_achievement_unlock),
             stats_last_fetched = datetime('now'),
             updated_at = datetime('now')
         WHERE title_id = ?
-    """, (row["current_ach"], row["current_gs"] or 0, row["latest_unlock"], title_id))
+    """,
+        (row["current_ach"], row["current_gs"] or 0, row["latest_unlock"], title_id),
+    )
     await conn.commit()
     _cache_invalidate(CacheKey.DASHBOARD_STATS)
 
@@ -264,8 +274,7 @@ async def get_games_for_change_detection() -> dict:
     return {row["title_id"]: dict(row) for row in rows}
 
 
-async def update_tracking(title_id: str, status=_UNSET, notes=_UNSET,
-                    finished_date=_UNSET, rating=_UNSET):
+async def update_tracking(title_id: str, status=_UNSET, notes=_UNSET, finished_date=_UNSET, rating=_UNSET):
     # _UNSET sentinel (not None) lets callers explicitly pass None to clear a field
     # while still omitting fields they don't want to touch.
     conn = await get_connection()
@@ -286,11 +295,10 @@ async def update_tracking(title_id: str, status=_UNSET, notes=_UNSET,
     if updates:
         updates.append("updated_at = datetime('now')")
         params.append(title_id)
-        await conn.execute(
-            f"UPDATE games SET {', '.join(updates)} WHERE title_id = ?", params
-        )
+        await conn.execute(f"UPDATE games SET {', '.join(updates)} WHERE title_id = ?", params)
         await conn.commit()
         _cache_invalidate(CacheKey.DASHBOARD_STATS)
+
 
 async def get_game_index() -> list[dict]:
     conn = await get_connection()
@@ -300,6 +308,7 @@ async def get_game_index() -> list[dict]:
     )
     rows = await cursor.fetchall()
     return [dict(r) for r in rows]
+
 
 async def get_games_missing_blurhash(limit: int = 50) -> list[dict]:
     conn = await get_connection()
@@ -312,10 +321,12 @@ async def get_games_missing_blurhash(limit: int = 50) -> list[dict]:
     rows = await cursor.fetchall()
     return [dict(r) for r in rows]
 
+
 async def update_game_blurhash(title_id: str, bh: str):
     conn = await get_connection()
     await conn.execute("UPDATE games SET blurhash = ? WHERE title_id = ?", (bh, title_id))
     await conn.commit()
+
 
 async def get_random_backlog_game() -> dict | None:
     conn = await get_connection()

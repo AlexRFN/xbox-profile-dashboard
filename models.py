@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 
 class ApiError(BaseModel):
     """Standard error envelope returned by all API endpoints on failure."""
+
     success: bool = False
     error: str
 

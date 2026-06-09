@@ -10,6 +10,7 @@ Security: hostname allowlist prevents this from acting as an open image proxy.
 Concurrency: per-key asyncio lock dedupes simultaneous first-fetches for the
 same image so we don't pay the upstream + encode cost twice.
 """
+
 import asyncio
 import hashlib
 import logging
@@ -53,6 +54,7 @@ def _placeholder_response() -> Response:
         media_type="image/webp",
         headers={"Cache-Control": "public, max-age=3600"},
     )
+
 
 # Min/max sanity bounds — stops abuse via huge widths.
 _MIN_WIDTH = 16
@@ -139,8 +141,9 @@ def _serve_cached(out_path: Path) -> FileResponse:
 
 
 @router.get("/img")
-async def image_proxy(u: str = Query(..., description="upstream image URL"),
-                      w: int = Query(96, description="target max width")):
+async def image_proxy(
+    u: str = Query(..., description="upstream image URL"), w: int = Query(96, description="target max width")
+):
     if w < _MIN_WIDTH or w > _MAX_WIDTH:
         raise HTTPException(400, "invalid width")
     parsed = urlparse(u)

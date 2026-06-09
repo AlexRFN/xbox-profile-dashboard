@@ -3,6 +3,7 @@ Router-level tests using FastAPI TestClient.
 These test HTTP behaviour: status codes, response shapes, and concurrency guards.
 They run against the real in-memory test database (shared with test_database/).
 """
+
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -13,6 +14,7 @@ from sync.core import _get_sync_gate
 # ---------------------------------------------------------------------------
 # /api/stats
 # ---------------------------------------------------------------------------
+
 
 def test_stats_returns_200(client):
     resp = client.get("/api/stats")
@@ -25,6 +27,7 @@ def test_stats_returns_200(client):
 # /api/rate-limit
 # ---------------------------------------------------------------------------
 
+
 def test_rate_limit_returns_200(client):
     resp = client.get("/api/rate-limit")
     assert resp.status_code == 200
@@ -36,6 +39,7 @@ def test_rate_limit_returns_200(client):
 # /api/sync/status
 # ---------------------------------------------------------------------------
 
+
 def test_sync_status_idle(client):
     resp = client.get("/api/sync/status")
     assert resp.status_code == 200
@@ -45,6 +49,7 @@ def test_sync_status_idle(client):
 # ---------------------------------------------------------------------------
 # /api/sync/full — 409 when lock is held
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_sync_full_returns_409_when_busy(client):
@@ -64,6 +69,7 @@ async def test_sync_full_returns_409_when_busy(client):
 # /api/sync/game/{title_id} — 409 when lock is held
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_sync_game_returns_409_when_busy(client):
     gate = _get_sync_gate()
@@ -82,6 +88,7 @@ async def test_sync_game_returns_409_when_busy(client):
 # UPDATE with no matching rows returns rowcount=0 without raising).
 # ---------------------------------------------------------------------------
 
+
 def test_tracking_update_unknown_game(client):
     resp = client.put(
         "/api/game/NONEXISTENT/tracking",
@@ -97,21 +104,26 @@ def test_tracking_update_unknown_game(client):
 # PUT /api/game/{title_id}/tracking — manual fields preserved after update
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_tracking_update_persists(client):
     # Seed a game
-    await db.upsert_games_bulk([{
-        "title_id": "T001",
-        "name": "Test Game",
-        "display_image": "https://example.com/img.png",
-        "current_gamerscore": 0,
-        "total_gamerscore": 1000,
-        "progress_percentage": 0,
-        "current_achievements": 0,
-        "total_achievements": 40,
-        "last_played": "2024-01-01T00:00:00Z",
-        "is_gamepass": False,
-    }])
+    await db.upsert_games_bulk(
+        [
+            {
+                "title_id": "T001",
+                "name": "Test Game",
+                "display_image": "https://example.com/img.png",
+                "current_gamerscore": 0,
+                "total_gamerscore": 1000,
+                "progress_percentage": 0,
+                "current_achievements": 0,
+                "total_achievements": 40,
+                "last_played": "2024-01-01T00:00:00Z",
+                "is_gamepass": False,
+            }
+        ]
+    )
 
     resp = client.put("/api/game/T001/tracking", json={"status": "backlog", "rating": 4})
     assert resp.status_code == 200
@@ -126,6 +138,7 @@ async def test_tracking_update_persists(client):
 # Error shape: API endpoints always return {success, error} on failure
 # ---------------------------------------------------------------------------
 
+
 def test_error_shape_does_not_leak_internals():
     """The global exception handler must not expose raw exception messages."""
     from starlette.testclient import TestClient as _TC
@@ -137,11 +150,13 @@ def test_error_shape_does_not_leak_internals():
     # so the test stays offline and deterministic — patched first so it is active
     # when the TestClient enters and triggers startup.
     # raise_server_exceptions=False lets the 500 response reach us instead of re-raising.
-    with patch("xbox_api.resolve_identity", new_callable=AsyncMock), \
-         _TC(_app, raise_server_exceptions=False) as c, \
-         patch("routers.sync_routes.sync_game_details",
-               new_callable=AsyncMock,
-               side_effect=RuntimeError("something broke")):
+    with (
+        patch("xbox_api.resolve_identity", new_callable=AsyncMock),
+        _TC(_app, raise_server_exceptions=False) as c,
+        patch(
+            "routers.sync_routes.sync_game_details", new_callable=AsyncMock, side_effect=RuntimeError("something broke")
+        ),
+    ):
         resp = c.post("/api/sync/game/DEFINITELY_NOT_REAL_12345")
     assert resp.status_code == 500
     body = resp.json()

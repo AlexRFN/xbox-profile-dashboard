@@ -12,6 +12,7 @@ from xbox_api import get_player_achievements, get_title_achievements, get_x360_a
 
 log = logging.getLogger("xbox.sync")
 
+
 def _check_x360(devices) -> bool:
     if isinstance(devices, str):
         try:
@@ -19,6 +20,7 @@ def _check_x360(devices) -> bool:
         except (orjson.JSONDecodeError, TypeError):
             return False
     return devices == ["Xbox360"]
+
 
 def _parse_player_achievement(pa: dict) -> dict:
     pa_id = str(pa.get("id", ""))
@@ -40,11 +42,13 @@ def _parse_player_achievement(pa: dict) -> dict:
         "gamerscore": gs,
     }
 
+
 async def _save_achievements(title_id: str, data: list[dict], update_only: bool = False) -> int:
     fn = update_achievement_progress if update_only else upsert_achievements
     count = await fn(title_id, data)
     await recalc_game_from_achievements(title_id)
     return count
+
 
 async def _merge_modern_achievements(title_id: str, player_achs: list[dict] | None = None) -> tuple[int, int]:
     # Modern Xbox achievements require two API calls: title achievements (definitions + rarity)
@@ -66,19 +70,22 @@ async def _merge_modern_achievements(title_id: str, player_achs: list[dict] | No
         ta = title_lookup.get(parsed["achievement_id"], {})
         rarity = ta.get("rarity", {})
 
-        merged.append({
-            **parsed,
-            "name": pa.get("name", ""),
-            "description": pa.get("description", ""),
-            "locked_description": pa.get("lockedDescription", ""),
-            "is_secret": pa.get("isSecret", False),
-            "rarity_category": rarity.get("currentCategory"),
-            "rarity_percentage": rarity.get("currentPercentage"),
-            "media_assets": pa.get("mediaAssets", []),
-        })
+        merged.append(
+            {
+                **parsed,
+                "name": pa.get("name", ""),
+                "description": pa.get("description", ""),
+                "locked_description": pa.get("lockedDescription", ""),
+                "is_secret": pa.get("isSecret", False),
+                "rarity_category": rarity.get("currentCategory"),
+                "rarity_percentage": rarity.get("currentPercentage"),
+                "media_assets": pa.get("mediaAssets", []),
+            }
+        )
 
     ach_count = await _save_achievements(title_id, merged)
     return ach_count, api_calls
+
 
 async def _merge_x360_achievements(title_id: str) -> tuple[int, int]:
     achs = await get_x360_achievements(title_id)
@@ -92,22 +99,25 @@ async def _merge_x360_achievements(title_id: str) -> tuple[int, int]:
 
         rarity = a.get("rarity", {})
 
-        merged.append({
-            "achievement_id": a_id,
-            "name": a.get("name", ""),
-            "description": a.get("description", ""),
-            "locked_description": a.get("lockedDescription", ""),
-            "gamerscore": a.get("gamerscore", 0),
-            "progress_state": "Achieved" if a.get("unlocked") else "NotStarted",
-            "time_unlocked": time_unlocked,
-            "is_secret": a.get("isSecret", False),
-            "rarity_category": rarity.get("currentCategory"),
-            "rarity_percentage": rarity.get("currentPercentage"),
-            "media_assets": [],
-        })
+        merged.append(
+            {
+                "achievement_id": a_id,
+                "name": a.get("name", ""),
+                "description": a.get("description", ""),
+                "locked_description": a.get("lockedDescription", ""),
+                "gamerscore": a.get("gamerscore", 0),
+                "progress_state": "Achieved" if a.get("unlocked") else "NotStarted",
+                "time_unlocked": time_unlocked,
+                "is_secret": a.get("isSecret", False),
+                "rarity_category": rarity.get("currentCategory"),
+                "rarity_percentage": rarity.get("currentPercentage"),
+                "media_assets": [],
+            }
+        )
 
     ach_count = await _save_achievements(title_id, merged)
     return ach_count, 1
+
 
 async def _merge_player_achievements_only(title_id: str) -> tuple[int, int]:
     # Cheap path (1 API call) for "stats_only" changes: just refresh progress state

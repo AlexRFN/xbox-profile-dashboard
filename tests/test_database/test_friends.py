@@ -1,4 +1,5 @@
 """Tests for database/friends.py — friends upsert and query."""
+
 import pytest
 
 import database as db
@@ -11,8 +12,9 @@ _FRIEND_A = {
     "presenceState": "Online",
     "presenceText": "Playing Halo",
     "isFavorite": True,
-    "presenceDetails": [{"Device": "XboxSeriesX", "IsGame": True,
-                          "PresenceText": "Halo", "RichPresenceText": "In a match"}],
+    "presenceDetails": [
+        {"Device": "XboxSeriesX", "IsGame": True, "PresenceText": "Halo", "RichPresenceText": "In a match"}
+    ],
 }
 
 _FRIEND_B = {

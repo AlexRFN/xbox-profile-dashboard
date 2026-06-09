@@ -128,6 +128,7 @@ async def lifespan(app: FastAPI):
     scheduler.shutdown(wait=False)
     await close_client()
     from routers.img import close_http_client as close_img_client
+
     await close_img_client()
     await db.close_connection()
     log.info("Shutting down")
@@ -142,6 +143,7 @@ _CSP = (
     "worker-src 'self' blob:; "
     "font-src 'self'"
 )
+
 
 class PrecompressedStaticFiles(StaticFiles):
     """Serve a pre-generated `<path>.br` companion when the client advertises
@@ -227,8 +229,11 @@ async def service_worker():
     # Service workers must be served from the root scope they control.
     # StaticFiles serves from /static/, so we need a dedicated route at /.
     # no-cache ensures the browser always checks for updates.
-    return FileResponse(BASE_DIR / "static" / "sw.js", media_type="application/javascript",
-                        headers={"Cache-Control": "no-cache", "Service-Worker-Allowed": "/"})
+    return FileResponse(
+        BASE_DIR / "static" / "sw.js",
+        media_type="application/javascript",
+        headers={"Cache-Control": "no-cache", "Service-Worker-Allowed": "/"},
+    )
 
 
 # Routers imported after app creation to avoid circular import (routers → helpers → app)

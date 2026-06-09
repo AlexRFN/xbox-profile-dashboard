@@ -14,8 +14,7 @@ from .connection import get_connection
 from .validators import valid_ts_sql
 
 
-def _build_timeline_where(event_type: str, game_search: str,
-                          date_from: str, date_to: str) -> tuple[str, list]:
+def _build_timeline_where(event_type: str, game_search: str, date_from: str, date_to: str) -> tuple[str, list]:
     conditions = ["event_date IS NOT NULL"]
     params: list = []
     if event_type:
@@ -33,14 +32,20 @@ def _build_timeline_where(event_type: str, game_search: str,
     return "WHERE " + " AND ".join(conditions), params
 
 
-async def get_timeline_events(page: int = 1, per_page: int = 50,
-                        event_type: str = "", game_search: str = "",
-                        date_from: str = "", date_to: str = "") -> tuple[list[dict], bool]:
+async def get_timeline_events(
+    page: int = 1,
+    per_page: int = 50,
+    event_type: str = "",
+    game_search: str = "",
+    date_from: str = "",
+    date_to: str = "",
+) -> tuple[list[dict], bool]:
     conn = await get_connection()
     offset = (page - 1) * per_page
     outer_where, params = _build_timeline_where(event_type, game_search, date_from, date_to)
 
-    cursor = await conn.execute(f"""
+    cursor = await conn.execute(
+        f"""
         WITH max_unlock AS (
             -- Used to date the 'completion' event: the latest achievement unlock is the
             -- closest approximation to when the player actually finished the game.
@@ -67,7 +72,7 @@ async def get_timeline_events(page: int = 1, per_page: int = 50,
             FROM achievements a
             JOIN games g ON a.title_id = g.title_id
             WHERE a.progress_state = 'Achieved'
-              AND {valid_ts_sql('a')}
+              AND {valid_ts_sql("a")}
 
             UNION ALL
 
@@ -110,7 +115,7 @@ async def get_timeline_events(page: int = 1, per_page: int = 50,
             FROM achievements a3
             JOIN games g3 ON a3.title_id = g3.title_id
             WHERE a3.progress_state = 'Achieved'
-              AND {valid_ts_sql('a3')}
+              AND {valid_ts_sql("a3")}
             GROUP BY g3.title_id
         )
         {outer_where}
@@ -119,7 +124,9 @@ async def get_timeline_events(page: int = 1, per_page: int = 50,
                  -- so the milestone card isn't buried mid-achievement-streak.
                  CASE event_type WHEN 'completion' THEN 0 WHEN 'achievement' THEN 1 ELSE 2 END ASC
         LIMIT ? OFFSET ?
-    """, [*params, per_page + 1, offset])  # fetch +1 to detect whether another page exists
+    """,
+        [*params, per_page + 1, offset],
+    )  # fetch +1 to detect whether another page exists
     rows = await cursor.fetchall()
 
     events = [dict(r) for r in rows[:per_page]]
@@ -127,12 +134,14 @@ async def get_timeline_events(page: int = 1, per_page: int = 50,
     return events, has_more
 
 
-async def get_timeline_stats_and_months(event_type: str = "", game_search: str = "",
-                                   date_from: str = "", date_to: str = "") -> tuple[dict, dict[str, dict]]:
+async def get_timeline_stats_and_months(
+    event_type: str = "", game_search: str = "", date_from: str = "", date_to: str = ""
+) -> tuple[dict, dict[str, dict]]:
     conn = await get_connection()
     outer_where, params = _build_timeline_where(event_type, game_search, date_from, date_to)
 
-    cursor = await conn.execute(f"""
+    cursor = await conn.execute(
+        f"""
         SELECT
             STRFTIME('%Y-%m', event_date, 'localtime') as month_key,
             event_type,
@@ -150,7 +159,7 @@ async def get_timeline_stats_and_months(event_type: str = "", game_search: str =
                 SELECT 'achievement' as event_type, a.time_unlocked as event_date,
                        a.gamerscore as event_value, g.name as game_name
                 FROM achievements a JOIN games g ON a.title_id = g.title_id
-                WHERE a.progress_state = 'Achieved' AND {valid_ts_sql('a')}
+                WHERE a.progress_state = 'Achieved' AND {valid_ts_sql("a")}
                 UNION ALL
                 SELECT 'completion' as event_type,
                        COALESCE(mu.last_unlock, g2.finished_date, g2.last_played) as event_date,
@@ -161,18 +170,25 @@ async def get_timeline_stats_and_months(event_type: str = "", game_search: str =
                 SELECT 'first_played' as event_type, MIN(a3.time_unlocked) as event_date,
                        NULL as event_value, g3.name as game_name
                 FROM achievements a3 JOIN games g3 ON a3.title_id = g3.title_id
-                WHERE a3.progress_state = 'Achieved' AND {valid_ts_sql('a3')}
+                WHERE a3.progress_state = 'Achieved' AND {valid_ts_sql("a3")}
                 GROUP BY g3.title_id
             )
             {outer_where}
         )
         GROUP BY month_key, event_type
         ORDER BY month_key DESC
-    """, params)
+    """,
+        params,
+    )
     rows = await cursor.fetchall()
 
-    stats = {"achievement_count": 0, "completion_count": 0, "first_played_count": 0,
-             "total_gamerscore": 0, "total_events": 0}
+    stats = {
+        "achievement_count": 0,
+        "completion_count": 0,
+        "first_played_count": 0,
+        "total_gamerscore": 0,
+        "total_events": 0,
+    }
     months: dict[str, dict] = {}
 
     for r in rows:
@@ -191,8 +207,13 @@ async def get_timeline_stats_and_months(event_type: str = "", game_search: str =
             stats["first_played_count"] += cnt
 
         if mk not in months:
-            months[mk] = {"event_count": 0, "achievement_count": 0, "completion_count": 0,
-                          "first_played_count": 0, "gamerscore": 0}
+            months[mk] = {
+                "event_count": 0,
+                "achievement_count": 0,
+                "completion_count": 0,
+                "first_played_count": 0,
+                "gamerscore": 0,
+            }
         m = months[mk]
         m["event_count"] += cnt
         if et == "achievement":

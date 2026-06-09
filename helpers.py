@@ -29,6 +29,7 @@ templates.env.auto_reload = True
 
 # --- Asset bundling ---
 
+
 def _build_bundle(files: list[str], out_path: Path, file_header: str) -> str:
     """Concatenate source files into a bundle, write the bundle + a pre-compressed
     Brotli companion (quality 11) alongside it, and return a versioned URL.
@@ -54,21 +55,37 @@ def _build_bundle(files: list[str], out_path: Path, file_header: str) -> str:
     # Match mtime so the .br and the original share a ctag — prevents the
     # server from holding a stale .br when the bundle is rebuilt.
     import os as _os
+
     _os.utime(br_path, (out_path.stat().st_atime, out_path.stat().st_mtime))
     url = f"/static/{out_path.relative_to(static_dir).as_posix()}?v={max_mtime}"
     log.info(
         "Bundle built: %s (%d files, %d bytes raw, %d bytes br)",
-        url, len(parts), out_path.stat().st_size, br_path.stat().st_size,
+        url,
+        len(parts),
+        out_path.stat().st_size,
+        br_path.stat().st_size,
     )
     return url
 
 
 _CSS_FILES = [
-    "css/tokens.css", "css/base.css", "css/layout.css", "css/animations.css",
-    "css/library.css", "css/profile.css", "css/profile-hero.css",
-    "css/game-detail.css", "css/achievements.css",
-    "css/timeline.css", "css/friends.css", "css/captures.css", "css/heatmap.css",
-    "css/toast.css", "css/palette.css", "css/responsive.css", "css/overhaul.css",
+    "css/tokens.css",
+    "css/base.css",
+    "css/layout.css",
+    "css/animations.css",
+    "css/library.css",
+    "css/profile.css",
+    "css/profile-hero.css",
+    "css/game-detail.css",
+    "css/achievements.css",
+    "css/timeline.css",
+    "css/friends.css",
+    "css/captures.css",
+    "css/heatmap.css",
+    "css/toast.css",
+    "css/palette.css",
+    "css/responsive.css",
+    "css/overhaul.css",
     "css/vendor/lenis.css",
 ]
 _bundle_url: str | None = None
@@ -84,13 +101,24 @@ def get_bundle_url() -> str | None:
 
 
 _JS_SRC_FILES = [
-    "js/src/utils.js", "js/src/theme.js", "js/src/toast.js",
-    "js/src/reveal.js", "js/src/animations.js", "js/src/nav.js",
+    "js/src/utils.js",
+    "js/src/theme.js",
+    "js/src/toast.js",
+    "js/src/reveal.js",
+    "js/src/animations.js",
+    "js/src/nav.js",
     "js/src/preload.js",
-    "js/src/charts.js", "js/src/blurhash.js", "js/src/library.js",
-    "js/src/tracking.js", "js/src/sync.js", "js/src/timeline.js",
-    "js/src/heatmap.js", "js/src/captures.js", "js/src/lightbox.js",
-    "js/src/cmd-palette.js", "js/src/init.js",
+    "js/src/charts.js",
+    "js/src/blurhash.js",
+    "js/src/library.js",
+    "js/src/tracking.js",
+    "js/src/sync.js",
+    "js/src/timeline.js",
+    "js/src/heatmap.js",
+    "js/src/captures.js",
+    "js/src/lightbox.js",
+    "js/src/cmd-palette.js",
+    "js/src/init.js",
 ]
 _js_bundle_url: str | None = None
 
@@ -217,6 +245,7 @@ def register_filters() -> None:
 
 # --- Shared helpers ---
 
+
 def normalize_image_url(url: str) -> str:
     """Ensure Xbox image URLs use https://."""
     if not url:
@@ -236,8 +265,7 @@ def is_spa_nav(request: Request) -> bool:
     """
     h = request.headers
     return h.get("hx-request") == "true" and (
-        h.get("hx-target") == "main"
-        or h.get("hx-history-restore-request") == "true"
+        h.get("hx-target") == "main" or h.get("hx-history-restore-request") == "true"
     )
 
 
@@ -340,10 +368,10 @@ def stream_shell_response(
     )
 
 
-
 @dataclass
 class LibraryFilters:
     """Shared filter params for library table, grid, and export routes."""
+
     q: str = ""
     status: str = ""
     completion: str = ""
@@ -362,9 +390,15 @@ def get_filters(
     sort_by: str = "last_played",
     sort_dir: str = "desc",
 ) -> LibraryFilters:
-    return LibraryFilters(q=q, status=status, completion=completion,
-                          platform=platform, gamepass=gamepass,
-                          sort_by=sort_by, sort_dir=sort_dir)
+    return LibraryFilters(
+        q=q,
+        status=status,
+        completion=completion,
+        platform=platform,
+        gamepass=gamepass,
+        sort_by=sort_by,
+        sort_dir=sort_dir,
+    )
 
 
 def timeline_active_preset(date_from: str, date_to: str) -> str:
@@ -424,16 +458,18 @@ def _batch_events(events: list[dict], threshold: int = 3) -> list[dict]:
 
         if len(batch) >= threshold:
             batch_gs = sum(b.get("event_value") or 0 for b in batch)
-            result.append({
-                "event_type": "achievement_batch",
-                "event_date": ev.get("event_date"),
-                "game_name": ev.get("game_name", ""),
-                "game_image": ev.get("game_image", ""),
-                "title_id": title_id,
-                "batch_count": len(batch),
-                "batch_gamerscore": batch_gs,
-                "batch_events": batch,
-            })
+            result.append(
+                {
+                    "event_type": "achievement_batch",
+                    "event_date": ev.get("event_date"),
+                    "game_name": ev.get("game_name", ""),
+                    "game_image": ev.get("game_image", ""),
+                    "title_id": title_id,
+                    "batch_count": len(batch),
+                    "batch_gamerscore": batch_gs,
+                    "batch_events": batch,
+                }
+            )
             i = j
         else:
             for b in batch:
@@ -494,13 +530,16 @@ def group_events_by_month(events: list[dict], month_counts: dict | None = None) 
 
 def sse_response(async_gen):
     """Wrap an async generator as an SSE StreamingResponse."""
+
     async def generate():
         async for item in async_gen:
             yield f"data: {item}\n\n"
+
     return StreamingResponse(generate(), media_type="text/event-stream")
 
 
 # --- Heatmap grid builder ---
+
 
 def _heatmap_date_range(year: int | None, today: "date") -> tuple["date", "date", "date", "date"]:
     """Return (grid_start, grid_end, range_start, range_end) for the heatmap window."""

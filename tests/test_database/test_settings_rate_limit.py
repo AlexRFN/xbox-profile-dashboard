@@ -1,4 +1,5 @@
 """Tests for database/settings.py and database/rate_limit.py."""
+
 import pytest
 
 import database as db
@@ -7,6 +8,7 @@ import database.rate_limit as rl
 # ---------------------------------------------------------------------------
 # settings
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_get_missing_setting_returns_none():
@@ -40,6 +42,7 @@ async def test_set_multiple_keys_independent():
 # ---------------------------------------------------------------------------
 # rate_limit — in-memory counter functions
 # ---------------------------------------------------------------------------
+
 
 def test_get_api_calls_last_hour_returns_int():
     result = db.get_api_calls_last_hour()

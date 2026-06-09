@@ -6,6 +6,7 @@ verify that the change-detection algorithm correctly maps OpenXBL API
 payload shapes to sync decisions, and that sync_game_selective routes
 to the right code path for each sync_type.
 """
+
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -15,6 +16,7 @@ from sync.games import detect_changed_games, sync_game_selective
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _api_game(
     title_id="G1",
@@ -61,6 +63,7 @@ def _db_row(
 # detect_changed_games — new / never-fetched
 # ---------------------------------------------------------------------------
 
+
 def test_new_game_not_in_db():
     """Game absent from snapshot → sync_type='full', reason='new game'."""
     changes = detect_changed_games([_api_game()], {})
@@ -83,6 +86,7 @@ def test_game_never_fetched():
 # detect_changed_games — no-change (skip)
 # ---------------------------------------------------------------------------
 
+
 def test_no_changes_skipped():
     """Identical API and DB data → no changes."""
     db = {"G1": _db_row()}
@@ -101,6 +105,7 @@ def test_empty_both():
 # ---------------------------------------------------------------------------
 # detect_changed_games — score / achievement diffs
 # ---------------------------------------------------------------------------
+
 
 def test_gamerscore_increase_triggers_full_sync():
     db = {"G1": _db_row(gs=50)}
@@ -139,6 +144,7 @@ def test_multiple_diffs_all_listed_in_reason():
 # detect_changed_games — API quirk: total_achievements == 0 is ignored
 # ---------------------------------------------------------------------------
 
+
 def test_total_achievements_zero_api_not_a_change():
     """API returns total_achievements=0 even when achievements exist — must be ignored."""
     db = {"G1": _db_row(total_ach=10)}
@@ -159,12 +165,11 @@ def test_total_achievements_real_increase_is_a_change():
 # detect_changed_games — last_played → stats_only
 # ---------------------------------------------------------------------------
 
+
 def test_last_played_change_is_stats_only():
     """Changed last_played with no score diffs → stats_only sync (1 API call)."""
     db = {"G1": _db_row(last_played="2024-03-01T00:00:00Z")}
-    changes = detect_changed_games(
-        [_api_game(last_played="2024-05-01T00:00:00Z")], db
-    )
+    changes = detect_changed_games([_api_game(last_played="2024-05-01T00:00:00Z")], db)
     assert len(changes) == 1
     assert changes[0]["sync_type"] == "stats_only"
     assert changes[0]["api_cost"] == 1
@@ -175,12 +180,15 @@ def test_last_played_change_is_stats_only():
 # detect_changed_games — played-after-last-fetch heuristic
 # ---------------------------------------------------------------------------
 
+
 def test_played_after_last_detail_fetch_triggers_full():
     """Game was played more recently than last detail sync → full re-fetch."""
-    db = {"G1": _db_row(
-        last_played="2024-05-01",
-        stats_last_fetched="2024-04-01T00:00:00Z",
-    )}
+    db = {
+        "G1": _db_row(
+            last_played="2024-05-01",
+            stats_last_fetched="2024-04-01T00:00:00Z",
+        )
+    }
     # same last_played in API (no delta), but db_played > db_fetched
     changes = detect_changed_games([_api_game(last_played="2024-05-01")], db)
     assert len(changes) == 1
@@ -190,10 +198,12 @@ def test_played_after_last_detail_fetch_triggers_full():
 
 def test_fetched_after_played_no_change():
     """When last detail fetch is newer than last_played, no re-sync needed."""
-    db = {"G1": _db_row(
-        last_played="2024-04-01",
-        stats_last_fetched="2024-05-01T00:00:00Z",
-    )}
+    db = {
+        "G1": _db_row(
+            last_played="2024-04-01",
+            stats_last_fetched="2024-05-01T00:00:00Z",
+        )
+    }
     changes = detect_changed_games([_api_game(last_played="2024-04-01")], db)
     assert changes == []
 
@@ -201,6 +211,7 @@ def test_fetched_after_played_no_change():
 # ---------------------------------------------------------------------------
 # detect_changed_games — sort order
 # ---------------------------------------------------------------------------
+
 
 def test_changes_sorted_by_last_played_descending():
     """Most recently played games should be processed first."""
@@ -236,10 +247,12 @@ def test_multiple_games_mixed_states():
 # sync_game_selective — routing
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_selective_full_delegates_to_sync_game_details():
     """sync_type='full' must call sync_game_details, not the stats path."""
     from models import SyncResult
+
     result = SyncResult(success=True, message="ok", api_calls_used=3)
     with patch("sync.games.sync_game_details", new_callable=AsyncMock, return_value=result) as mock:
         out = await sync_game_selective("G1", "full")
@@ -251,10 +264,10 @@ async def test_selective_full_delegates_to_sync_game_details():
 @pytest.mark.asyncio
 async def test_selective_stats_only_fetches_stats():
     """sync_type='stats_only' calls get_game_stats and update_game_stats."""
-    with patch("sync.games.get_game_stats",
-               new_callable=AsyncMock,
-               return_value={"minutes_played": 120}) as mock_stats, \
-         patch("sync.games.update_game_stats", new_callable=AsyncMock):
+    with (
+        patch("sync.games.get_game_stats", new_callable=AsyncMock, return_value={"minutes_played": 120}) as mock_stats,
+        patch("sync.games.update_game_stats", new_callable=AsyncMock),
+    ):
         result = await sync_game_selective("G1", "stats_only")
     mock_stats.assert_called_once_with("G1")
     assert result.success is True
@@ -264,10 +277,10 @@ async def test_selective_stats_only_fetches_stats():
 @pytest.mark.asyncio
 async def test_selective_stats_only_error_returns_failure():
     """Stats fetch failure → SyncResult(success=False) with error in message."""
-    with patch("sync.games.get_game_stats",
-               new_callable=AsyncMock,
-               side_effect=ConnectionError("timeout")), \
-         patch("sync.games.update_game_stats", new_callable=AsyncMock):
+    with (
+        patch("sync.games.get_game_stats", new_callable=AsyncMock, side_effect=ConnectionError("timeout")),
+        patch("sync.games.update_game_stats", new_callable=AsyncMock),
+    ):
         result = await sync_game_selective("G1", "stats_only")
     assert result.success is False
     assert "timeout" in result.message.lower() or "Stats" in result.message
@@ -276,13 +289,11 @@ async def test_selective_stats_only_error_returns_failure():
 @pytest.mark.asyncio
 async def test_selective_player_achievements_calls_merge():
     """sync_type='player_achievements' calls stats + _merge_player_achievements_only."""
-    with patch("sync.games.get_game_stats",
-               new_callable=AsyncMock,
-               return_value={"minutes_played": 60}), \
-         patch("sync.games.update_game_stats", new_callable=AsyncMock), \
-         patch("sync.games._merge_player_achievements_only",
-               new_callable=AsyncMock,
-               return_value=(5, 1)) as mock_merge:
+    with (
+        patch("sync.games.get_game_stats", new_callable=AsyncMock, return_value={"minutes_played": 60}),
+        patch("sync.games.update_game_stats", new_callable=AsyncMock),
+        patch("sync.games._merge_player_achievements_only", new_callable=AsyncMock, return_value=(5, 1)) as mock_merge,
+    ):
         result = await sync_game_selective("G1", "player_achievements")
     mock_merge.assert_called_once_with("G1")
     assert result.success is True

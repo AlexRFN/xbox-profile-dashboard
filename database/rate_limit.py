@@ -15,16 +15,16 @@ _rate_spent: int = 0
 RATE_LIMIT_MAX: int = _DEFAULT_RATE_LIMIT_MAX
 RATE_LIMIT_BUDGET: int = _DEFAULT_RATE_LIMIT_MAX - 5
 
+
 async def _init_rate_limit_from_db() -> None:
     """Warm in-memory rate counter from DB at startup."""
     global _rate_spent
     conn = await get_connection()
-    cursor = await conn.execute(
-        "SELECT COUNT(*) as c FROM rate_limit_log WHERE timestamp > datetime('now', '-1 hour')"
-    )
+    cursor = await conn.execute("SELECT COUNT(*) as c FROM rate_limit_log WHERE timestamp > datetime('now', '-1 hour')")
     row = await cursor.fetchone()
     _rate_spent = row["c"] if row else 0
     log.info("Rate limit initialized from DB: %d calls in last hour", _rate_spent)
+
 
 async def sync_rate_limit_from_headers(headers, endpoint: str, status_code: int) -> None:
     """Update rate counter from API response headers and log the call.
@@ -52,15 +52,14 @@ async def sync_rate_limit_from_headers(headers, endpoint: str, status_code: int)
         except (ValueError, TypeError):
             log.warning("Unexpected X-RateLimit-Spent header value: %r", spent)
     conn = await get_connection()
-    await conn.execute("INSERT INTO rate_limit_log (endpoint, status_code) VALUES (?, ?)",
-                 (endpoint, status_code))
+    await conn.execute("INSERT INTO rate_limit_log (endpoint, status_code) VALUES (?, ?)", (endpoint, status_code))
     await conn.commit()
     log.debug("API call logged: %s -> %d (spent: %s)", endpoint, status_code, spent)
+
 
 def get_api_calls_last_hour() -> int:
     return _rate_spent
 
+
 def can_make_requests(count: int = 1) -> bool:
     return (_rate_spent + count) <= RATE_LIMIT_BUDGET
-
-

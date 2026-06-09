@@ -14,12 +14,18 @@ from .core import _guarded_sync, _json
 
 log = logging.getLogger("xbox.sync")
 
+
 def sync_screenshots():
     """SSE stream for screenshot sync."""
-    return _guarded_sync(_sync_screenshots_inner(), {
-        "message": "A sync is already in progress. Please wait.",
-        "total_screenshots": 0, "api_calls_used": 0,
-    })
+    return _guarded_sync(
+        _sync_screenshots_inner(),
+        {
+            "message": "A sync is already in progress. Please wait.",
+            "total_screenshots": 0,
+            "api_calls_used": 0,
+        },
+    )
+
 
 async def _sync_screenshots_inner(max_api_calls: int = 0):
     """Inner screenshot sync logic. max_api_calls=0 means unlimited (rate-limit only)."""
@@ -56,18 +62,24 @@ async def _sync_screenshots_inner(max_api_calls: int = 0):
             if page_num == 1 and len(values) > 0 and len(page_new) == len(values) and existing_ids:
                 sample_api_id = values[0].get("screenshotId", "<missing>")
                 sample_db_id = next(iter(existing_ids))
-                log.warning("Screenshot sync: page 1 had 0 matches against %d existing IDs — "
-                            "possible field mismatch (API id=%s, DB sample=%s)",
-                            len(existing_ids), sample_api_id, sample_db_id)
+                log.warning(
+                    "Screenshot sync: page 1 had 0 matches against %d existing IDs — "
+                    "possible field mismatch (API id=%s, DB sample=%s)",
+                    len(existing_ids),
+                    sample_api_id,
+                    sample_db_id,
+                )
 
-            yield _json({
-                "type": "progress",
-                "phase": "captures",
-                "page": page_num,
-                "fetched": len(new_screenshots),
-                "new": len(page_new),
-                "api_calls": api_calls,
-            })
+            yield _json(
+                {
+                    "type": "progress",
+                    "phase": "captures",
+                    "page": page_num,
+                    "fetched": len(new_screenshots),
+                    "new": len(page_new),
+                    "api_calls": api_calls,
+                }
+            )
 
             # API returns newest screenshots first. If an entire page contains no new items,
             # everything older is also already synced — stop paginating.
@@ -82,17 +94,29 @@ async def _sync_screenshots_inner(max_api_calls: int = 0):
 
     except RateLimitExceeded as e:
         log.warning("Screenshot sync blocked by rate limit: %s", e)
-        await update_sync_log(sync_id, "failed",
-                                error_message=str(e), api_calls_used=api_calls)
-        yield _json({"type": "finished", "phase": "captures", "message": str(e),
-                          "total_screenshots": 0, "api_calls_used": api_calls})
+        await update_sync_log(sync_id, "failed", error_message=str(e), api_calls_used=api_calls)
+        yield _json(
+            {
+                "type": "finished",
+                "phase": "captures",
+                "message": str(e),
+                "total_screenshots": 0,
+                "api_calls_used": api_calls,
+            }
+        )
         return
     except Exception as e:
         log.error("Screenshot sync failed: %s", e, exc_info=True)
-        await update_sync_log(sync_id, "failed",
-                                error_message=str(e), api_calls_used=api_calls)
-        yield _json({"type": "finished", "phase": "captures", "message": f"Failed: {e}",
-                          "total_screenshots": 0, "api_calls_used": api_calls})
+        await update_sync_log(sync_id, "failed", error_message=str(e), api_calls_used=api_calls)
+        yield _json(
+            {
+                "type": "finished",
+                "phase": "captures",
+                "message": f"Failed: {e}",
+                "total_screenshots": 0,
+                "api_calls_used": api_calls,
+            }
+        )
         return
 
     count = 0
@@ -106,16 +130,17 @@ async def _sync_screenshots_inner(max_api_calls: int = 0):
     else:
         msg = f"No new screenshots found ({api_calls} API calls)."
 
-    await update_sync_log(sync_id, "success",
-                            games_updated=count, api_calls_used=api_calls)
+    await update_sync_log(sync_id, "success", games_updated=count, api_calls_used=api_calls)
     log.info("Screenshot sync complete: %d new screenshots, %d API calls", count, api_calls)
 
     rate_used = get_api_calls_last_hour()
-    yield _json({
-        "type": "finished",
-        "phase": "captures",
-        "message": msg,
-        "total_screenshots": count,
-        "api_calls_used": api_calls,
-        "rate_used": rate_used,
-    })
+    yield _json(
+        {
+            "type": "finished",
+            "phase": "captures",
+            "message": msg,
+            "total_screenshots": count,
+            "api_calls_used": api_calls,
+            "rate_used": rate_used,
+        }
+    )

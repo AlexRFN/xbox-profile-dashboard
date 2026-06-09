@@ -1,4 +1,5 @@
 """Tests for database/timeline.py — UNION ALL timeline query."""
+
 import pytest
 
 import database as db
@@ -45,6 +46,7 @@ async def _seed():
 # get_timeline_events
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_empty_db_returns_empty_events():
     events, has_more = await db.get_timeline_events()
@@ -73,8 +75,7 @@ async def test_first_played_event_generated():
 
 @pytest.mark.asyncio
 async def test_completion_event_for_100pct_game():
-    game = dict(_GAME, progress_percentage=100, current_achievements=20,
-                title_id="TL002", name="Complete Game")
+    game = dict(_GAME, progress_percentage=100, current_achievements=20, title_id="TL002", name="Complete Game")
     ach = dict(_ACH, achievement_id="A2")
     await db.upsert_games_bulk([game])
     await db.upsert_achievements("TL002", [ach])
@@ -115,8 +116,7 @@ async def test_pagination_has_more():
     # Seed 3 achievements — request page_size=2 so has_more=True
     await db.upsert_games_bulk([_GAME])
     achs = [
-        dict(_ACH, achievement_id=f"AP{i}", name=f"Ach {i}",
-             time_unlocked=f"2024-0{i+1}-01T10:00:00Z")
+        dict(_ACH, achievement_id=f"AP{i}", name=f"Ach {i}", time_unlocked=f"2024-0{i + 1}-01T10:00:00Z")
         for i in range(1, 4)
     ]
     await db.upsert_achievements("TL001", achs)
@@ -128,6 +128,7 @@ async def test_pagination_has_more():
 # ---------------------------------------------------------------------------
 # get_timeline_stats_and_months
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_stats_empty_db():

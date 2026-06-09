@@ -4,6 +4,7 @@ A real upstream fetch is too brittle to test inline (network + binary decode),
 so the cache-hit path is covered by pre-seeding `data/img_cache/` with a
 known file and asserting the route serves it without a network call.
 """
+
 from io import BytesIO
 from pathlib import Path
 
@@ -45,31 +46,43 @@ class TestImageProxy:
         assert len(resp.content) > 0
 
     def test_rejects_disallowed_host(self, client):
-        resp = client.get("/img", params={
-            "u": "https://evil.example.com/x.png",
-            "w": 96,
-        })
+        resp = client.get(
+            "/img",
+            params={
+                "u": "https://evil.example.com/x.png",
+                "w": 96,
+            },
+        )
         assert resp.status_code == 400
 
     def test_rejects_http_scheme(self, client):
-        resp = client.get("/img", params={
-            "u": "http://images-eds-ssl.xboxlive.com/image?url=A",
-            "w": 96,
-        })
+        resp = client.get(
+            "/img",
+            params={
+                "u": "http://images-eds-ssl.xboxlive.com/image?url=A",
+                "w": 96,
+            },
+        )
         assert resp.status_code == 400
 
     def test_rejects_oversize_width(self, client):
-        resp = client.get("/img", params={
-            "u": "https://images-eds-ssl.xboxlive.com/image?url=A",
-            "w": 9999,
-        })
+        resp = client.get(
+            "/img",
+            params={
+                "u": "https://images-eds-ssl.xboxlive.com/image?url=A",
+                "w": 9999,
+            },
+        )
         assert resp.status_code == 400
 
     def test_rejects_undersize_width(self, client):
-        resp = client.get("/img", params={
-            "u": "https://images-eds-ssl.xboxlive.com/image?url=A",
-            "w": 1,
-        })
+        resp = client.get(
+            "/img",
+            params={
+                "u": "https://images-eds-ssl.xboxlive.com/image?url=A",
+                "w": 1,
+            },
+        )
         assert resp.status_code == 400
 
     def test_userinfo_host_evasion_blocked(self, client):
@@ -78,10 +91,13 @@ class TestImageProxy:
         # fetch path runs; on failure the proxy now returns the inline
         # placeholder (status 200, image/webp) rather than a 302 redirect that
         # would re-route through CSP `connect-src` for service-worker callers.
-        resp = client.get("/img", params={
-            "u": "https://evil.example.com@images-eds-ssl.xboxlive.com/x",
-            "w": 96,
-        })
+        resp = client.get(
+            "/img",
+            params={
+                "u": "https://evil.example.com@images-eds-ssl.xboxlive.com/x",
+                "w": 96,
+            },
+        )
         assert resp.status_code == 200
         assert resp.headers["content-type"] == "image/webp"
 
@@ -101,10 +117,13 @@ class TestImageProxy:
         # Isolate this test's negative-cache writes from other tests.
         monkeypatch.setattr(img_module, "_negative_cache", {})
 
-        resp = client.get("/img", params={
-            "u": "https://images-eds-ssl.xboxlive.com/image?url=NEVER_SEEN_BEFORE",
-            "w": 96,
-        })
+        resp = client.get(
+            "/img",
+            params={
+                "u": "https://images-eds-ssl.xboxlive.com/image?url=NEVER_SEEN_BEFORE",
+                "w": 96,
+            },
+        )
         assert resp.status_code == 200
         assert resp.headers["content-type"] == "image/webp"
         assert resp.content == _PLACEHOLDER

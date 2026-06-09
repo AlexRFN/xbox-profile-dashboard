@@ -12,6 +12,7 @@ _cache: dict[str, tuple] = {}
 # "caller omitted the field" from "caller explicitly passed None".
 _UNSET = object()
 
+
 def _cache_get(key: str, ttl: float = 0):
     """Return cached value or None if missing/expired."""
     entry = _cache.get(key)
@@ -23,12 +24,15 @@ def _cache_get(key: str, ttl: float = 0):
         return None
     return value
 
+
 def _cache_set(key: str, value):
     _cache[key] = (value, time.monotonic())
+
 
 def _cache_invalidate(*keys: str):
     for key in keys:
         _cache.pop(key, None)
+
 
 def _cache_clear_all() -> None:
     # Unified sync touches games, achievements, screenshots, and friends, plus

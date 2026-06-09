@@ -4,6 +4,7 @@ These tests verify that each page renders without crashing given a clean or
 seeded database. They check status codes and basic HTML structure, not the
 visual output.
 """
+
 import pytest
 
 import database as db
@@ -45,6 +46,7 @@ _ACH = {
 # / — Profile/dashboard page
 # ---------------------------------------------------------------------------
 
+
 def test_dashboard_empty_db(client):
     resp = client.get("/")
     assert resp.status_code == 200
@@ -62,6 +64,7 @@ async def test_dashboard_with_data(client):
 # ---------------------------------------------------------------------------
 # /library
 # ---------------------------------------------------------------------------
+
 
 def test_library_empty(client):
     resp = client.get("/library")
@@ -84,6 +87,7 @@ def test_library_with_filters(client):
 # /game/{title_id}
 # ---------------------------------------------------------------------------
 
+
 def test_game_detail_404_for_unknown(client):
     resp = client.get("/game/UNKNOWN_TITLE_99999")
     assert resp.status_code == 404
@@ -99,6 +103,7 @@ async def test_game_detail_with_seeded_game(client):
 # ---------------------------------------------------------------------------
 # /timeline
 # ---------------------------------------------------------------------------
+
 
 def test_timeline_empty(client):
     resp = client.get("/timeline")
@@ -128,6 +133,7 @@ def test_timeline_date_param_compat(client):
 # /achievements
 # ---------------------------------------------------------------------------
 
+
 def test_achievements_empty(client):
     resp = client.get("/achievements")
     assert resp.status_code == 200
@@ -150,6 +156,7 @@ def test_achievements_with_filters(client):
 # /captures
 # ---------------------------------------------------------------------------
 
+
 def test_captures_empty(client):
     resp = client.get("/captures")
     assert resp.status_code == 200
@@ -159,6 +166,7 @@ def test_captures_empty(client):
 # /friends
 # ---------------------------------------------------------------------------
 
+
 def test_friends_empty_triggers_auto_fetch(client):
     resp = client.get("/friends")
     assert resp.status_code == 200
@@ -166,15 +174,19 @@ def test_friends_empty_triggers_auto_fetch(client):
 
 @pytest.mark.asyncio
 async def test_friends_with_data(client):
-    await db.upsert_friends([{
-        "xuid": "9876543210",
-        "gamertag": "TestFriend",
-        "displayPicRaw": "",
-        "gamerScore": 1000,
-        "presenceState": "Online",
-        "presenceText": "Playing",
-        "isFavorite": False,
-    }])
+    await db.upsert_friends(
+        [
+            {
+                "xuid": "9876543210",
+                "gamertag": "TestFriend",
+                "displayPicRaw": "",
+                "gamerScore": 1000,
+                "presenceState": "Online",
+                "presenceText": "Playing",
+                "isFavorite": False,
+            }
+        ]
+    )
     resp = client.get("/friends")
     assert resp.status_code == 200
 
@@ -182,6 +194,7 @@ async def test_friends_with_data(client):
 # ---------------------------------------------------------------------------
 # htmx partial routes
 # ---------------------------------------------------------------------------
+
 
 def test_library_table_partial(client):
     resp = client.get("/api/library/table")
@@ -232,6 +245,7 @@ def test_captures_game_expand_partial(client):
 # Export routes
 # ---------------------------------------------------------------------------
 
+
 def test_export_csv_empty(client):
     resp = client.get("/api/export/csv")
     assert resp.status_code == 200
@@ -266,6 +280,7 @@ async def test_export_json_with_data(client):
 # Stats / misc API routes
 # ---------------------------------------------------------------------------
 
+
 def test_monthly_activity_api(client):
     resp = client.get("/api/activity/month?year=2024&month=6")
     assert resp.status_code == 200
@@ -298,6 +313,7 @@ async def test_random_backlog_with_backlog_game(client):
 # ---------------------------------------------------------------------------
 # Capture download SSRF guard
 # ---------------------------------------------------------------------------
+
 
 def test_capture_download_rejects_non_xbox_domain(client):
     resp = client.get("/api/captures/download?url=https://evil.com/file.png&filename=test.png")

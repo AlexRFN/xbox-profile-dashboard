@@ -9,22 +9,26 @@ from .connection import get_connection
 
 log = logging.getLogger("xbox.db")
 
+
 async def upsert_friends(friends: list[dict]) -> int:
     conn = await get_connection()
     rows = []
     for f in friends:
-        rows.append((
-            str(f.get("xuid", "")),
-            f.get("gamertag", ""),
-            f.get("displayPicRaw", ""),
-            int(f.get("gamerScore", 0)),
-            f.get("presenceState", "Offline"),
-            f.get("presenceText", ""),
-            1 if f.get("isFavorite") else 0,
-            orjson.dumps(f).decode(),
-        ))
+        rows.append(
+            (
+                str(f.get("xuid", "")),
+                f.get("gamertag", ""),
+                f.get("displayPicRaw", ""),
+                int(f.get("gamerScore", 0)),
+                f.get("presenceState", "Offline"),
+                f.get("presenceText", ""),
+                1 if f.get("isFavorite") else 0,
+                orjson.dumps(f).decode(),
+            )
+        )
 
-    await conn.executemany("""
+    await conn.executemany(
+        """
         INSERT INTO friends (xuid, gamertag, display_pic, gamer_score,
                              presence_state, presence_text, is_favorite, raw_json)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -37,7 +41,9 @@ async def upsert_friends(friends: list[dict]) -> int:
             is_favorite = excluded.is_favorite,
             raw_json = excluded.raw_json,
             updated_at = datetime('now')
-    """, rows)
+    """,
+        rows,
+    )
 
     # Full replace: the API returns the complete friends list, so anyone missing from
     # this batch is no longer a friend and should be removed.
@@ -51,6 +57,7 @@ async def upsert_friends(friends: list[dict]) -> int:
     await conn.commit()
     _cache_invalidate(CacheKey.FRIENDS)
     return len(rows)
+
 
 async def get_friends() -> list[dict]:
     cached = _cache_get(CacheKey.FRIENDS, ttl=300)

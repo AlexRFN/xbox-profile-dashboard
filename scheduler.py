@@ -105,8 +105,7 @@ async def scheduled_detail_sync():
             return
 
         batch, batch_cost = fit_changes_to_budget(changes, budget)
-        log.info("Scheduled detail sync: %d/%d games, %d API calls budgeted",
-                 len(batch), len(changes), batch_cost)
+        log.info("Scheduled detail sync: %d/%d games, %d API calls budgeted", len(batch), len(changes), batch_cost)
 
         sem = asyncio.Semaphore(SCHEDULED_SYNC_CONCURRENCY)
 
@@ -147,6 +146,7 @@ async def scheduled_friends_sync():
 async def scheduled_db_optimize():
     """Run PRAGMA optimize to keep query planner stats fresh."""
     import database as db
+
     try:
         await db.run_optimize()
         log.debug("PRAGMA optimize completed")

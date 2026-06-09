@@ -1,4 +1,5 @@
 """Tests for database/heatmap.py — heatmap data queries."""
+
 import pytest
 
 import database as db

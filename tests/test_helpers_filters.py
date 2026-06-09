@@ -1,4 +1,5 @@
 """Tests for Jinja2 filter functions and event grouping helpers in helpers.py."""
+
 from helpers import (
     _batch_events,
     format_date,
@@ -13,6 +14,7 @@ from helpers import (
 # ---------------------------------------------------------------------------
 # format_playtime
 # ---------------------------------------------------------------------------
+
 
 class TestFormatPlaytime:
     def test_none_returns_none(self):
@@ -38,6 +40,7 @@ class TestFormatPlaytime:
 # ---------------------------------------------------------------------------
 # format_date
 # ---------------------------------------------------------------------------
+
 
 class TestFormatDate:
     def test_none_returns_none(self):
@@ -68,6 +71,7 @@ class TestFormatDate:
 # format_timeago
 # ---------------------------------------------------------------------------
 
+
 class TestFormatTimeago:
     def test_none_returns_never(self):
         assert format_timeago(None) == "Never"
@@ -77,12 +81,14 @@ class TestFormatTimeago:
 
     def test_recent_timestamp_returns_ago_string(self):
         from datetime import UTC, datetime, timedelta
+
         recent = (datetime.now(UTC) - timedelta(minutes=5)).isoformat()
         result = format_timeago(recent)
         assert "ago" in result or "just now" in result
 
     def test_very_recent_returns_just_now(self):
         from datetime import UTC, datetime, timedelta
+
         recent = (datetime.now(UTC) - timedelta(seconds=10)).isoformat()
         assert format_timeago(recent) == "just now"
 
@@ -97,6 +103,7 @@ class TestFormatTimeago:
 # ---------------------------------------------------------------------------
 # from_json
 # ---------------------------------------------------------------------------
+
 
 class TestFromJson:
     def test_valid_json_string(self):
@@ -118,6 +125,7 @@ class TestFromJson:
 # ---------------------------------------------------------------------------
 # thumb
 # ---------------------------------------------------------------------------
+
 
 class TestThumb:
     def test_microsoft_url_gets_size_params(self):
@@ -153,6 +161,7 @@ class TestThumb:
 # normalize_image_url
 # ---------------------------------------------------------------------------
 
+
 class TestNormalizeImageUrl:
     def test_http_rewritten_to_https(self):
         assert normalize_image_url("http://example.com/img.png") == "https://example.com/img.png"
@@ -175,18 +184,23 @@ class TestNormalizeImageUrl:
 # _batch_events
 # ---------------------------------------------------------------------------
 
+
 class TestBatchEvents:
     def _ach(self, name, date="2024-05-15T10:00:00Z", title_id="G1", gs=10):
-        return {"event_type": "achievement", "event_date": date,
-                "event_title": name, "game_name": "Game", "title_id": title_id,
-                "event_value": gs}
+        return {
+            "event_type": "achievement",
+            "event_date": date,
+            "event_title": name,
+            "game_name": "Game",
+            "title_id": title_id,
+            "event_value": gs,
+        }
 
     def test_empty_returns_empty(self):
         assert _batch_events([]) == []
 
     def test_non_achievement_events_pass_through(self):
-        ev = {"event_type": "completion", "event_date": "2024-05-15T10:00:00Z",
-              "event_title": "Done", "title_id": "G1"}
+        ev = {"event_type": "completion", "event_date": "2024-05-15T10:00:00Z", "event_title": "Done", "title_id": "G1"}
         result = _batch_events([ev])
         assert result == [ev]
 
@@ -204,9 +218,7 @@ class TestBatchEvents:
         assert result[0]["batch_count"] == 3
 
     def test_different_games_not_batched_together(self):
-        evs = [self._ach("A1", title_id="G1"),
-               self._ach("A2", title_id="G2"),
-               self._ach("A3", title_id="G1")]
+        evs = [self._ach("A1", title_id="G1"), self._ach("A2", title_id="G2"), self._ach("A3", title_id="G1")]
         result = _batch_events(evs)
         # G1/A1 alone, G2, then G1/A3 alone — no run of 3 same-game consecutive
         assert all(e["event_type"] == "achievement" for e in result)
@@ -221,11 +233,17 @@ class TestBatchEvents:
 # group_events_by_month
 # ---------------------------------------------------------------------------
 
+
 class TestGroupEventsByMonth:
     def _ach_event(self, date="2024-05-15T10:00:00Z", gs=10):
-        return {"event_type": "achievement", "event_date": date,
-                "event_value": gs, "game_name": "Game", "title_id": "G1",
-                "event_title": "An achievement"}
+        return {
+            "event_type": "achievement",
+            "event_date": date,
+            "event_value": gs,
+            "game_name": "Game",
+            "title_id": "G1",
+            "event_title": "An achievement",
+        }
 
     def test_empty_returns_empty(self):
         assert group_events_by_month([]) == []
@@ -260,10 +278,15 @@ class TestGroupEventsByMonth:
 
     def test_month_counts_override_computed(self):
         events = [self._ach_event()]
-        month_counts = {"2024-05": {
-            "achievement_count": 99, "completion_count": 1,
-            "first_played_count": 0, "gamerscore": 500, "event_count": 100,
-        }}
+        month_counts = {
+            "2024-05": {
+                "achievement_count": 99,
+                "completion_count": 1,
+                "first_played_count": 0,
+                "gamerscore": 500,
+                "event_count": 100,
+            }
+        }
         groups = group_events_by_month(events, month_counts)
         assert groups[0]["achievement_count"] == 99
         assert groups[0]["gamerscore"] == 500

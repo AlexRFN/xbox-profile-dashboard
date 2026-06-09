@@ -7,6 +7,7 @@ from .connection import get_connection
 
 log = logging.getLogger("xbox.db")
 
+
 async def upsert_screenshots(screenshots: list[dict]) -> int:
     conn = await get_connection()
     rows = []
@@ -32,25 +33,28 @@ async def upsert_screenshots(screenshots: list[dict]) -> int:
             elif th.get("thumbnailType") == 2:
                 thumb_large = uri
 
-        rows.append((
-            s.get("screenshotId", ""),
-            str(s.get("titleId", "")),
-            s.get("titleName", ""),
-            s.get("dateTaken", ""),
-            s.get("resolutionWidth", 0),
-            s.get("resolutionHeight", 0),
-            download_uri,
-            download_hdr_uri,
-            thumb_small,
-            thumb_large,
-            file_size,
-            0,
-            s.get("views") or 0,
-            "",
-            s.get("deviceType") or "",
-        ))
+        rows.append(
+            (
+                s.get("screenshotId", ""),
+                str(s.get("titleId", "")),
+                s.get("titleName", ""),
+                s.get("dateTaken", ""),
+                s.get("resolutionWidth", 0),
+                s.get("resolutionHeight", 0),
+                download_uri,
+                download_hdr_uri,
+                thumb_small,
+                thumb_large,
+                file_size,
+                0,
+                s.get("views") or 0,
+                "",
+                s.get("deviceType") or "",
+            )
+        )
 
-    await conn.executemany("""
+    await conn.executemany(
+        """
         INSERT INTO screenshots (
             content_id, title_id, title_name, capture_date,
             resolution_width, resolution_height,
@@ -71,11 +75,14 @@ async def upsert_screenshots(screenshots: list[dict]) -> int:
             view_count = excluded.view_count,
             creation_type = excluded.creation_type,
             device_type = excluded.device_type
-    """, rows)
+    """,
+        rows,
+    )
     await conn.commit()
     log.info("Upserted %d screenshots", len(rows))
     _cache_invalidate(CacheKey.DASHBOARD_STATS)
     return len(rows)
+
 
 async def get_existing_screenshot_ids() -> set[str]:
     conn = await get_connection()
@@ -83,23 +90,28 @@ async def get_existing_screenshot_ids() -> set[str]:
     rows = await cursor.fetchall()
     return {r["content_id"] for r in rows}
 
+
 async def get_all_screenshots(page: int = 1, per_page: int = 50) -> tuple[list[dict], int, bool]:
     conn = await get_connection()
     cursor = await conn.execute("SELECT COUNT(*) as cnt FROM screenshots")
     total_row = await cursor.fetchone()
     total = total_row["cnt"]
     offset = (page - 1) * per_page
-    cursor = await conn.execute("""
+    cursor = await conn.execute(
+        """
         SELECT s.*, g.display_image as game_image
         FROM screenshots s
         LEFT JOIN games g ON s.title_id = g.title_id
         ORDER BY s.capture_date DESC
         LIMIT ? OFFSET ?
-    """, (per_page + 1, offset))
+    """,
+        (per_page + 1, offset),
+    )
     rows = await cursor.fetchall()
     items = [dict(r) for r in rows[:per_page]]
     has_more = len(rows) > per_page
     return items, total, has_more
+
 
 async def get_screenshots_by_game() -> list[dict]:
     conn = await get_connection()
@@ -120,17 +132,20 @@ async def get_screenshots_by_game() -> list[dict]:
     preview_rows = []
     # SQLite has a 999-parameter limit; chunk to stay safely under it
     for i in range(0, len(title_ids), 500):
-        chunk = title_ids[i:i + 500]
+        chunk = title_ids[i : i + 500]
         placeholders = ",".join("?" * len(chunk))
         # Window function: select the 6 most recent screenshots per game in one query
-        cursor = await conn.execute(f"""
+        cursor = await conn.execute(
+            f"""
             SELECT * FROM (
                 SELECT s.*,
                        ROW_NUMBER() OVER (PARTITION BY s.title_id ORDER BY s.capture_date DESC) as rn
                 FROM screenshots s
                 WHERE s.title_id IN ({placeholders})
             ) WHERE rn <= 6
-        """, chunk)
+        """,
+            chunk,
+        )
         rows = await cursor.fetchall()
         preview_rows.extend(rows)
 
@@ -146,6 +161,7 @@ async def get_screenshots_by_game() -> list[dict]:
         result.append(grp_dict)
     return result
 
+
 async def get_screenshots_for_game(title_id: str, limit: int = 0) -> list[dict]:
     conn = await get_connection()
     sql = "SELECT * FROM screenshots WHERE title_id = ? ORDER BY capture_date DESC"
@@ -156,6 +172,7 @@ async def get_screenshots_for_game(title_id: str, limit: int = 0) -> list[dict]:
     cursor = await conn.execute(sql, params)
     rows = await cursor.fetchall()
     return [dict(r) for r in rows]
+
 
 async def get_screenshot_count(title_id: str | None = None) -> int:
     conn = await get_connection()

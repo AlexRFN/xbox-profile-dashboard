@@ -6,6 +6,7 @@ from .validators import valid_ts_sql
 
 _YEAR_RANGE_NONE = object()  # sentinel: distinguishes "cached absence" from cache miss
 
+
 async def get_heatmap_data(year: int | None = None) -> list[dict]:
     cache_key = CacheKey.heatmap_year(year) if year is not None else CacheKey.HEATMAP_ROLLING
     cached = _cache_get(cache_key, ttl=300)
@@ -14,14 +15,17 @@ async def get_heatmap_data(year: int | None = None) -> list[dict]:
     conn = await get_connection()
     if year is not None:
         # 'localtime' converts UTC timestamps to the local calendar day for display
-        cursor = await conn.execute(f"""
+        cursor = await conn.execute(
+            f"""
             SELECT DATE(time_unlocked, 'localtime') as day, COUNT(*) as count
             FROM achievements
             WHERE progress_state = 'Achieved'
               AND {valid_ts_sql()}
               AND time_unlocked >= ? AND time_unlocked < ?
             GROUP BY day ORDER BY day
-        """, (f"{year}-01-01", f"{year + 1}-01-01"))
+        """,
+            (f"{year}-01-01", f"{year + 1}-01-01"),
+        )
         rows = await cursor.fetchall()
     else:
         # 371 days = 53 weeks + 2 days buffer — ensures the grid always has 53 full weeks
@@ -37,6 +41,7 @@ async def get_heatmap_data(year: int | None = None) -> list[dict]:
     result = [dict(r) for r in rows]
     _cache_set(cache_key, result)
     return result
+
 
 async def get_heatmap_year_range() -> tuple[int, int] | None:
     cached = _cache_get("heatmap_year_range", ttl=600)
@@ -60,13 +65,15 @@ async def get_heatmap_year_range() -> tuple[int, int] | None:
     _cache_set("heatmap_year_range", result)
     return result
 
+
 async def get_monthly_activity(year: int, month: int) -> dict:
     cache_key = CacheKey.activity(year, month)
     cached = _cache_get(cache_key, ttl=300)
     if cached is not None:
         return cached
     conn = await get_connection()
-    cursor = await conn.execute(f"""
+    cursor = await conn.execute(
+        f"""
         SELECT CAST(strftime('%d', time_unlocked, 'localtime') AS INTEGER) as day, COUNT(*) as count
         FROM achievements
         WHERE progress_state = 'Achieved'
@@ -74,7 +81,9 @@ async def get_monthly_activity(year: int, month: int) -> dict:
           AND strftime('%Y', time_unlocked, 'localtime') = ?
           AND strftime('%m', time_unlocked, 'localtime') = ?
         GROUP BY day
-    """, (str(year), f"{month:02d}"))
+    """,
+        (str(year), f"{month:02d}"),
+    )
     rows = await cursor.fetchall()
     result = {r["day"]: r["count"] for r in rows}
     _cache_set(cache_key, result)

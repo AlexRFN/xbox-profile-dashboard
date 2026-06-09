@@ -7,6 +7,7 @@ Strategy:
 - Patch can_make_requests() → True and sync_rate_limit_from_headers() → no-op
   so tests never touch the real database.
 """
+
 from unittest.mock import AsyncMock, patch
 
 import httpx
@@ -21,6 +22,7 @@ XUID = xbox_api.XUID
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture(autouse=True)
 async def fresh_client(httpx_mock):
@@ -38,6 +40,7 @@ async def fresh_client(httpx_mock):
 # ---------------------------------------------------------------------------
 # _get — envelope unwrapping
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_get_unwraps_content_envelope(httpx_mock):
@@ -83,6 +86,7 @@ async def test_get_raises_rate_limit_exceeded_when_budget_exhausted(httpx_mock):
 # get_all_games — field mapping and Win32 filter
 # ---------------------------------------------------------------------------
 
+
 def _make_title(title_id, name, devices, ach=None, gp=False):
     return {
         "titleId": title_id,
@@ -91,7 +95,8 @@ def _make_title(title_id, name, devices, ach=None, gp=False):
         "devices": devices,
         "xboxLiveTier": "Full",
         "pfn": None,
-        "achievement": ach or {
+        "achievement": ach
+        or {
             "currentGamerscore": 100,
             "totalGamerscore": 1000,
             "progressPercentage": 10,
@@ -108,10 +113,12 @@ async def test_get_all_games_filters_win32_only(httpx_mock):
     """Titles with devices==["Win32"] are excluded; Xbox titles are kept."""
     httpx_mock.add_response(
         url=f"{BASE}/titles/{XUID}",
-        json={"titles": [
-            _make_title("111", "Xbox Game", ["XboxSeries", "Win32"]),
-            _make_title("222", "PC Only",   ["Win32"]),
-        ]},
+        json={
+            "titles": [
+                _make_title("111", "Xbox Game", ["XboxSeries", "Win32"]),
+                _make_title("222", "PC Only", ["Win32"]),
+            ]
+        },
     )
     games = await xbox_api.get_all_games()
     assert len(games) == 1
@@ -139,16 +146,21 @@ async def test_get_all_games_maps_fields(httpx_mock):
 # get_game_stats — MinutesPlayed extraction
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_get_game_stats_extracts_minutes_played(httpx_mock):
     httpx_mock.add_response(
         url=f"{BASE}/achievements/stats/123",
-        json={"statlistscollection": [
-            {"stats": [
-                {"name": "MinutesPlayed", "value": "450"},
-                {"name": "SomethingElse", "value": "99"},
-            ]}
-        ]},
+        json={
+            "statlistscollection": [
+                {
+                    "stats": [
+                        {"name": "MinutesPlayed", "value": "450"},
+                        {"name": "SomethingElse", "value": "99"},
+                    ]
+                }
+            ]
+        },
     )
     result = await xbox_api.get_game_stats("123")
     assert result == {"minutes_played": 450}
@@ -168,6 +180,7 @@ async def test_get_game_stats_returns_none_when_missing(httpx_mock):
 # ---------------------------------------------------------------------------
 # get_title_achievements — pagination
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_get_title_achievements_paginates(httpx_mock):
@@ -201,12 +214,12 @@ async def test_get_title_achievements_single_page(httpx_mock):
 # get_screenshots — continuation token and response shape
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_get_screenshots_returns_items_and_next_token(httpx_mock):
     httpx_mock.add_response(
         url=f"{BASE}/dvr/screenshots",
-        json={"screenshots": [{"contentId": "s1"}, {"contentId": "s2"}],
-              "continuationToken": "next123"},
+        json={"screenshots": [{"contentId": "s1"}, {"contentId": "s2"}], "continuationToken": "next123"},
     )
     items, next_token = await xbox_api.get_screenshots()
     assert len(items) == 2

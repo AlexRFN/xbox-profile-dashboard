@@ -38,20 +38,24 @@ async def api_games_index():
 async def api_scheduler_status():
     """Show scheduled job status and next run times."""
     from scheduler import scheduler  # Local import avoids circular dependency at module load
+
     jobs = []
     for job in scheduler.get_jobs():
-        jobs.append({
-            "id": job.id,
-            "name": job.name,
-            "next_run": job.next_run_time.isoformat() if job.next_run_time else None,
-            "paused": job.next_run_time is None,
-        })
+        jobs.append(
+            {
+                "id": job.id,
+                "name": job.name,
+                "next_run": job.next_run_time.isoformat() if job.next_run_time else None,
+                "paused": job.next_run_time is None,
+            }
+        )
     return {"running": scheduler.running, "jobs": jobs}
 
 
 @router.post("/api/scheduler/pause")
 async def api_scheduler_pause():
     from scheduler import scheduler
+
     scheduler.pause()
     return {"paused": True}
 
@@ -59,6 +63,7 @@ async def api_scheduler_pause():
 @router.post("/api/scheduler/resume")
 async def api_scheduler_resume():
     from scheduler import scheduler
+
     scheduler.resume()
     return {"paused": False}
 
@@ -67,6 +72,10 @@ async def api_scheduler_resume():
 async def api_random_backlog():
     game = await db.get_random_backlog_game()
     if game:
-        return {"found": True, "title_id": game["title_id"], "name": game["name"],
-                "display_image": game["display_image"]}
+        return {
+            "found": True,
+            "title_id": game["title_id"],
+            "name": game["name"],
+            "display_image": game["display_image"],
+        }
     return {"found": False}

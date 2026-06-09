@@ -70,26 +70,26 @@ async def library(request: Request, f: LibraryFilters = Depends(get_filters)):
     async def fetch_ctx() -> dict:
         ctx_task = asyncio.create_task(page_ctx(request))
         (games, total), status_counts = await asyncio.gather(
-            db.get_all_games(
-                f.q, f.status, f.completion, f.platform,
-                f.gamepass, f.sort_by, f.sort_dir),
+            db.get_all_games(f.q, f.status, f.completion, f.platform, f.gamepass, f.sort_by, f.sort_dir),
             db.get_status_counts(),
         )
         ctx = await ctx_task
-        ctx.update({
-            "games": games,
-            "total": total,
-            "page": 1,
-            "per_page": LIBRARY_PAGE_SIZE,
-            "q": f.q,
-            "status_filter": f.status,
-            "completion": f.completion,
-            "platform": f.platform,
-            "gamepass": f.gamepass,
-            "sort_by": f.sort_by,
-            "sort_dir": f.sort_dir,
-            "status_counts": status_counts,
-        })
+        ctx.update(
+            {
+                "games": games,
+                "total": total,
+                "page": 1,
+                "per_page": LIBRARY_PAGE_SIZE,
+                "q": f.q,
+                "status_filter": f.status,
+                "completion": f.completion,
+                "platform": f.platform,
+                "gamepass": f.gamepass,
+                "sort_by": f.sort_by,
+                "sort_dir": f.sort_dir,
+                "status_counts": status_counts,
+            }
+        )
         return ctx
 
     if is_spa_nav(request):
@@ -123,12 +123,14 @@ async def game_detail(request: Request, title_id: str):
             db.get_screenshot_count(title_id),
         )
         ctx = await ctx_task
-        ctx.update({
-            "game": game,
-            "achievements": achievements,
-            "screenshots": screenshots,
-            "screenshot_count": screenshot_count,
-        })
+        ctx.update(
+            {
+                "game": game,
+                "achievements": achievements,
+                "screenshots": screenshots,
+                "screenshot_count": screenshot_count,
+            }
+        )
         return ctx
 
     if is_spa_nav(request):
@@ -146,8 +148,14 @@ async def game_detail(request: Request, title_id: str):
 
 
 @router.get("/timeline", response_class=HTMLResponse)
-async def timeline_page(request: Request, event_type: str = "", game_search: str = "",
-                        date: str = "", date_from: str = "", date_to: str = ""):
+async def timeline_page(
+    request: Request,
+    event_type: str = "",
+    game_search: str = "",
+    date: str = "",
+    date_from: str = "",
+    date_to: str = "",
+):
     # Backwards compat: single 'date' param → both from/to
     if date and not date_from:
         date_from = date
@@ -159,8 +167,14 @@ async def timeline_page(request: Request, event_type: str = "", game_search: str
         # asyncio.gather. page_ctx's get_page_context_data is TTL-cached, so
         # on a warm cache `await ctx_task` is near-instant.
         ctx_task = asyncio.create_task(page_ctx(request))
-        (events, has_more), (timeline_stats, month_counts), \
-            heatmap_rows, year_range, ach_stats, near_completion = await asyncio.gather(
+        (
+            (events, has_more),
+            (timeline_stats, month_counts),
+            heatmap_rows,
+            year_range,
+            ach_stats,
+            near_completion,
+        ) = await asyncio.gather(
             db.get_timeline_events(1, TIMELINE_PAGE_SIZE, event_type, game_search, date_from, date_to),
             db.get_timeline_stats_and_months(event_type, game_search, date_from, date_to),
             db.get_heatmap_data(),
@@ -169,19 +183,21 @@ async def timeline_page(request: Request, event_type: str = "", game_search: str
             db.get_near_completion_games(50, 20),
         )
         ctx = await ctx_task
-        ctx.update({
-            "grouped_events": group_events_by_month(events, month_counts),
-            "has_more": has_more,
-            "page": 1,
-            "event_type": event_type,
-            "game_search": game_search,
-            "date_from": date_from,
-            "date_to": date_to,
-            "timeline_stats": {**timeline_stats, "active_months": len(month_counts)},
-            "ach_stats": ach_stats,
-            "near_completion": near_completion,
-            "active_range": timeline_active_preset(date_from, date_to),
-        })
+        ctx.update(
+            {
+                "grouped_events": group_events_by_month(events, month_counts),
+                "has_more": has_more,
+                "page": 1,
+                "event_type": event_type,
+                "game_search": game_search,
+                "date_from": date_from,
+                "date_to": date_to,
+                "timeline_stats": {**timeline_stats, "active_months": len(month_counts)},
+                "ach_stats": ach_stats,
+                "near_completion": near_completion,
+                "active_range": timeline_active_preset(date_from, date_to),
+            }
+        )
         _apply_heatmap(ctx, heatmap_rows, year_range)
         return ctx
 
@@ -202,10 +218,16 @@ async def timeline_page(request: Request, event_type: str = "", game_search: str
 
 
 @router.get("/achievements", response_class=HTMLResponse)
-async def achievements_page(request: Request,
-                            q: str = "", rarity: str = "", game: str = "",
-                            status: str = "", sort: str = "date_desc",
-                            group: str = "", page: int = 1):
+async def achievements_page(
+    request: Request,
+    q: str = "",
+    rarity: str = "",
+    game: str = "",
+    status: str = "",
+    sort: str = "date_desc",
+    group: str = "",
+    page: int = 1,
+):
     async def fetch_ctx() -> dict:
         ctx_task = asyncio.create_task(page_ctx(request))
         stats, games_list, near_completion, (achievements, total) = await asyncio.gather(
@@ -215,17 +237,23 @@ async def achievements_page(request: Request,
             db.get_achievements_page(page, ACHIEVEMENTS_PAGE_SIZE, q, rarity, game, status, sort, group),
         )
         ctx = await ctx_task
-        ctx.update({
-            "stats": stats,
-            "games_list": games_list,
-            "near_completion": near_completion,
-            "achievements": achievements,
-            "ach_total": total,
-            "ach_page": page,
-            "ach_per_page": ACHIEVEMENTS_PAGE_SIZE,
-            "q": q, "rarity": rarity, "game_filter": game,
-            "status_filter": status, "sort": sort, "group": group,
-        })
+        ctx.update(
+            {
+                "stats": stats,
+                "games_list": games_list,
+                "near_completion": near_completion,
+                "achievements": achievements,
+                "ach_total": total,
+                "ach_page": page,
+                "ach_per_page": ACHIEVEMENTS_PAGE_SIZE,
+                "q": q,
+                "rarity": rarity,
+                "game_filter": game,
+                "status_filter": status,
+                "sort": sort,
+                "group": group,
+            }
+        )
         return ctx
 
     if is_spa_nav(request):
@@ -241,19 +269,35 @@ async def achievements_page(request: Request,
 
 
 @router.get("/api/achievements/grid", response_class=HTMLResponse)
-async def achievements_grid(request: Request,
-                            q: str = "", rarity: str = "", game: str = "",
-                            status: str = "", sort: str = "date_desc",
-                            group: str = "", page: int = 1):
-    achievements, total = await db.get_achievements_page(page, ACHIEVEMENTS_PAGE_SIZE, q, rarity, game, status, sort, group)
-    return templates.TemplateResponse(request, "achievements_grid.html", {
-        "achievements": achievements,
-        "ach_total": total,
-        "ach_page": page,
-        "ach_per_page": ACHIEVEMENTS_PAGE_SIZE,
-        "q": q, "rarity": rarity, "game_filter": game,
-        "status_filter": status, "sort": sort, "group": group,
-    })
+async def achievements_grid(
+    request: Request,
+    q: str = "",
+    rarity: str = "",
+    game: str = "",
+    status: str = "",
+    sort: str = "date_desc",
+    group: str = "",
+    page: int = 1,
+):
+    achievements, total = await db.get_achievements_page(
+        page, ACHIEVEMENTS_PAGE_SIZE, q, rarity, game, status, sort, group
+    )
+    return templates.TemplateResponse(
+        request,
+        "achievements_grid.html",
+        {
+            "achievements": achievements,
+            "ach_total": total,
+            "ach_page": page,
+            "ach_per_page": ACHIEVEMENTS_PAGE_SIZE,
+            "q": q,
+            "rarity": rarity,
+            "game_filter": game,
+            "status_filter": status,
+            "sort": sort,
+            "group": group,
+        },
+    )
 
 
 @router.get("/captures", response_class=HTMLResponse)
@@ -263,12 +307,14 @@ async def captures_page(request: Request):
             db.get_all_screenshots(1, CAPTURES_PAGE_SIZE),
             page_ctx(request),
         )
-        ctx.update({
-            "screenshots": screenshots,
-            "total_screenshots": total,
-            "has_more": has_more,
-            "view": "all",
-        })
+        ctx.update(
+            {
+                "screenshots": screenshots,
+                "total_screenshots": total,
+                "has_more": has_more,
+                "view": "all",
+            }
+        )
         return ctx
 
     if is_spa_nav(request):
@@ -300,14 +346,14 @@ async def friends_page(request: Request):
     for f in friends:
         tid = f.get("presenceTitleId")
         pname = (f.get("presenceGame") or "").lower()
-        f["sameAsYou"] = bool(
-            (tid and tid in owned_ids) or (pname and pname in owned_names)
-        )
-    ctx.update({
-        "friends": friends,
-        "online_count": sum(1 for f in friends if f.get("presenceState") == "Online"),
-        # auto_fetch triggers an immediate sync on page load when the friends table is empty
-        # (e.g. first run) so the page isn't blank.
-        "auto_fetch": len(friends) == 0,
-    })
+        f["sameAsYou"] = bool((tid and tid in owned_ids) or (pname and pname in owned_names))
+    ctx.update(
+        {
+            "friends": friends,
+            "online_count": sum(1 for f in friends if f.get("presenceState") == "Online"),
+            # auto_fetch triggers an immediate sync on page load when the friends table is empty
+            # (e.g. first run) so the page isn't blank.
+            "auto_fetch": len(friends) == 0,
+        }
+    )
     return templates.TemplateResponse(request, "friends.html", ctx)

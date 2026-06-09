@@ -6,9 +6,11 @@ import orjson
 
 log = logging.getLogger("xbox.sync")
 
+
 def _json(obj) -> str:
     """Fast JSON encode to string (orjson returns bytes)."""
     return orjson.dumps(obj).decode()
+
 
 # Shared async gate for every foreground and scheduled sync entrypoint.
 # A single lock prevents concurrent syncs from racing on API budget and DB state.
@@ -18,21 +20,25 @@ def _json(obj) -> str:
 _sync_gate: asyncio.Lock | None = None
 _active_sync_name: str | None = None
 
+
 def _get_sync_gate() -> asyncio.Lock:
     global _sync_gate
     if _sync_gate is None:
         _sync_gate = asyncio.Lock()
     return _sync_gate
 
+
 def reset_sync_gate() -> None:
     """Reset the sync gate (for test isolation)."""
     global _sync_gate
     _sync_gate = None
 
+
 def log_task_err(fut: asyncio.Future) -> None:
     """Done-callback that logs exceptions from fire-and-forget tasks."""
     if not fut.cancelled() and (exc := fut.exception()):
         log.error("Background task failed: %s", exc)
+
 
 def fire_and_forget(coro) -> asyncio.Task:
     """Schedule a coroutine as a background task with error logging."""
@@ -40,8 +46,10 @@ def fire_and_forget(coro) -> asyncio.Task:
     task.add_done_callback(log_task_err)
     return task
 
+
 def is_sync_running() -> bool:
     return _sync_gate is not None and _sync_gate.locked()
+
 
 @asynccontextmanager
 async def sync_guard(sync_name: str = ""):
@@ -65,6 +73,7 @@ async def sync_guard(sync_name: str = ""):
         _active_sync_name = None
         gate.release()
 
+
 def fit_changes_to_budget(changes: list[dict], budget: int) -> tuple[list[dict], int]:
     """Select as many changes as fit within an API call budget.
 
@@ -82,6 +91,7 @@ def fit_changes_to_budget(changes: list[dict], budget: int) -> tuple[list[dict],
         else:
             break
     return batch, cost
+
 
 async def _guarded_sync(inner_gen, busy_payload: dict):
     """Wrap an SSE async generator with the sync-active mutex."""

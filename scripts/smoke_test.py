@@ -7,6 +7,7 @@ Usage:
 
 Exits 0 on pass, 1 on any failure. Safe to run in CI after deploy.
 """
+
 import sys
 import urllib.error
 import urllib.request
@@ -15,21 +16,21 @@ BASE_URL = sys.argv[1].rstrip("/") if len(sys.argv) > 1 else "http://localhost:8
 
 CHECKS = [
     # (method, path, expected_status, description)
-    ("GET",  "/",                    200, "Profile page renders"),
-    ("GET",  "/library",             200, "Library page renders"),
-    ("GET",  "/timeline",            200, "Timeline page renders"),
-    ("GET",  "/achievements",        200, "Achievements page renders"),
-    ("GET",  "/captures",            200, "Captures page renders"),
-    ("GET",  "/friends",             200, "Friends page renders"),
-    ("GET",  "/api/stats",           200, "Stats API responds"),
-    ("GET",  "/api/rate-limit",      200, "Rate limit API responds"),
-    ("GET",  "/api/sync/status",     200, "Sync status API responds"),
-    ("GET",  "/api/games/index",     200, "Games index API responds"),
-    ("GET",  "/game/NONEXISTENT",    404, "Unknown game returns 404"),
+    ("GET", "/", 200, "Profile page renders"),
+    ("GET", "/library", 200, "Library page renders"),
+    ("GET", "/timeline", 200, "Timeline page renders"),
+    ("GET", "/achievements", 200, "Achievements page renders"),
+    ("GET", "/captures", 200, "Captures page renders"),
+    ("GET", "/friends", 200, "Friends page renders"),
+    ("GET", "/api/stats", 200, "Stats API responds"),
+    ("GET", "/api/rate-limit", 200, "Rate limit API responds"),
+    ("GET", "/api/sync/status", 200, "Sync status API responds"),
+    ("GET", "/api/games/index", 200, "Games index API responds"),
+    ("GET", "/game/NONEXISTENT", 404, "Unknown game returns 404"),
 ]
 
 GREEN = "\033[92m"
-RED   = "\033[91m"
+RED = "\033[91m"
 RESET = "\033[0m"
 
 passed = 0

@@ -11,6 +11,7 @@ from .stats import get_achievement_stats, get_dashboard_stats
 
 log = logging.getLogger("xbox.db")
 
+
 async def get_achievements(title_id: str) -> list[dict]:
     conn = await get_connection()
     cursor = await conn.execute(
@@ -22,34 +23,37 @@ async def get_achievements(title_id: str) -> list[dict]:
     rows = await cursor.fetchall()
     return [dict(row) for row in rows]
 
+
 async def get_achievement_ids(title_id: str) -> set[str]:
     conn = await get_connection()
-    cursor = await conn.execute(
-        "SELECT achievement_id FROM achievements WHERE title_id = ?", (title_id,)
-    )
+    cursor = await conn.execute("SELECT achievement_id FROM achievements WHERE title_id = ?", (title_id,))
     rows = await cursor.fetchall()
     return {row["achievement_id"] for row in rows}
+
 
 async def upsert_achievements(title_id: str, achievements: list[dict]) -> int:
     conn = await get_connection()
     rows = []
     for ach in achievements:
-        rows.append((
-            ach["achievement_id"],
-            title_id,
-            ach["name"],
-            ach.get("description", ""),
-            ach.get("locked_description", ""),
-            ach.get("gamerscore", 0),
-            ach.get("progress_state"),
-            ach.get("time_unlocked"),
-            1 if ach.get("is_secret") else 0,
-            ach.get("rarity_category"),
-            ach.get("rarity_percentage"),
-            orjson.dumps(ach.get("media_assets", [])).decode(),
-        ))
+        rows.append(
+            (
+                ach["achievement_id"],
+                title_id,
+                ach["name"],
+                ach.get("description", ""),
+                ach.get("locked_description", ""),
+                ach.get("gamerscore", 0),
+                ach.get("progress_state"),
+                ach.get("time_unlocked"),
+                1 if ach.get("is_secret") else 0,
+                ach.get("rarity_category"),
+                ach.get("rarity_percentage"),
+                orjson.dumps(ach.get("media_assets", [])).decode(),
+            )
+        )
 
-    await conn.executemany("""
+    await conn.executemany(
+        """
         INSERT INTO achievements (
             achievement_id, title_id, name, description, locked_description,
             gamerscore, progress_state, time_unlocked, is_secret,
@@ -67,37 +71,63 @@ async def upsert_achievements(title_id: str, achievements: list[dict]) -> int:
             rarity_percentage = excluded.rarity_percentage,
             media_assets = excluded.media_assets,
             last_fetched = datetime('now')
-    """, rows)
+    """,
+        rows,
+    )
     await conn.commit()
     # Achievement unlocks drive the heatmap and timeline, so invalidate both heatmap keys.
     # Only the current year's key needs clearing; historical years are immutable once past.
-    _cache_invalidate(CacheKey.DASHBOARD_STATS, CacheKey.ACHIEVEMENT_STATS, CacheKey.HEATMAP_ROLLING, CacheKey.heatmap_year(date.today().year))
+    _cache_invalidate(
+        CacheKey.DASHBOARD_STATS,
+        CacheKey.ACHIEVEMENT_STATS,
+        CacheKey.HEATMAP_ROLLING,
+        CacheKey.heatmap_year(date.today().year),
+    )
     log.info("Upserted %d achievements for title %s", len(rows), title_id)
     return len(rows)
+
 
 async def update_achievement_progress(title_id: str, achievements: list[dict]) -> int:
     conn = await get_connection()
     rows = []
     for ach in achievements:
-        rows.append((
-            ach.get("progress_state"),
-            ach.get("time_unlocked"),
-            ach.get("gamerscore", 0),
-            ach["achievement_id"],
-            title_id,
-        ))
-    await conn.executemany("""
+        rows.append(
+            (
+                ach.get("progress_state"),
+                ach.get("time_unlocked"),
+                ach.get("gamerscore", 0),
+                ach["achievement_id"],
+                title_id,
+            )
+        )
+    await conn.executemany(
+        """
         UPDATE achievements
         SET progress_state = ?, time_unlocked = ?, gamerscore = ?, last_fetched = datetime('now')
         WHERE achievement_id = ? AND title_id = ?
-    """, rows)
+    """,
+        rows,
+    )
     await conn.commit()
-    _cache_invalidate(CacheKey.DASHBOARD_STATS, CacheKey.ACHIEVEMENT_STATS, CacheKey.HEATMAP_ROLLING, CacheKey.heatmap_year(date.today().year))
+    _cache_invalidate(
+        CacheKey.DASHBOARD_STATS,
+        CacheKey.ACHIEVEMENT_STATS,
+        CacheKey.HEATMAP_ROLLING,
+        CacheKey.heatmap_year(date.today().year),
+    )
     return len(rows)
 
-async def get_achievements_page(page: int = 1, per_page: int = 60, q: str = "",
-                          rarity: str = "", game: str = "", status: str = "",
-                          sort: str = "date_desc", group: str = "") -> tuple:
+
+async def get_achievements_page(
+    page: int = 1,
+    per_page: int = 60,
+    q: str = "",
+    rarity: str = "",
+    game: str = "",
+    status: str = "",
+    sort: str = "date_desc",
+    group: str = "",
+) -> tuple:
     conn = await get_connection()
     where_clauses = []
     params: list = []
@@ -153,17 +183,21 @@ async def get_achievements_page(page: int = 1, per_page: int = 60, q: str = "",
     total = row[0]
 
     offset = (page - 1) * per_page
-    cursor = await conn.execute(f"""
+    cursor = await conn.execute(
+        f"""
         SELECT a.*, g.name as game_name, g.display_image as game_image, g.title_id
         FROM achievements a
         JOIN games g ON a.title_id = g.title_id
         WHERE {where_sql}
         ORDER BY {full_order}
         LIMIT ? OFFSET ?
-    """, [*params, per_page, offset])
+    """,
+        [*params, per_page, offset],
+    )
     rows = await cursor.fetchall()
 
     return [dict(r) for r in rows], total
+
 
 async def get_games_with_achievements() -> list:
     conn = await get_connection()
@@ -177,9 +211,11 @@ async def get_games_with_achievements() -> list:
     rows = await cursor.fetchall()
     return [dict(r) for r in rows]
 
+
 async def get_near_completion_games(threshold: int = 80, limit: int = 10) -> list:
     conn = await get_connection()
-    cursor = await conn.execute("""
+    cursor = await conn.execute(
+        """
         SELECT g.name, g.title_id, g.display_image, g.blurhash, g.progress_percentage,
                g.current_gamerscore, g.total_gamerscore,
                COALESCE(ac.achieved, 0) as current_achievements,
@@ -195,9 +231,12 @@ async def get_near_completion_games(threshold: int = 80, limit: int = 10) -> lis
         WHERE g.progress_percentage >= ? AND g.progress_percentage < 100
         ORDER BY g.progress_percentage DESC
         LIMIT ?
-    """, (threshold, limit))
+    """,
+        (threshold, limit),
+    )
     rows = await cursor.fetchall()
     return [dict(r) for r in rows]
+
 
 async def warm_stats_cache() -> None:
     try:

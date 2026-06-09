@@ -111,21 +111,23 @@ async def get_all_games() -> list[dict]:
         ach = t.get("achievement", {})
         hist = t.get("titleHistory", {})
         gp = t.get("gamePass", {})
-        games.append({
-            "title_id": str(t["titleId"]),
-            "name": t["name"],
-            "display_image": t.get("displayImage", ""),
-            "devices": t.get("devices", []),
-            "current_gamerscore": ach.get("currentGamerscore", 0),
-            "total_gamerscore": ach.get("totalGamerscore", 0),
-            "progress_percentage": ach.get("progressPercentage", 0),
-            "current_achievements": ach.get("currentAchievements", 0),
-            "total_achievements": ach.get("totalAchievements", 0),
-            "last_played": hist.get("lastTimePlayed"),
-            "xbox_live_tier": t.get("xboxLiveTier"),
-            "pfn": t.get("pfn"),
-            "is_gamepass": gp.get("isGamePass", False),
-        })
+        games.append(
+            {
+                "title_id": str(t["titleId"]),
+                "name": t["name"],
+                "display_image": t.get("displayImage", ""),
+                "devices": t.get("devices", []),
+                "current_gamerscore": ach.get("currentGamerscore", 0),
+                "total_gamerscore": ach.get("totalGamerscore", 0),
+                "progress_percentage": ach.get("progressPercentage", 0),
+                "current_achievements": ach.get("currentAchievements", 0),
+                "total_achievements": ach.get("totalAchievements", 0),
+                "last_played": hist.get("lastTimePlayed"),
+                "xbox_live_tier": t.get("xboxLiveTier"),
+                "pfn": t.get("pfn"),
+                "is_gamepass": gp.get("isGamePass", False),
+            }
+        )
     log.info("Returning %d games (Win32-only filtered out)", len(games))
     return games
 
@@ -160,9 +162,16 @@ async def get_title_achievements(title_id: str) -> tuple[list[dict], int]:
         if not continuation:
             break
 
-        log.debug("Title %s: paginating (%d so far, continuation=%s)", title_id, len(all_achs), continuation[:20] if continuation else "")
+        log.debug(
+            "Title %s: paginating (%d so far, continuation=%s)",
+            title_id,
+            len(all_achs),
+            continuation[:20] if continuation else "",
+        )
         if not can_make_requests():
-            log.warning("Title %s: stopping pagination — budget exhausted (%d achievements so far)", title_id, len(all_achs))
+            log.warning(
+                "Title %s: stopping pagination — budget exhausted (%d achievements so far)", title_id, len(all_achs)
+            )
             break
 
     log.info("Title achievements for %s: %d achievements in %d API call(s)", title_id, len(all_achs), api_calls)

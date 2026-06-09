@@ -23,6 +23,7 @@ from .profile import sync_profile
 
 log = logging.getLogger("xbox.sync")
 
+
 async def full_library_sync() -> SyncResult:
     log.info("Starting full library sync")
     sync_id = await create_sync_log("full_library")
@@ -30,8 +31,7 @@ async def full_library_sync() -> SyncResult:
         games = await get_all_games()
         count = await upsert_games_bulk(games)
         await sync_profile()  # store gamerpic (non-critical, +1 API call)
-        await update_sync_log(sync_id, "success",
-                                games_updated=count, api_calls_used=2)
+        await update_sync_log(sync_id, "success", games_updated=count, api_calls_used=2)
         log.info("Full library sync complete: %d games", count)
         return SyncResult(
             success=True,
@@ -47,6 +47,7 @@ async def full_library_sync() -> SyncResult:
         log.error("Full library sync failed: %s", e, exc_info=True)
         await update_sync_log(sync_id, "failed", error_message=str(e))
         return SyncResult(success=False, message=f"Sync failed: {e}")
+
 
 async def sync_game_details(title_id: str, devices=None) -> SyncResult:
     if devices is not None:
@@ -85,7 +86,9 @@ async def sync_game_details(title_id: str, devices=None) -> SyncResult:
     # Run stats and achievements in parallel — they hit different endpoints and are independent.
     # return_exceptions=True lets one failure not cancel the other.
     results = await asyncio.gather(
-        _fetch_stats(), _fetch_achievements(), return_exceptions=True,
+        _fetch_stats(),
+        _fetch_achievements(),
+        return_exceptions=True,
     )
     for i, result in enumerate(results):
         label = "Stats" if i == 0 else "Achievements"
@@ -103,15 +106,16 @@ async def sync_game_details(title_id: str, devices=None) -> SyncResult:
     if api_calls > 0:
         await mark_game_fetched(title_id)
 
-    await update_sync_log(sync_id, status,
-                            api_calls_used=api_calls,
-                            error_message="; ".join(errors) if errors else None)
+    await update_sync_log(
+        sync_id, status, api_calls_used=api_calls, error_message="; ".join(errors) if errors else None
+    )
     log.info("sync_game_details(%s) — %s (%d API calls)", title_id, status, api_calls)
     return SyncResult(
         success=len(errors) == 0,
         message=msg,
         api_calls_used=api_calls,
     )
+
 
 def detect_changed_games(api_games: list[dict], db_snapshot: dict) -> list[dict]:
     """Compare API game data against a pre-upsert DB snapshot to decide what needs syncing.
@@ -123,11 +127,11 @@ def detect_changed_games(api_games: list[dict], db_snapshot: dict) -> list[dict]
     skipped = 0
 
     FIELDS = [
-        ("current_gamerscore",  None),
-        ("total_gamerscore",    None),
+        ("current_gamerscore", None),
+        ("total_gamerscore", None),
         ("current_achievements", None),
         # Skip total_achievements if API returns 0 — API quirk, not a real change
-        ("total_achievements",  lambda api_val, _db_val: api_val == 0),
+        ("total_achievements", lambda api_val, _db_val: api_val == 0),
         # progress_percentage is omitted: it's derived from current/total achievements
         # (which are already watched above) and the title history API returns 0 for all
         # Xbox 360 games, causing perpetual false-positive syncs after recalc writes
@@ -156,15 +160,18 @@ def detect_changed_games(api_games: list[dict], db_snapshot: dict) -> list[dict]
                 diffs.append(f"{field}: {db_val}->{api_val}")
 
         if diffs:
-            changes.append({
-                "game": game, "sync_type": "full", "api_cost": 3,
-                "reason": ", ".join(diffs),
-            })
+            changes.append(
+                {
+                    "game": game,
+                    "sync_type": "full",
+                    "api_cost": 3,
+                    "reason": ", ".join(diffs),
+                }
+            )
             continue
 
         if game.get("last_played") != db["last_played"]:
-            changes.append({"game": game, "sync_type": "stats_only", "api_cost": 1,
-                            "reason": "last_played changed"})
+            changes.append({"game": game, "sync_type": "stats_only", "api_cost": 1, "reason": "last_played changed"})
             continue
 
         # Catch games played after our last detail fetch even when numeric stats haven't
@@ -172,8 +179,14 @@ def detect_changed_games(api_games: list[dict], db_snapshot: dict) -> list[dict]
         db_played = (db.get("last_played") or "")[:10]
         db_fetched = (db.get("stats_last_fetched") or "")[:10]
         if db_played and db_fetched and db_played > db_fetched:
-            changes.append({"game": game, "sync_type": "full", "api_cost": 3,
-                            "reason": f"played after last detail sync ({db_played} > {db_fetched})"})
+            changes.append(
+                {
+                    "game": game,
+                    "sync_type": "full",
+                    "api_cost": 3,
+                    "reason": f"played after last detail sync ({db_played} > {db_fetched})",
+                }
+            )
             continue
 
         skipped += 1
@@ -182,6 +195,7 @@ def detect_changed_games(api_games: list[dict], db_snapshot: dict) -> list[dict]
 
     log.info("Change detection: %d changes, %d skipped, %d total", len(changes), skipped, len(api_games))
     return changes
+
 
 async def sync_game_selective(title_id: str, sync_type: str) -> SyncResult:
     log.debug("sync_game_selective(%s, %s)", title_id, sync_type)

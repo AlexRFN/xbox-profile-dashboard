@@ -17,27 +17,39 @@ router = APIRouter()
 @router.get("/api/captures/grid", response_class=HTMLResponse)
 async def captures_grid(request: Request, page: int = 1):
     screenshots, _, has_more = await db.get_all_screenshots(page, CAPTURES_PAGE_SIZE)
-    return templates.TemplateResponse(request, "captures_grid.html", {
-        "screenshots": screenshots,
-        "has_more": has_more,
-        "page": page,
-    })
+    return templates.TemplateResponse(
+        request,
+        "captures_grid.html",
+        {
+            "screenshots": screenshots,
+            "has_more": has_more,
+            "page": page,
+        },
+    )
 
 
 @router.get("/api/captures/by-game", response_class=HTMLResponse)
 async def captures_by_game(request: Request):
     by_game = await db.get_screenshots_by_game()
-    return templates.TemplateResponse(request, "captures_by_game.html", {
-        "by_game": by_game,
-    })
+    return templates.TemplateResponse(
+        request,
+        "captures_by_game.html",
+        {
+            "by_game": by_game,
+        },
+    )
 
 
 @router.get("/api/captures/game/{title_id}", response_class=HTMLResponse)
 async def captures_game_expand(request: Request, title_id: str):
     screenshots = await db.get_screenshots_for_game(title_id)
-    return templates.TemplateResponse(request, "captures_game_expand.html", {
-        "screenshots": screenshots,
-    })
+    return templates.TemplateResponse(
+        request,
+        "captures_game_expand.html",
+        {
+            "screenshots": screenshots,
+        },
+    )
 
 
 @router.get("/api/captures/download")
@@ -55,7 +67,7 @@ async def proxy_capture_download(url: str = Query(...), filename: str = Query("c
     if not (host.endswith(".xboxlive.com") or host.endswith(".xbox.com")):
         return Response(status_code=403, content="Forbidden host")
     # Strip path traversal chars and shell-unsafe characters from the filename
-    safe_filename = re.sub(r'[^\w\s\-\.]', '', filename).strip() or "capture.png"
+    safe_filename = re.sub(r"[^\w\s\-\.]", "", filename).strip() or "capture.png"
     try:
         client = get_client()
         if client is None:

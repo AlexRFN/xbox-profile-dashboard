@@ -7,6 +7,7 @@ async def get_setting(key: str) -> str | None:
     row = await cursor.fetchone()
     return row["value"] if row else None
 
+
 async def set_setting(key: str, value: str):
     conn = await get_connection()
     await conn.execute(

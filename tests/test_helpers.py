@@ -1,4 +1,5 @@
 """Unit tests for pure utility functions in helpers.py."""
+
 from datetime import date
 
 from helpers import (
@@ -85,7 +86,14 @@ class TestComputeStreaks:
 class TestBuildHeatmapGrid:
     def test_returns_required_keys(self):
         result = build_heatmap_grid([])
-        assert {"grid", "months", "num_weeks", "total_achievements", "streak_current", "streak_longest"} <= result.keys()
+        assert {
+            "grid",
+            "months",
+            "num_weeks",
+            "total_achievements",
+            "streak_current",
+            "streak_longest",
+        } <= result.keys()
 
     def test_empty_rows_zero_total(self):
         result = build_heatmap_grid([])
@@ -114,6 +122,7 @@ class TestBuildHeatmapGrid:
     def test_cell_hidden_flag_for_future(self):
         # All future days should be hidden
         import datetime
+
         future = (datetime.date.today() + datetime.timedelta(days=365)).isoformat()
         rows = [{"day": future, "count": 99}]
         result = build_heatmap_grid(rows)

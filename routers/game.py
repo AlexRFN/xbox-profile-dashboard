@@ -15,14 +15,16 @@ router = APIRouter()
 
 
 @router.get("/api/timeline/events", response_class=HTMLResponse)
-async def timeline_events(request: Request, page: int = 2, event_type: str = "",
-                          game_search: str = "", date_from: str = "", date_to: str = ""):
+async def timeline_events(
+    request: Request, page: int = 2, event_type: str = "", game_search: str = "", date_from: str = "", date_to: str = ""
+):
     # "Load More" (page > 1) uses hx-swap="beforeend" — only event rows are needed.
     # Stats and month counts don't change between pages, so skip those queries and
     # pass timeline_stats=None to suppress the OOB stats swap in the partial template.
     if page > 1:
         events, has_more = await db.get_timeline_events(
-            page, TIMELINE_PAGE_SIZE, event_type, game_search, date_from, date_to)
+            page, TIMELINE_PAGE_SIZE, event_type, game_search, date_from, date_to
+        )
         timeline_stats = None
         month_counts = {}
     else:
@@ -31,16 +33,20 @@ async def timeline_events(request: Request, page: int = 2, event_type: str = "",
             db.get_timeline_stats_and_months(event_type, game_search, date_from, date_to),
         )
         timeline_stats = {**timeline_stats, "active_months": len(month_counts)}
-    return templates.TemplateResponse(request, "timeline_events.html", {
-        "grouped_events": group_events_by_month(events, month_counts),
-        "has_more": has_more,
-        "page": page,
-        "event_type": event_type,
-        "game_search": game_search,
-        "date_from": date_from,
-        "date_to": date_to,
-        "timeline_stats": timeline_stats,
-    })
+    return templates.TemplateResponse(
+        request,
+        "timeline_events.html",
+        {
+            "grouped_events": group_events_by_month(events, month_counts),
+            "has_more": has_more,
+            "page": page,
+            "event_type": event_type,
+            "game_search": game_search,
+            "date_from": date_from,
+            "date_to": date_to,
+            "timeline_stats": timeline_stats,
+        },
+    )
 
 
 @router.get("/api/heatmap", response_class=HTMLResponse)
@@ -64,13 +70,17 @@ async def heatmap_partial(request: Request, year: str = "rolling"):
         heatmap = build_heatmap_grid(heatmap_rows, y)
         heatmap_year = y
         heatmap_mode = "year"
-    return templates.TemplateResponse(request, "heatmap_content.html", {
-        "heatmap": heatmap,
-        "heatmap_mode": heatmap_mode,
-        "heatmap_year": heatmap_year,
-        "heatmap_min_year": year_range[0] if year_range else date.today().year,
-        "heatmap_max_year": year_range[1] if year_range else date.today().year,
-    })
+    return templates.TemplateResponse(
+        request,
+        "heatmap_content.html",
+        {
+            "heatmap": heatmap,
+            "heatmap_mode": heatmap_mode,
+            "heatmap_year": heatmap_year,
+            "heatmap_min_year": year_range[0] if year_range else date.today().year,
+            "heatmap_max_year": year_range[1] if year_range else date.today().year,
+        },
+    )
 
 
 @router.put("/api/game/{title_id}/tracking")

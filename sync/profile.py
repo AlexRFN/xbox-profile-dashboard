@@ -9,6 +9,7 @@ from xbox_api import get_profile
 
 log = logging.getLogger("xbox.sync")
 
+
 async def backfill_blurhashes(max_count: int = 50):
     import httpx
 
@@ -22,6 +23,7 @@ async def backfill_blurhashes(max_count: int = 50):
     done = 0
 
     async with httpx.AsyncClient(timeout=15) as client:
+
         async def _process(game):
             nonlocal done
             url = game["display_image"]
@@ -43,6 +45,7 @@ async def backfill_blurhashes(max_count: int = 50):
         await asyncio.gather(*[_process(g) for g in games])
     log.info("Blurhash backfill complete: %d/%d encoded", done, len(games))
 
+
 def _extract_gamerpic(data: dict) -> str:
     users = data.get("profileUsers", [])
     if not users:
@@ -62,6 +65,7 @@ async def sync_profile():
             log.info("Stored gamerpic: %s", pic[:60])
     except Exception as e:
         log.warning("Profile sync failed (non-critical): %s", e)
+
 
 async def sync_friends() -> int:
     friends = await api_get_friends()

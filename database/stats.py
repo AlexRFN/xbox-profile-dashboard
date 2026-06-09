@@ -10,8 +10,16 @@ from .validators import valid_ts_sql
 # Logarithmic-ish tiers so the hero's milestone bar always feels reachable but
 # aspirational regardless of player size: 1k / 5k / 10k / 25k / 50k / 100k / 250k / 500k / 1M / 2.5M.
 _MILESTONE_TIERS = (
-    1_000, 5_000, 10_000, 25_000, 50_000,
-    100_000, 250_000, 500_000, 1_000_000, 2_500_000,
+    1_000,
+    5_000,
+    10_000,
+    25_000,
+    50_000,
+    100_000,
+    250_000,
+    500_000,
+    1_000_000,
+    2_500_000,
 )
 
 
@@ -180,27 +188,23 @@ async def get_dashboard_stats() -> dict:
     stats["milestone_pct"] = round((total_gs - floor_gs) / span * 100, 1) if span > 0 else 0.0
     stats["milestone_remaining"] = max(0, ceiling_gs - total_gs)
 
-    stats["avg_gamerscore_per_game"] = (
-        round(total_gs / total_games) if total_games > 0 else 0
-    )
-    stats["completion_rate_pct"] = (
-        round(completed / total_games * 100, 1) if total_games > 0 else 0.0
-    )
+    stats["avg_gamerscore_per_game"] = round(total_gs / total_games) if total_games > 0 else 0
+    stats["completion_rate_pct"] = round(completed / total_games * 100, 1) if total_games > 0 else 0.0
     # Clamp to 12 — the rolling 12-month SQL window can straddle 13 calendar months.
-    stats["active_months_12mo"] = min(12, sum(
-        1 for m in stats.get("monthly_stats", []) if (m.get("achievement_count") or 0) > 0
-    ))
+    stats["active_months_12mo"] = min(
+        12, sum(1 for m in stats.get("monthly_stats", []) if (m.get("achievement_count") or 0) > 0)
+    )
 
     _cache_set(CacheKey.DASHBOARD_STATS, stats)
     return stats
 
+
 async def get_status_counts() -> dict:
     conn = await get_connection()
-    cursor = await conn.execute(
-        "SELECT status, COUNT(*) as cnt FROM games GROUP BY status"
-    )
+    cursor = await conn.execute("SELECT status, COUNT(*) as cnt FROM games GROUP BY status")
     rows = await cursor.fetchall()
     return {r["status"]: r["cnt"] for r in rows}
+
 
 async def get_achievement_stats() -> dict:
     cached = _cache_get(CacheKey.ACHIEVEMENT_STATS, ttl=60)
@@ -257,7 +261,7 @@ async def get_achievement_stats() -> dict:
         FROM achievements a
         JOIN games g ON a.title_id = g.title_id
         WHERE a.progress_state = 'Achieved'
-          AND {valid_ts_sql('a')}
+          AND {valid_ts_sql("a")}
         ORDER BY a.time_unlocked DESC
         LIMIT 20
     """)
@@ -287,6 +291,7 @@ async def get_achievement_stats() -> dict:
     _cache_set(CacheKey.ACHIEVEMENT_STATS, stats)
     return stats
 
+
 async def get_page_context_data() -> dict:
     # Return a shallow copy: callers mutate the returned dict (adding request,
     # gamertag, route-specific keys) and Starlette's TemplateResponse injects
@@ -302,9 +307,7 @@ async def get_page_context_data() -> dict:
            ORDER BY started_at DESC LIMIT 1"""
     )
     sync_row = await cursor.fetchone()
-    cursor = await conn.execute(
-        "SELECT value FROM settings WHERE key = 'gamerpic'"
-    )
+    cursor = await conn.execute("SELECT value FROM settings WHERE key = 'gamerpic'")
     pic_row = await cursor.fetchone()
     result = {
         "rate_used": get_api_calls_last_hour(),

@@ -5,6 +5,7 @@ from .rate_limit import _init_rate_limit_from_db
 
 log = logging.getLogger("xbox.db")
 
+
 async def _create_schema(conn) -> None:
     """Create all tables and indexes idempotently."""
     await conn.executescript("""
@@ -160,31 +161,34 @@ async def _run_migrations(conn) -> None:
     applied = {r[0] for r in rows}
 
     MIGRATIONS = [
-        (1, "Add is_gamepass column to games",
-         "ALTER TABLE games ADD COLUMN is_gamepass INTEGER DEFAULT 0"),
-        (2, "Add blurhash column to games",
-         "ALTER TABLE games ADD COLUMN blurhash TEXT"),
-        (3, "Add last_achievement_unlock column to games",
-         "ALTER TABLE games ADD COLUMN last_achievement_unlock TEXT"),
-        (4, "Add rare_unlocks column to games",
-         "ALTER TABLE games ADD COLUMN rare_unlocks TEXT"),
+        (1, "Add is_gamepass column to games", "ALTER TABLE games ADD COLUMN is_gamepass INTEGER DEFAULT 0"),
+        (2, "Add blurhash column to games", "ALTER TABLE games ADD COLUMN blurhash TEXT"),
+        (3, "Add last_achievement_unlock column to games", "ALTER TABLE games ADD COLUMN last_achievement_unlock TEXT"),
+        (4, "Add rare_unlocks column to games", "ALTER TABLE games ADD COLUMN rare_unlocks TEXT"),
         # Hot path: timeline UNION ALL + heatmap aggregations filter every achievement by
         # (progress_state='Achieved' AND time_unlocked NOT LIKE '0001%'). The existing
         # idx_achievements_title_progress_time leads on title_id, so it can't serve these
         # table-wide scans. (progress_state, time_unlocked) lets SQLite range-scan directly.
-        (5, "Add (progress_state, time_unlocked) composite index",
-         "CREATE INDEX IF NOT EXISTS idx_achievements_progress_time "
-         "ON achievements(progress_state, time_unlocked)"),
+        (
+            5,
+            "Add (progress_state, time_unlocked) composite index",
+            "CREATE INDEX IF NOT EXISTS idx_achievements_progress_time ON achievements(progress_state, time_unlocked)",
+        ),
         # get_achievement_stats() sorts 'Achieved' achievements by rarity_percentage ASC
         # and gamerscore DESC for the profile showcase. Both used to fall back to a temp
         # b-tree sort over ~8k rows on every cache-miss. The composite indexes below let
         # SQLite scan the index in the required order.
-        (6, "Add (progress_state, rarity_percentage) composite index",
-         "CREATE INDEX IF NOT EXISTS idx_achievements_progress_rarity "
-         "ON achievements(progress_state, rarity_percentage)"),
-        (7, "Add (progress_state, gamerscore DESC) composite index",
-         "CREATE INDEX IF NOT EXISTS idx_achievements_progress_gs "
-         "ON achievements(progress_state, gamerscore DESC)"),
+        (
+            6,
+            "Add (progress_state, rarity_percentage) composite index",
+            "CREATE INDEX IF NOT EXISTS idx_achievements_progress_rarity "
+            "ON achievements(progress_state, rarity_percentage)",
+        ),
+        (
+            7,
+            "Add (progress_state, gamerscore DESC) composite index",
+            "CREATE INDEX IF NOT EXISTS idx_achievements_progress_gs ON achievements(progress_state, gamerscore DESC)",
+        ),
     ]
     for version, description, sql in MIGRATIONS:
         if version not in applied:

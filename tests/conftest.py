@@ -33,6 +33,7 @@ async def setup_test_db():
         with contextlib.suppress(OSError):  # Windows might still hold a lock briefly
             test_db_path.unlink()
 
+
 @pytest.fixture(autouse=True)
 async def clear_db():
     """Clear database tables before each test."""
@@ -47,6 +48,7 @@ async def clear_db():
     await conn.execute("DELETE FROM games")
     await conn.commit()
 
+
 from sync.core import reset_sync_gate as _reset_sync_gate  # noqa: E402
 
 
@@ -56,6 +58,7 @@ def reset_sync_gate():
     _reset_sync_gate()
     yield
     _reset_sync_gate()
+
 
 from fastapi.testclient import TestClient  # noqa: E402
 
