@@ -92,6 +92,7 @@ graph TD
         stats["stats.py"]
         captures["captures.py"]
         friends["friends.py"]
+        img["img.py\nimage proxy · WebP · disk cache"]
     end
 
     subgraph Logic["Business Logic"]
@@ -101,12 +102,14 @@ graph TD
     end
 
     subgraph Data["Data Layer"]
-        db["database/\n13 modules · SQLite WAL"]
+        db["database/\n14 modules · SQLite WAL"]
         xbox["xbox_api.py\nOpenXBL v2"]
     end
 
     sqlite[("data/xbox.db")]
+    imgcache[("data/img_cache/\nWebP")]
     openxbl(["OpenXBL API\nxbl.io"])
+    xboxcdn(["Xbox image CDN\nxboxlive.com"])
 
     Browser -->|HTTP| main
     main --> Routers
@@ -116,11 +119,14 @@ graph TD
     scheduler -.->|background| sync
     sync --> db & xbox
     helpers & stats --> db
+    img -->|fetch once| xboxcdn
+    img -->|WebP| Browser
     db --- sqlite
+    img --- imgcache
     xbox --- openxbl
 ```
 
-The app is a single FastAPI process. Routers handle HTTP — pages render Jinja2 templates, API routes return JSON or SSE streams. The `database/` layer is 13 domain-focused modules behind a clean async interface (`aiosqlite`, WAL mode). The `sync/` layer is 6 modules that orchestrate OpenXBL API calls, budget them against the rate limit, and upsert results without touching manual tracking fields.
+The app is a single FastAPI process. Routers handle HTTP — pages render Jinja2 templates, API routes return JSON or SSE streams. The `database/` layer is 14 domain-focused modules behind a clean async interface (`aiosqlite`, WAL mode). The `sync/` layer is 6 modules that orchestrate OpenXBL API calls, budget them against the rate limit, and upsert results without touching manual tracking fields. The `img.py` router is a same-origin image proxy: it fetches each Xbox CDN image once (hostname-allowlisted), resizes and re-encodes to WebP with Pillow, and serves it from `data/img_cache/` with immutable cache headers — so a 1.5 MB achievement PNG becomes a few-KB WebP and the browser never talks to xboxlive.com directly.
 
 ### Key Patterns
 
@@ -140,7 +146,7 @@ The app is a single FastAPI process. Routers handle HTTP — pages render Jinja2
 ├── xbox_api.py          # OpenXBL API client (httpx async, identity auto-resolve)
 ├── scheduler.py         # APScheduler background jobs
 ├── models.py            # Pydantic models (ApiError, TrackingUpdate, SyncResult)
-├── database/            # 13 async aiosqlite modules (import from `database`, not submodules)
+├── database/            # 14 async aiosqlite modules (import from `database`, not submodules)
 │   ├── connection.py    # Global connection pool, PRAGMA tuning
 │   ├── setup.py         # Schema creation and ALTER TABLE migrations
 │   ├── games.py         # Upsert preserving manual tracking, game queries
@@ -153,14 +159,17 @@ The app is a single FastAPI process. Routers handle HTTP — pages render Jinja2
 │   ├── orchestrator.py  # Unified SSE sync (4 phases)
 │   ├── games.py         # Library sync, per-game detail, change detection
 │   └── ...              # achievements, profile, screenshots
-├── routers/             # One FastAPI router per domain
-├── templates/           # 21 Jinja2 templates (base, macros, pages, partials)
+├── routers/             # One FastAPI router per domain (incl. img.py CDN proxy)
+├── templates/           # ~35 Jinja2 templates (base, macros, pages, partials, _shell_* fragments)
 └── static/
-    ├── css/             # 16 domain CSS files → bundle.css (built at startup)
+    ├── css/             # 17 source CSS files → bundle.css (built at startup)
     └── js/
-        ├── src/         # 17 JS modules → app.js (built at startup)
-        ├── glass-webgpu.js  # WebGPU renderer
-        └── glass.js         # WebGL2 fallback
+        ├── src/             # 18 JS modules → app.js (built at startup)
+        ├── glass-core.js    # Shared glass renderer core
+        ├── glass-webgpu.js  # WebGPU renderer (primary)
+        ├── glass.js         # WebGL2 fallback
+        ├── charts.worker.js # Off-main-thread Chart.js
+        └── vendor/          # Vendored libs (htmx, chart.umd, lenis, minisearch, hotkeys, confetti)
 ```
 
 ## Database Schema
@@ -223,7 +232,7 @@ python scripts/smoke_test.py https://myhost   # against a remote host
 ## Development
 
 ```bash
-# CSS hot-rebuild (watches 16 domain CSS files, rebuilds bundle.css)
+# CSS hot-rebuild (watches 17 source CSS files, rebuilds bundle.css)
 XBOX_DEV=1 uvicorn main:app --reload --port 8000
 
 # Production
