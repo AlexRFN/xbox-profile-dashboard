@@ -1,24 +1,16 @@
 // Service Worker — caches app shell for instant repeat loads
 // Version is updated by the server via query param on registration
 
-const CACHE_NAME = 'xbox-v4';
+const CACHE_NAME = 'xbox-v5';
 
-// App shell — cached on install
-const APP_SHELL = [
-  '/',
-  '/static/css/bundle.css',
-  '/static/js/vendor/lenis.min.js',
-  '/static/js/vendor/htmx.min.js',
-  '/static/js/vendor/chart.umd.min.js',
-  '/static/js/vendor/minisearch.min.js',
-  '/static/js/vendor/confetti.browser.min.js',
-  '/static/js/vendor/hotkeys.min.js',
-  '/static/js/glass-webgpu.js',
-  '/static/js/glass.js',
-  '/static/js/app.js',
-  '/static/img/Xbox_one_logo.svg.png',
-  '/static/img/icons.svg',
-];
+// App shell — only the root document is precached (offline fallback for the
+// HTML network-first path below). Static assets are NOT precached: the page
+// references them exclusively through versioned ?v=<mtime> URLs and the fetch
+// handler matches with the query string, so unversioned precache entries could
+// never be served — they were ~600 KB downloaded twice on every install for
+// zero hits. The cache-first runtime path below populates versioned assets on
+// first real use instead.
+const APP_SHELL = ['/'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(
@@ -55,7 +47,11 @@ self.addEventListener('fetch', (e) => {
   // htmx sends Accept: */* (not text/html), so the HTML block below won't match.
   if (e.request.headers.get('HX-Request') === 'true') return;
 
-  // Static assets with ?v= — cache-first (immutable, versioned)
+  // Static assets with ?v= — cache-first (immutable, versioned).
+  // Before storing a new version, evict superseded ?v= entries for the same
+  // pathname: each deploy mints fresh mtime versions, and without eviction
+  // every old bundle/font/script accumulates in CacheStorage forever (the
+  // activate handler only clears on manual CACHE_NAME bumps).
   if (url.pathname.startsWith('/static/') && url.searchParams.has('v')) {
     e.respondWith(
       caches.match(e.request, { ignoreSearch: false }).then(cached => {
@@ -63,7 +59,11 @@ self.addEventListener('fetch', (e) => {
         return fetch(e.request).then(resp => {
           if (resp.ok) {
             const clone = resp.clone();
-            caches.open(CACHE_NAME).then(c => c.put(e.request, clone));
+            caches.open(CACHE_NAME).then(c =>
+              c.keys(e.request, { ignoreSearch: true })
+                .then(old => Promise.all(old.map(k => c.delete(k))))
+                .then(() => c.put(e.request, clone))
+            );
           }
           return resp;
         });
