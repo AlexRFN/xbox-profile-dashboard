@@ -62,6 +62,15 @@
                 );
             }
         });
+        // Lenis rewrites <html>.className TWICE per scroll start/stop (cleanUpClassName +
+        // updateClassName toggling lenis-scrolling / lenis-smooth). Every root class write
+        // invalidates style for the entire document — measured ~4ms recalc per write on a
+        // 50-row library page, several times per scroll burst. Nothing here consumes those
+        // classes: no iframes (.lenis-smooth iframe rule), lenis.stop()/lock never used
+        // (.lenis-stopped rule). Freeze the className at its post-construction value
+        // ("lenis") — instance methods shadow the prototype, base class stays applied.
+        window.lenis.updateClassName = function() {};
+        window.lenis.cleanUpClassName = function() {};
         window.__lenisOwnRaf = false;
         setTimeout(function() {
             if (!document.documentElement.classList.contains('glass-refract')) {
