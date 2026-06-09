@@ -124,7 +124,6 @@ async def _create_schema(conn) -> None:
 
             -- New performance indexes
             CREATE INDEX IF NOT EXISTS idx_rate_limit_timestamp ON rate_limit_log(timestamp);
-            CREATE INDEX IF NOT EXISTS idx_achievements_title_progress ON achievements(title_id, progress_state);
             CREATE INDEX IF NOT EXISTS idx_sync_log_type_started ON sync_log(sync_type, started_at DESC);
             CREATE INDEX IF NOT EXISTS idx_achievements_title_progress_time ON achievements(title_id, progress_state, time_unlocked);
 

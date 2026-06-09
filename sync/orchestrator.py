@@ -124,7 +124,9 @@ async def _unified_sync_inner():
         )
         return
 
-    await sync_profile()
+    phase_warnings: list[str] = []
+    if not await sync_profile():
+        phase_warnings.append("profile sync failed")
     total_api_calls += 1
 
     # Snapshot BEFORE upsert: detect_changed_games diffs API vs old DB state.
@@ -143,8 +145,10 @@ async def _unified_sync_inner():
         total_api_calls += 1
     except RateLimitExceeded as e:
         log.warning("Unified sync: friends blocked by rate limit: %s", e)
+        phase_warnings.append("friends sync blocked by rate limit")
     except Exception as e:
         log.warning("Unified sync: friends failed (non-critical): %s", e)
+        phase_warnings.append(f"friends sync failed: {e}")
 
     # ========== Phase 3: Game Details ==========
     used_now = get_api_calls_last_hour()
@@ -215,8 +219,16 @@ async def _unified_sync_inner():
         total_api_calls,
     )
 
-    status = "success" if remaining_changes == 0 else "partial"
-    await update_sync_log(sync_id, status, games_updated=total_games_updated, api_calls_used=total_api_calls)
+    # Non-critical phase failures (profile/friends) don't abort the sync, but the
+    # log entry should reflect them instead of reading "success".
+    status = "success" if remaining_changes == 0 and not phase_warnings else "partial"
+    await update_sync_log(
+        sync_id,
+        status,
+        games_updated=total_games_updated,
+        api_calls_used=total_api_calls,
+        error_message="; ".join(phase_warnings) if phase_warnings else None,
+    )
     log.info(
         "Unified sync complete: %s — %d games, %d screenshots, %d API calls",
         status,

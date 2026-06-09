@@ -30,8 +30,14 @@ async def full_library_sync() -> SyncResult:
     try:
         games = await get_all_games()
         count = await upsert_games_bulk(games)
-        await sync_profile()  # store gamerpic (non-critical, +1 API call)
-        await update_sync_log(sync_id, "success", games_updated=count, api_calls_used=2)
+        profile_ok = await sync_profile()  # store gamerpic (non-critical, +1 API call)
+        await update_sync_log(
+            sync_id,
+            "success" if profile_ok else "partial",
+            games_updated=count,
+            api_calls_used=2,
+            error_message=None if profile_ok else "profile sync failed",
+        )
         log.info("Full library sync complete: %d games", count)
         return SyncResult(
             success=True,

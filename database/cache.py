@@ -34,6 +34,16 @@ def _cache_invalidate(*keys: str):
         _cache.pop(key, None)
 
 
+def _cache_invalidate_prefix(*prefixes: str) -> None:
+    """Invalidate every key starting with any of the given prefixes.
+
+    Needed for dynamically-keyed entries (heatmap_{year}, activity_{year}_{month},
+    heatmap_year_range) that per-key invalidation can't enumerate.
+    """
+    for key in [k for k in _cache if k.startswith(prefixes)]:
+        del _cache[key]
+
+
 def _cache_clear_all() -> None:
     # Unified sync touches games, achievements, screenshots, and friends, plus
     # derived heatmap/activity/year-range slices. Per-op invalidation misses

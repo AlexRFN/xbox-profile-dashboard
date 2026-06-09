@@ -44,7 +44,7 @@ async def get_heatmap_data(year: int | None = None) -> list[dict]:
 
 
 async def get_heatmap_year_range() -> tuple[int, int] | None:
-    cached = _cache_get("heatmap_year_range", ttl=600)
+    cached = _cache_get(CacheKey.HEATMAP_YEAR_RANGE, ttl=600)
     if cached is not None:
         return None if cached is _YEAR_RANGE_NONE else cached
     conn = await get_connection()
@@ -59,10 +59,10 @@ async def get_heatmap_year_range() -> tuple[int, int] | None:
     """)
     row = await cursor.fetchone()
     if row["min_year"] is None:
-        _cache_set("heatmap_year_range", _YEAR_RANGE_NONE)
+        _cache_set(CacheKey.HEATMAP_YEAR_RANGE, _YEAR_RANGE_NONE)
         return None
     result = (row["min_year"], row["current_year"])
-    _cache_set("heatmap_year_range", result)
+    _cache_set(CacheKey.HEATMAP_YEAR_RANGE, result)
     return result
 
 

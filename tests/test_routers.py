@@ -4,6 +4,7 @@ These test HTTP behaviour: status codes, response shapes, and concurrency guards
 They run against the real in-memory test database (shared with test_database/).
 """
 
+import contextlib
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -132,6 +133,174 @@ async def test_tracking_update_persists(client):
     game = await db.get_game("T001")
     assert game["status"] == "backlog"
     assert game["rating"] == 4
+
+
+# ---------------------------------------------------------------------------
+# /api/sync/full — success and failure paths (API calls stubbed)
+# ---------------------------------------------------------------------------
+
+
+async def _last_sync_log():
+    from database.connection import get_connection
+
+    conn = await get_connection()
+    cursor = await conn.execute("SELECT * FROM sync_log ORDER BY id DESC LIMIT 1")
+    return await cursor.fetchone()
+
+
+@contextlib.contextmanager
+def _patch_background_tasks():
+    """Stub the fire-and-forget cache-warm/blurhash tasks spawned after a sync.
+
+    TestClient tears down its per-request event loop as soon as the response
+    returns; a background task still mid-aiosqlite-call at that point kills the
+    connection's worker thread and deadlocks every later DB call in the test.
+    """
+    with (
+        patch("database.warm_stats_cache", new_callable=AsyncMock),
+        patch("sync.orchestrator.warm_stats_cache", new_callable=AsyncMock),
+        patch("sync.orchestrator.backfill_blurhashes", new_callable=AsyncMock),
+    ):
+        yield
+
+
+@pytest.mark.asyncio
+async def test_sync_full_success_path(client):
+    api_games = [{"title_id": "SYNC1", "name": "Synced Game", "last_played": "2024-01-01T00:00:00Z"}]
+    with (
+        patch("sync.games.get_all_games", new_callable=AsyncMock, return_value=api_games),
+        patch("sync.games.sync_profile", new_callable=AsyncMock, return_value=True),
+        _patch_background_tasks(),
+    ):
+        resp = client.post("/api/sync/full")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["success"] is True
+    assert body["games_updated"] == 1
+    assert "rate_used" in body
+
+    game = await db.get_game("SYNC1")
+    assert game["name"] == "Synced Game"
+    row = await _last_sync_log()
+    assert row["status"] == "success"
+
+
+@pytest.mark.asyncio
+async def test_sync_full_profile_failure_marks_partial(client):
+    with (
+        patch("sync.games.get_all_games", new_callable=AsyncMock, return_value=[]),
+        patch("sync.games.sync_profile", new_callable=AsyncMock, return_value=False),
+        _patch_background_tasks(),
+    ):
+        resp = client.post("/api/sync/full")
+    assert resp.status_code == 200  # games synced fine; profile is non-critical
+    row = await _last_sync_log()
+    assert row["status"] == "partial"
+    assert "profile" in row["error_message"]
+
+
+@pytest.mark.asyncio
+async def test_sync_full_library_failure_returns_502(client):
+    with (
+        patch("sync.games.get_all_games", new_callable=AsyncMock, side_effect=RuntimeError("API down")),
+        _patch_background_tasks(),
+    ):
+        resp = client.post("/api/sync/full")
+    assert resp.status_code == 502
+    body = resp.json()
+    assert body["success"] is False
+    row = await _last_sync_log()
+    assert row["status"] == "failed"
+
+
+# ---------------------------------------------------------------------------
+# POST /api/sync — unified sync SSE stream (all API calls stubbed)
+# ---------------------------------------------------------------------------
+
+
+def _fake_screenshots_inner(max_api_calls=0):
+    async def gen():
+        import orjson
+
+        yield orjson.dumps({"type": "finished", "api_calls_used": 0, "total_screenshots": 0}).decode()
+
+    return gen()
+
+
+def _parse_sse_events(text: str) -> list[dict]:
+    import orjson
+
+    return [orjson.loads(line[len("data: ") :]) for line in text.splitlines() if line.startswith("data: ")]
+
+
+@pytest.mark.asyncio
+async def test_unified_sync_sse_success(client):
+    with (
+        patch("sync.orchestrator.snapshot_db", new_callable=AsyncMock),
+        patch("sync.orchestrator.get_all_games", new_callable=AsyncMock, return_value=[]),
+        patch("sync.orchestrator.sync_profile", new_callable=AsyncMock, return_value=True),
+        patch("sync.orchestrator.sync_friends", new_callable=AsyncMock, return_value=0),
+        patch("sync.orchestrator._sync_screenshots_inner", new=_fake_screenshots_inner),
+        _patch_background_tasks(),
+    ):
+        resp = client.post("/api/sync")
+    assert resp.status_code == 200
+    assert resp.headers["content-type"].startswith("text/event-stream")
+
+    events = _parse_sse_events(resp.text)
+    assert any(e.get("type") == "phase" for e in events)
+    finished = [e for e in events if e.get("type") == "finished"]
+    assert len(finished) == 1
+    assert finished[0]["games_updated"] == 0
+
+    row = await _last_sync_log()
+    assert row["status"] == "success"
+    assert row["error_message"] is None
+
+
+@pytest.mark.asyncio
+async def test_unified_sync_friends_failure_marks_partial(client):
+    with (
+        patch("sync.orchestrator.snapshot_db", new_callable=AsyncMock),
+        patch("sync.orchestrator.get_all_games", new_callable=AsyncMock, return_value=[]),
+        patch("sync.orchestrator.sync_profile", new_callable=AsyncMock, return_value=True),
+        patch("sync.orchestrator.sync_friends", new_callable=AsyncMock, side_effect=RuntimeError("boom")),
+        patch("sync.orchestrator._sync_screenshots_inner", new=_fake_screenshots_inner),
+        _patch_background_tasks(),
+    ):
+        resp = client.post("/api/sync")
+    assert resp.status_code == 200
+    events = _parse_sse_events(resp.text)
+    assert any(e.get("type") == "finished" for e in events)  # stream still completes
+
+    row = await _last_sync_log()
+    assert row["status"] == "partial"
+    assert "friends" in row["error_message"]
+
+
+# ---------------------------------------------------------------------------
+# /api/sync/failures — list and clear
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_sync_failures_list_and_clear(client):
+    # sync_failures.title_id has a FK to games — seed the game first
+    await db.upsert_games_bulk([{"title_id": "T999", "name": "Broken Game"}])
+    await db.log_sync_failure("T999", "Broken Game", "full", "achievement fetch exploded")
+
+    resp = client.get("/api/sync/failures")
+    assert resp.status_code == 200
+    failures = resp.json()
+    assert len(failures) == 1
+    assert failures[0]["title_id"] == "T999"
+
+    resp = client.delete("/api/sync/failures")
+    assert resp.status_code == 200
+    assert resp.json()["success"] is True
+
+    resp = client.get("/api/sync/failures")
+    assert resp.json() == []
 
 
 # ---------------------------------------------------------------------------

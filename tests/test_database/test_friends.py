@@ -83,11 +83,38 @@ async def test_friend_no_presence_details():
 
 
 @pytest.mark.asyncio
-async def test_upsert_empty_list_removes_all():
+async def test_upsert_empty_list_keeps_existing():
+    """An empty API response must NOT wipe the table — a transient bad response
+    is indistinguishable from a real zero-friend list, and stale rows self-heal
+    on the next scheduled sync while a wipe wouldn't."""
     await db.upsert_friends([_FRIEND_A])
-    await db.upsert_friends([])
+    count = await db.upsert_friends([])
+    assert count == 0
     friends = await db.get_friends()
-    assert friends == []
+    assert len(friends) == 1
+    assert friends[0]["gamertag"] == "FriendAlpha"
+
+
+@pytest.mark.asyncio
+async def test_upsert_skips_entries_without_xuid():
+    """Malformed entries (missing xuid) are dropped; valid ones still sync,
+    and the full-replace delete still prunes stale friends."""
+    await db.upsert_friends([_FRIEND_A, _FRIEND_B])
+    malformed = {"gamertag": "NoXuid", "gamerScore": 1}
+    count = await db.upsert_friends([malformed, _FRIEND_A])
+    assert count == 1  # only FRIEND_A usable
+    friends = await db.get_friends()
+    assert len(friends) == 1  # FRIEND_B pruned, NoXuid never inserted
+    assert friends[0]["gamertag"] == "FriendAlpha"
+
+
+@pytest.mark.asyncio
+async def test_upsert_all_malformed_keeps_existing():
+    await db.upsert_friends([_FRIEND_A])
+    count = await db.upsert_friends([{"gamertag": "NoXuid"}, {"xuid": "  "}])
+    assert count == 0
+    friends = await db.get_friends()
+    assert len(friends) == 1
 
 
 @pytest.mark.asyncio

@@ -36,7 +36,14 @@ async def setup_test_db():
 
 @pytest.fixture(autouse=True)
 async def clear_db():
-    """Clear database tables before each test."""
+    """Clear database tables and the in-memory TTL cache before each test.
+
+    Without the cache flush, a value cached by one test (e.g. heatmap year
+    range, dashboard stats) leaks into the next test's empty-DB assertions.
+    """
+    from database.cache import _cache_clear_all
+
+    _cache_clear_all()
     conn = await get_connection()
     await conn.execute("DELETE FROM achievements")
     await conn.execute("DELETE FROM screenshots")

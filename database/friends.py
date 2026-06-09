@@ -14,9 +14,13 @@ async def upsert_friends(friends: list[dict]) -> int:
     conn = await get_connection()
     rows = []
     for f in friends:
+        xuid = str(f.get("xuid") or "").strip()
+        if not xuid:
+            log.warning("Skipping friend entry with missing xuid (gamertag=%r)", f.get("gamertag", ""))
+            continue
         rows.append(
             (
-                str(f.get("xuid", "")),
+                xuid,
                 f.get("gamertag", ""),
                 f.get("displayPicRaw", ""),
                 int(f.get("gamerScore", 0)),
@@ -26,6 +30,14 @@ async def upsert_friends(friends: list[dict]) -> int:
                 orjson.dumps(f).decode(),
             )
         )
+
+    if not rows:
+        # A 200 response with an empty/malformed people list is indistinguishable from
+        # a genuinely empty friends list. Keep existing rows rather than wiping the
+        # table — stale data self-heals on the next 30-minute scheduled sync; a wipe
+        # of real friends wouldn't until the API recovers.
+        log.warning("Friends sync returned no usable entries — keeping existing friends")
+        return 0
 
     await conn.executemany(
         """
@@ -47,12 +59,9 @@ async def upsert_friends(friends: list[dict]) -> int:
 
     # Full replace: the API returns the complete friends list, so anyone missing from
     # this batch is no longer a friend and should be removed.
-    xuids = [row[0] for row in rows if row[0]]
-    if xuids:
-        placeholders = ",".join("?" * len(xuids))
-        await conn.execute(f"DELETE FROM friends WHERE xuid NOT IN ({placeholders})", xuids)
-    else:
-        await conn.execute("DELETE FROM friends")
+    xuids = [row[0] for row in rows]
+    placeholders = ",".join("?" * len(xuids))
+    await conn.execute(f"DELETE FROM friends WHERE xuid NOT IN ({placeholders})", xuids)
 
     await conn.commit()
     _cache_invalidate(CacheKey.FRIENDS)

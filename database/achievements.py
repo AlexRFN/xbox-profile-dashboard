@@ -1,15 +1,27 @@
 import logging
-from datetime import date
 
 import orjson
 
 from config import CacheKey
 
-from .cache import _cache_invalidate
+from .cache import _cache_invalidate, _cache_invalidate_prefix
 from .connection import get_connection
 from .stats import get_achievement_stats, get_dashboard_stats
 
 log = logging.getLogger("xbox.db")
+
+
+def _invalidate_achievement_caches() -> None:
+    """Invalidate every cache slice derived from achievement rows.
+
+    Unlocks drive the dashboard stats, the heatmap grids (rolling + per-year),
+    the year-range selector, and the per-month activity popovers. The last three
+    are dynamically keyed (heatmap_{year}, activity_{year}_{month}), and a first
+    sync of a legacy title can insert unlocks in any past year/month, so clear
+    by prefix rather than enumerating keys.
+    """
+    _cache_invalidate(CacheKey.DASHBOARD_STATS, CacheKey.ACHIEVEMENT_STATS)
+    _cache_invalidate_prefix(CacheKey.HEATMAP_PREFIX, CacheKey.ACTIVITY_PREFIX)
 
 
 async def get_achievements(title_id: str) -> list[dict]:
@@ -75,14 +87,7 @@ async def upsert_achievements(title_id: str, achievements: list[dict]) -> int:
         rows,
     )
     await conn.commit()
-    # Achievement unlocks drive the heatmap and timeline, so invalidate both heatmap keys.
-    # Only the current year's key needs clearing; historical years are immutable once past.
-    _cache_invalidate(
-        CacheKey.DASHBOARD_STATS,
-        CacheKey.ACHIEVEMENT_STATS,
-        CacheKey.HEATMAP_ROLLING,
-        CacheKey.heatmap_year(date.today().year),
-    )
+    _invalidate_achievement_caches()
     log.info("Upserted %d achievements for title %s", len(rows), title_id)
     return len(rows)
 
@@ -109,12 +114,7 @@ async def update_achievement_progress(title_id: str, achievements: list[dict]) -
         rows,
     )
     await conn.commit()
-    _cache_invalidate(
-        CacheKey.DASHBOARD_STATS,
-        CacheKey.ACHIEVEMENT_STATS,
-        CacheKey.HEATMAP_ROLLING,
-        CacheKey.heatmap_year(date.today().year),
-    )
+    _invalidate_achievement_caches()
     return len(rows)
 
 

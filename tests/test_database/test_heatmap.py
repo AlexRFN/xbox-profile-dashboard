@@ -86,6 +86,29 @@ async def test_get_monthly_activity_empty():
 
 
 @pytest.mark.asyncio
+async def test_year_range_cache_invalidated_by_achievement_upsert():
+    """Regression: the year-range cache (incl. the cached-None sentinel) must be
+    invalidated when achievements are written, or the heatmap year selector goes
+    stale for up to 10 minutes after a sync."""
+    assert await db.get_heatmap_year_range() is None  # caches the "no data" sentinel
+    await db.upsert_games_bulk([_GAME])
+    await db.upsert_achievements("HM001", [_ACH_BASE])
+    result = await db.get_heatmap_year_range()
+    assert result is not None
+    assert result[0] == 2024
+
+
+@pytest.mark.asyncio
+async def test_monthly_activity_cache_invalidated_by_achievement_upsert():
+    assert await db.get_monthly_activity(2024, 6) == {}  # caches the empty result
+    await db.upsert_games_bulk([_GAME])
+    await db.upsert_achievements("HM001", [_ACH_BASE])
+    result = await db.get_monthly_activity(2024, 6)
+    # 'localtime' conversion may shift the day-of-month, so assert on the month total
+    assert sum(result.values()) == 1
+
+
+@pytest.mark.asyncio
 async def test_get_monthly_activity_with_data():
     await db.upsert_games_bulk([_GAME])
     await db.upsert_achievements("HM001", [_ACH_BASE])

@@ -56,15 +56,19 @@ def _extract_gamerpic(data: dict) -> str:
     return ""
 
 
-async def sync_profile():
+async def sync_profile() -> bool:
+    """Refresh the stored gamerpic. Non-critical: failures are swallowed but
+    reported via the return value so callers can mark the sync as partial."""
     try:
         data = await get_profile()
         pic = _extract_gamerpic(data)
         if pic:
             await set_setting("gamerpic", pic)
             log.info("Stored gamerpic: %s", pic[:60])
+        return True
     except Exception as e:
         log.warning("Profile sync failed (non-critical): %s", e)
+        return False
 
 
 async def sync_friends() -> int:

@@ -35,7 +35,14 @@ class CacheKey:
     ACHIEVEMENT_STATS = "achievement_stats"
     PAGE_CONTEXT = "page_context"
     HEATMAP_ROLLING = "heatmap_rolling"
+    HEATMAP_YEAR_RANGE = "heatmap_year_range"
     FRIENDS = "friends"
+
+    # Prefixes covering the dynamically-keyed entries below (heatmap_year/activity),
+    # for use with _cache_invalidate_prefix. HEATMAP_PREFIX also matches
+    # HEATMAP_ROLLING and HEATMAP_YEAR_RANGE by construction.
+    HEATMAP_PREFIX = "heatmap_"
+    ACTIVITY_PREFIX = "activity_"
 
     @staticmethod
     def heatmap_year(year: int) -> str:
