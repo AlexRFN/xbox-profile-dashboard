@@ -9,7 +9,7 @@ from .achievements import (
     warm_stats_cache,
 )
 from .cache import _cache_clear_all, _cache_get, _cache_invalidate, _cache_set
-from .connection import close_connection, get_connection, run_optimize
+from .connection import close_connection, get_connection, run_optimize, snapshot_db
 from .friends import get_friends, upsert_friends
 from .games import (
     get_all_games,
@@ -107,6 +107,7 @@ __all__ = [
     "recalc_game_from_achievements",
     "run_optimize",
     "set_setting",
+    "snapshot_db",
     # rate_limit
     "sync_rate_limit_from_headers",
     "update_achievement_progress",

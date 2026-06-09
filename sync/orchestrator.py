@@ -11,6 +11,7 @@ from database import (
     get_api_calls_last_hour,
     get_games_for_change_detection,
     log_sync_failure,
+    snapshot_db,
     update_sync_log,
     upsert_games_bulk,
     warm_stats_cache,
@@ -26,9 +27,7 @@ from .screenshots import _sync_screenshots_inner
 log = logging.getLogger("xbox.sync")
 
 
-async def _process_one_change(
-    change: dict, sem: asyncio.Semaphore
-) -> tuple[str, str, "SyncResult"]:
+async def _process_one_change(change: dict, sem: asyncio.Semaphore) -> tuple[str, str, "SyncResult"]:
     async with sem:
         game = change["game"]
         try:
@@ -47,8 +46,11 @@ async def _process_one_change(
 
 
 def _build_sync_message(
-    games_updated: int, failed_games: int, screenshots: int,
-    remaining_changes: int, api_calls: int,
+    games_updated: int,
+    failed_games: int,
+    screenshots: int,
+    remaining_changes: int,
+    api_calls: int,
 ) -> str:
     parts = []
     if games_updated > 0:
@@ -66,10 +68,15 @@ def _build_sync_message(
 
 def unified_sync():
     """SSE stream for unified sync (library + friends + game details + screenshots)."""
-    return _guarded_sync(_unified_sync_inner(), {
-        "message": "A sync is already in progress. Please wait.",
-        "games_updated": 0, "api_calls_used": 0,
-    })
+    return _guarded_sync(
+        _unified_sync_inner(),
+        {
+            "message": "A sync is already in progress. Please wait.",
+            "games_updated": 0,
+            "api_calls_used": 0,
+        },
+    )
+
 
 async def _unified_sync_inner():
     log.info("Unified sync started")
@@ -82,13 +89,21 @@ async def _unified_sync_inner():
     total_budget = RATE_LIMIT_BUDGET - used
     if total_budget < MIN_SYNC_BUDGET:
         log.warning("Unified sync: not enough budget (%d remaining)", total_budget)
-        await update_sync_log(sync_id, "failed",
-                                error_message=f"Only {total_budget} API calls remaining")
-        yield _json({
-            "type": "finished", "message": f"Not enough API budget ({total_budget} remaining). Try again later.",
-            "games_updated": 0, "api_calls_used": 0,
-        })
+        await update_sync_log(sync_id, "failed", error_message=f"Only {total_budget} API calls remaining")
+        yield _json(
+            {
+                "type": "finished",
+                "message": f"Not enough API budget ({total_budget} remaining). Try again later.",
+                "games_updated": 0,
+                "api_calls_used": 0,
+            }
+        )
         return
+
+    # Snapshot the DB before any writes this run. The library upsert below replaces
+    # every game row, so this is the safety net for the one thing sync can't refetch:
+    # manual tracking (status/notes/rating/finished_date). Best-effort — never blocks.
+    await snapshot_db()
 
     # ========== Phase 1: Library scan ==========
     yield _json({"type": "phase", "phase": "library", "message": "Scanning library..."})
@@ -104,8 +119,9 @@ async def _unified_sync_inner():
     except Exception as e:
         log.error("Unified sync failed to fetch library: %s", e, exc_info=True)
         await update_sync_log(sync_id, "failed", error_message=str(e))
-        yield _json({"type": "finished", "message": f"Failed to fetch library: {e}",
-                          "games_updated": 0, "api_calls_used": 0})
+        yield _json(
+            {"type": "finished", "message": f"Failed to fetch library: {e}", "games_updated": 0, "api_calls_used": 0}
+        )
         return
 
     await sync_profile()
@@ -138,12 +154,10 @@ async def _unified_sync_inner():
 
     batch = []
     if changes and games_budget > 0:
-        yield _json({"type": "phase", "phase": "games",
-                          "message": f"Updating {len(changes)} games..."})
+        yield _json({"type": "phase", "phase": "games", "message": f"Updating {len(changes)} games..."})
 
         batch, batch_cost = fit_changes_to_budget(changes, games_budget)
-        log.info("Unified sync: batching %d/%d games (cost %d API calls)",
-                 len(batch), len(changes), batch_cost)
+        log.info("Unified sync: batching %d/%d games (cost %d API calls)", len(batch), len(changes), batch_cost)
 
         if batch:
             fetched = 0
@@ -161,14 +175,16 @@ async def _unified_sync_inner():
                 else:
                     skipped += 1
 
-                yield _json({
-                    "type": "progress",
-                    "phase": "games",
-                    "game": game_name,
-                    "reason": reason,
-                    "done": fetched + skipped,
-                    "total": len(batch),
-                })
+                yield _json(
+                    {
+                        "type": "progress",
+                        "phase": "games",
+                        "game": game_name,
+                        "reason": reason,
+                        "done": fetched + skipped,
+                        "total": len(batch),
+                    }
+                )
 
             total_games_updated = fetched
 
@@ -192,15 +208,22 @@ async def _unified_sync_inner():
     remaining_changes = len(changes) - batch_size
     failed_games = batch_size - total_games_updated if batch_size > 0 else 0
     msg = _build_sync_message(
-        total_games_updated, failed_games, total_screenshots,
-        remaining_changes, total_api_calls,
+        total_games_updated,
+        failed_games,
+        total_screenshots,
+        remaining_changes,
+        total_api_calls,
     )
 
     status = "success" if remaining_changes == 0 else "partial"
-    await update_sync_log(sync_id, status,
-                            games_updated=total_games_updated, api_calls_used=total_api_calls)
-    log.info("Unified sync complete: %s — %d games, %d screenshots, %d API calls",
-             status, total_games_updated, total_screenshots, total_api_calls)
+    await update_sync_log(sync_id, status, games_updated=total_games_updated, api_calls_used=total_api_calls)
+    log.info(
+        "Unified sync complete: %s — %d games, %d screenshots, %d API calls",
+        status,
+        total_games_updated,
+        total_screenshots,
+        total_api_calls,
+    )
     # Per-op invalidation misses dynamic keys (activity_{y}_{m}, heatmap_year_range,
     # past-year heatmaps). Flush everything so navigation to other pages sees fresh data
     # without requiring a manual refresh.
@@ -210,11 +233,13 @@ async def _unified_sync_inner():
     fire_and_forget(backfill_blurhashes(50))
 
     rate_used = get_api_calls_last_hour()
-    yield _json({
-        "type": "finished",
-        "message": msg,
-        "games_updated": total_games_updated,
-        "screenshots_synced": total_screenshots,
-        "api_calls_used": total_api_calls,
-        "rate_used": rate_used,
-    })
+    yield _json(
+        {
+            "type": "finished",
+            "message": msg,
+            "games_updated": total_games_updated,
+            "screenshots_synced": total_screenshots,
+            "api_calls_used": total_api_calls,
+            "rate_used": rate_used,
+        }
+    )

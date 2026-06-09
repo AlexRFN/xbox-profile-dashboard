@@ -1,6 +1,6 @@
 import pytest
 
-from database.games import get_all_games, get_game, update_game_stats, upsert_games_bulk
+from database.games import get_all_games, get_game, update_game_stats, update_tracking, upsert_games_bulk
 
 
 @pytest.mark.asyncio
@@ -17,7 +17,7 @@ async def test_upsert_and_get_games():
             "current_achievements": 20,
             "total_achievements": 50,
             "last_played": "2023-10-27T10:00:00Z",
-            "is_gamepass": True
+            "is_gamepass": True,
         }
     ]
     upserted = await upsert_games_bulk(games)
@@ -38,11 +38,24 @@ async def test_upsert_and_get_games():
     game = await get_game("123")
     assert game["name"] == "Halo Infinite (Updated)"
 
+
 @pytest.mark.asyncio
 async def test_get_all_games():
     games = [
-        {"title_id": "1", "name": "Game A", "progress_percentage": 10, "is_gamepass": True, "last_played": "2023-01-01"},
-        {"title_id": "2", "name": "Game B", "progress_percentage": 100, "is_gamepass": False, "last_played": "2023-02-01"}
+        {
+            "title_id": "1",
+            "name": "Game A",
+            "progress_percentage": 10,
+            "is_gamepass": True,
+            "last_played": "2023-01-01",
+        },
+        {
+            "title_id": "2",
+            "name": "Game B",
+            "progress_percentage": 100,
+            "is_gamepass": False,
+            "last_played": "2023-02-01",
+        },
     ]
     await upsert_games_bulk(games)
 
@@ -65,6 +78,56 @@ async def test_get_all_games():
     results, total = await get_all_games(gamepass="yes")
     assert total == 1
     assert results[0]["title_id"] == "1"
+
+
+@pytest.mark.asyncio
+async def test_sync_never_clobbers_manual_tracking():
+    """The load-bearing invariant: a library sync must NEVER overwrite the four
+    user-owned columns (status, notes, rating, finished_date). These are the only
+    fields that can't be refetched from the API — losing them loses real user data.
+    Guards against anyone adding them to upsert_games_bulk's ON CONFLICT clause."""
+    # A game already in the library with API-provided data.
+    await upsert_games_bulk(
+        [
+            {
+                "title_id": "999",
+                "name": "Elden Ring",
+                "current_gamerscore": 100,
+                "progress_percentage": 20,
+                "last_played": "2024-01-01T00:00:00Z",
+            }
+        ]
+    )
+
+    # The user manually tracks it.
+    await update_tracking(
+        "999", status="finished", notes="GOTY, no notes app needed", rating=10, finished_date="2024-02-14"
+    )
+
+    # A later sync brings fresh API data — different stats, and (correctly) no tracking fields.
+    await upsert_games_bulk(
+        [
+            {
+                "title_id": "999",
+                "name": "Elden Ring: Shadow of the Erdtree",
+                "current_gamerscore": 500,
+                "progress_percentage": 75,
+                "last_played": "2024-06-21T00:00:00Z",
+            }
+        ]
+    )
+
+    game = await get_game("999")
+    # API-owned fields updated as expected.
+    assert game["name"] == "Elden Ring: Shadow of the Erdtree"
+    assert game["current_gamerscore"] == 500
+    assert game["progress_percentage"] == 75
+    # User-owned fields untouched.
+    assert game["status"] == "finished"
+    assert game["notes"] == "GOTY, no notes app needed"
+    assert game["rating"] == 10
+    assert game["finished_date"] == "2024-02-14"
+
 
 @pytest.mark.asyncio
 async def test_update_game_stats():
