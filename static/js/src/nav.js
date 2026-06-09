@@ -557,16 +557,32 @@ function initScrollNav() {
     // Scroll-idle gate for always-visible nav animations (nav-liquid-sweep, nav-glow-pulse).
     // Adds is-scrolling on <html> while scrolling; removes after 200ms idle. CSS pauses
     // the persistent loops while present — the user's eye is on scrolling content, not the nav.
+    //
+    // Deadline-based instead of clearTimeout+setTimeout per event: Lenis emits 'scroll'
+    // every animation frame for the whole smooth-scroll ease (~120/s on high-Hz displays),
+    // so per-event timer churn was ~2 timer syscalls per frame for the entire scroll.
+    // Here each event is two property writes; the single timer re-arms itself until the
+    // deadline passes. Same observable behavior (class drops SCROLL_IDLE_MS after the
+    // last scroll event, within timer precision).
     const html = document.documentElement;
     let scrollIdleTimer = 0;
+    let scrollIdleDeadline = 0;
+    let isScrolling = false;
     const SCROLL_IDLE_MS = 200;
+    function onScrollIdleTimer() {
+        const remaining = scrollIdleDeadline - performance.now();
+        if (remaining > 0) {
+            scrollIdleTimer = setTimeout(onScrollIdleTimer, remaining);
+            return;
+        }
+        scrollIdleTimer = 0;
+        isScrolling = false;
+        html.classList.remove('is-scrolling');
+    }
     function bumpScrollIdle() {
-        if (!html.classList.contains('is-scrolling')) html.classList.add('is-scrolling');
-        if (scrollIdleTimer) clearTimeout(scrollIdleTimer);
-        scrollIdleTimer = setTimeout(() => {
-            html.classList.remove('is-scrolling');
-            scrollIdleTimer = 0;
-        }, SCROLL_IDLE_MS);
+        if (!isScrolling) { isScrolling = true; html.classList.add('is-scrolling'); }
+        scrollIdleDeadline = performance.now() + SCROLL_IDLE_MS;
+        if (!scrollIdleTimer) scrollIdleTimer = setTimeout(onScrollIdleTimer, SCROLL_IDLE_MS);
     }
 
     if (window.lenis) {

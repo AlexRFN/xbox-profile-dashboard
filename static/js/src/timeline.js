@@ -133,7 +133,7 @@ function initTimelineContinuationFix() {
 
 // --- Timeline calendar picker ---
 // rangeStart: date string when first click of a cross-month range is pending
-const _cal = { el: null, dropdown: null, visible: false, year: 0, month: 0, cache: {}, drag: null, rangeStart: null };
+const _cal = { el: null, dropdown: null, visible: false, year: 0, month: 0, cache: {}, drag: null, rangeStart: null, hoverKey: null };
 const _calMonths = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 
 let _calDocClickInit = false;
@@ -179,7 +179,15 @@ function initTimelineCalendar() {
             // Hover preview when rangeStart is pending
             if (_cal.rangeStart) {
                 const day = getDay(e.target);
-                if (day) highlightCalRange(_cal.rangeStart, day.dataset.date);
+                if (!day) return;
+                // Skip when neither anchor nor hovered day changed since the last
+                // event — mousemove fires per pointer step (120+/s on high-Hz mice)
+                // while the preview only changes when the hovered CELL changes.
+                // Without this, every event re-toggles classes on all ~40 day cells.
+                const hoverKey = _cal.rangeStart + '|' + day.dataset.date;
+                if (hoverKey === _cal.hoverKey) return;
+                _cal.hoverKey = hoverKey;
+                highlightCalRange(_cal.rangeStart, day.dataset.date);
             }
             return;
         }
