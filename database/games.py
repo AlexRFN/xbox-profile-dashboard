@@ -310,13 +310,13 @@ async def get_game_index() -> list[dict]:
     return [dict(r) for r in rows]
 
 
-async def get_games_missing_blurhash(limit: int = 50) -> list[dict]:
+async def get_games_with_art() -> list[dict]:
+    """All games that have art, with blurhash status — feeds the sync-time
+    image warmer, which decides per game whether anything is missing."""
     conn = await get_connection()
     cursor = await conn.execute(
-        """SELECT title_id, display_image FROM games
-           WHERE blurhash IS NULL AND display_image != '' AND display_image IS NOT NULL
-           LIMIT ?""",
-        (limit,),
+        """SELECT title_id, display_image, blurhash FROM games
+           WHERE display_image != '' AND display_image IS NOT NULL"""
     )
     rows = await cursor.fetchall()
     return [dict(r) for r in rows]

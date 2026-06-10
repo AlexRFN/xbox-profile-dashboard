@@ -30,7 +30,7 @@ scheduler = AsyncIOScheduler(timezone="UTC")
 async def scheduled_library_sync():
     """Full library scan — cheap (2 API calls), runs every 4 hours."""
     from database import can_make_requests
-    from sync import backfill_blurhashes, fire_and_forget, full_library_sync, sync_guard
+    from sync import backfill_game_art, fire_and_forget, full_library_sync, sync_guard
 
     async with sync_guard("scheduled_library") as acquired:
         if not acquired:
@@ -44,7 +44,7 @@ async def scheduled_library_sync():
         result = await full_library_sync()
         log.info("Scheduled library sync: %s", result.message)
 
-    fire_and_forget(backfill_blurhashes(30))
+    fire_and_forget(backfill_game_art(30))
 
 
 async def scheduled_detail_sync():

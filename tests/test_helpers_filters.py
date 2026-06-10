@@ -128,10 +128,11 @@ class TestFromJson:
 
 
 class TestThumb:
-    def test_microsoft_url_gets_size_params(self):
+    def test_microsoft_url_routes_through_proxy(self):
         url = "https://store-images.s-microsoft.com/image/abc123"
         result = thumb(url, 120)
-        assert "?w=120&h=120" in result
+        assert result.startswith("/img?u=")
+        assert "w=240" in result  # 2x retina
 
     def test_non_microsoft_url_unchanged(self):
         url = "https://example.com/img.png"
@@ -140,9 +141,11 @@ class TestThumb:
     def test_none_returns_empty_string(self):
         assert thumb(None) == ""
 
-    def test_url_with_query_params_unchanged(self):
+    def test_url_with_query_params_also_proxied(self):
         url = "https://store-images.s-microsoft.com/image/abc?existing=1"
-        assert thumb(url) == url
+        result = thumb(url, 48)
+        assert result.startswith("/img?u=")
+        assert "existing%3D1" in result  # original query survives, URL-encoded
 
     def test_xboxlive_image_routes_through_proxy(self):
         url = "https://images-eds-ssl.xboxlive.com/image?url=ABC"

@@ -1021,6 +1021,19 @@
             })
                 .then(function (img) { return img.decode ? img.decode().then(function () { return img; }) : img; })
                 .then(function (img) {
+                    // Idle gate: the finalize below (canvas pre-blur + GPU texture
+                    // upload) is main-thread work that otherwise lands mid-entrance-
+                    // animation on first page view. The fetch/decode above already
+                    // overlapped the animation; only the CPU tail waits for idle.
+                    return new Promise(function (resolve) {
+                        if (global.requestIdleCallback) {
+                            global.requestIdleCallback(function () { resolve(img); }, { timeout: 600 });
+                        } else {
+                            setTimeout(function () { resolve(img); }, 200);
+                        }
+                    });
+                })
+                .then(function (img) {
                     // Preserve native aspect — texture tracks the image's natural ratio
                     // (max side = BACKDROP_TEX_SIZE). Shader uses texAspect for
                     // cover-style UV sampling, matching CSS background-size:cover.

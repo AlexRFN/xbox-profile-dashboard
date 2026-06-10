@@ -6,6 +6,10 @@ achievement icon arrives as a 1.47 MB PNG, a 754x424 capture thumbnail as a
 490 KB PNG. This router fetches once, resizes with Pillow, encodes to WebP, and
 serves from disk on every subsequent request with `immutable` cache headers.
 
+`store-images.s-microsoft.com` (game box art) does support native resize, but is
+proxied anyway so sync-time warming (`backfill_game_art`) can pre-encode the
+thumbs — first page views then hit warm local disk instead of a cold CDN fetch.
+
 Security: hostname allowlist prevents this from acting as an open image proxy.
 Concurrency: per-key asyncio lock dedupes simultaneous first-fetches for the
 same image so we don't pay the upstream + encode cost twice.
@@ -14,7 +18,9 @@ same image so we don't pay the upstream + encode cost twice.
 import asyncio
 import hashlib
 import logging
+import os
 import time
+from collections.abc import Sequence
 from io import BytesIO
 from pathlib import Path
 from urllib.parse import urlparse
@@ -96,7 +102,9 @@ def _negative_cache_add(key: str) -> None:
 def _allowed(host: str) -> bool:
     """Hostname allowlist. Anything else is rejected before fetch."""
     h = host.lower()
-    return h == "images-eds-ssl.xboxlive.com" or h.endswith(".media.xboxlive.com")
+    return (
+        h == "images-eds-ssl.xboxlive.com" or h == "store-images.s-microsoft.com" or h.endswith(".media.xboxlive.com")
+    )
 
 
 def _cache_key(url: str, width: int) -> str:
@@ -118,7 +126,11 @@ async def close_http_client() -> None:
 
 
 def _encode(data: bytes, width: int, out_path: Path) -> None:
-    """Resize to max-width `width` (preserving aspect) and write WebP atomically."""
+    """Resize to max-width `width` (preserving aspect) and write WebP atomically.
+
+    The tmp name includes the pid so a request-time encode and the sync-time
+    warmer racing on the same key can't truncate each other's half-written file.
+    """
     img = Image.open(BytesIO(data))
     if img.mode == "P":
         img = img.convert("RGBA" if "transparency" in img.info else "RGB")
@@ -127,9 +139,36 @@ def _encode(data: bytes, width: int, out_path: Path) -> None:
     if img.width > width:
         new_h = max(1, round(img.height * (width / img.width)))
         img = img.resize((width, new_h), Image.Resampling.LANCZOS)
-    tmp = out_path.with_suffix(".webp.tmp")
+    tmp = out_path.with_suffix(f".{os.getpid()}.webp.tmp")
     img.save(tmp, format="WEBP", quality=82, method=4)
     tmp.replace(out_path)
+
+
+def is_proxied_url(url: str) -> bool:
+    """True if `thumb()` routes this URL through /img (i.e. warming applies)."""
+    parsed = urlparse(url)
+    return parsed.scheme == "https" and _allowed(parsed.hostname or "")
+
+
+def missing_warm_widths(url: str, widths: Sequence[int]) -> list[int]:
+    """Widths whose cached thumb file doesn't exist yet for `url`."""
+    if not is_proxied_url(url):
+        return []
+    return [w for w in widths if not (CACHE_DIR / f"{_cache_key(url, w)}.webp").exists()]
+
+
+def warm_thumbs(url: str, data: bytes, widths: Sequence[int]) -> int:
+    """Pre-encode WebP thumbs for `url` from already-downloaded source bytes.
+
+    CPU-bound (Pillow) — callers on the event loop must wrap in a thread.
+    Skips widths already cached on disk; returns how many files were written.
+    Raises on undecodable bytes (callers log and move on).
+    """
+    written = 0
+    for w in missing_warm_widths(url, widths):
+        _encode(data, w, CACHE_DIR / f"{_cache_key(url, w)}.webp")
+        written += 1
+    return written
 
 
 def _serve_cached(out_path: Path) -> FileResponse:

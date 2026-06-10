@@ -216,18 +216,17 @@ def from_json(value):
 def thumb(url, size=240):
     """Resize Xbox-origin image URLs to the requested width.
 
-    - `store-images.s-microsoft.com` supports native resize → append `?w=&h=`.
-    - `images-eds-ssl.xboxlive.com` and `*.media.xboxlive.com` have no
-      native resize and serve raw 1+ MB PNGs → route through `/img` which
-      re-encodes to WebP at the requested width and caches to disk. We pass
-      `size * 2` for retina-quality source on standard 48-px icons.
-    - Anything else passes through unchanged.
+    All Xbox CDN hosts route through `/img`, which re-encodes to WebP at the
+    requested width and caches to disk. `store-images.s-microsoft.com` does
+    support native `?w=&h=` resize, but proxying it too means game art is
+    pre-warmable at sync time (`backfill_game_art`) and served same-origin
+    from local disk — no cold CDN fetch on first page view. We pass
+    `size * 2` for retina-quality source on standard 48-px icons.
+    Anything else passes through unchanged.
     """
     if not url:
         return ""
-    if "store-images.s-microsoft.com" in url and "?" not in url:
-        return f"{url}?w={size}&h={size}"
-    if "images-eds-ssl.xboxlive.com" in url or ".media.xboxlive.com" in url:
+    if "store-images.s-microsoft.com" in url or "images-eds-ssl.xboxlive.com" in url or ".media.xboxlive.com" in url:
         return f"/img?u={quote(url, safe='')}&w={size * 2}"
     return url
 

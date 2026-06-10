@@ -32,6 +32,7 @@ document.addEventListener('DOMContentLoaded', () => {
         initHeatmapTooltip();
         initClickableRows();
         initBlurhash();
+        initDeferredBg();
         initAmbientGlow();
         initOffscreenAnimationPause();
 

@@ -1,11 +1,11 @@
 from .core import fire_and_forget, fit_changes_to_budget, is_sync_running, sync_guard
 from .games import detect_changed_games, full_library_sync, sync_game_details, sync_game_selective
 from .orchestrator import unified_sync
-from .profile import backfill_blurhashes, sync_friends, sync_profile
+from .profile import backfill_game_art, sync_friends, sync_profile
 from .screenshots import sync_screenshots
 
 __all__ = [
-    "backfill_blurhashes",
+    "backfill_game_art",
     "detect_changed_games",
     "fire_and_forget",
     "fit_changes_to_budget",

@@ -21,7 +21,7 @@ from xbox_api import RateLimitExceeded, get_all_games
 
 from .core import _guarded_sync, _json, fire_and_forget, fit_changes_to_budget
 from .games import detect_changed_games, sync_game_selective
-from .profile import backfill_blurhashes, sync_friends, sync_profile
+from .profile import backfill_game_art, sync_friends, sync_profile
 from .screenshots import _sync_screenshots_inner
 
 log = logging.getLogger("xbox.sync")
@@ -242,7 +242,7 @@ async def _unified_sync_inner():
     _cache_clear_all()
     # Fire-and-forget so the SSE "finished" event isn't delayed by these follow-up tasks.
     fire_and_forget(warm_stats_cache())
-    fire_and_forget(backfill_blurhashes(50))
+    fire_and_forget(backfill_game_art(50))
 
     rate_used = get_api_calls_last_hour()
     yield _json(

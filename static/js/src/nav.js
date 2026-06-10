@@ -399,6 +399,8 @@ function _reinitMain(main) {
         // Blurhash: O(1) dominant-color fast path per image + async Worker dispatch.
         // Safe to call here — nothing blocks; full decode happens off-thread.
         initBlurhash(main);
+        // Hero/np backdrops: blurhash placeholder now, real image after decode.
+        initDeferredBg(main);
         // Ambient glow: O(1) per card via blurhash DC component (no canvas, no image decode).
         initAmbientGlow(main);
         // Pause infinite decorative animations when off-screen (idempotent, scoped).

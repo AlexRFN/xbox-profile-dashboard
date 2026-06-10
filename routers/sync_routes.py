@@ -7,7 +7,7 @@ import database as db
 from helpers import sse_response
 from models import SyncResult
 from sync import (
-    backfill_blurhashes,
+    backfill_game_art,
     fire_and_forget,
     full_library_sync,
     is_sync_running,
@@ -81,9 +81,7 @@ async def api_clear_sync_failures():
 
 @router.post("/api/sync/blurhash")
 async def api_backfill_blurhash(count: int = 100):
-    """Manually trigger blurhash backfill for games missing placeholders."""
-    missing = await db.get_games_missing_blurhash(count)
-    if not missing:
-        return {"message": "All games already have blurhash", "processed": 0}
-    fire_and_forget(backfill_blurhashes(count))
-    return {"message": f"Backfilling {len(missing)} games in background", "queued": len(missing)}
+    """Manually trigger the game-art backfill (blurhash placeholders + thumb
+    cache warming). Route name kept for compatibility with existing callers."""
+    fire_and_forget(backfill_game_art(count))
+    return {"message": f"Backfilling up to {count} games in background", "queued": count}

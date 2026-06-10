@@ -6,7 +6,13 @@
 <!-- Hero -->
 <article class="game-hero anim-blur-scale"
          {% if game.display_image %}data-glass-backdrop="{{ game.display_image|thumb(480) }}"{% endif %}>
-    <div class="hero-bg" style="background-image: url('{{ game.display_image|thumb(480) }}')"></div>
+    {# No inline background-image: blurhash.js paints a placeholder instantly and
+       swaps the real image in only after an off-thread decode (initDeferredBg).
+       960w source: anything smaller upscales over the hero and visibly thickens
+       the blur(40px); decode cost is off-thread so the big source is fine. #}
+    <div class="hero-bg"
+         {% if game.display_image %}data-bg-src="{{ game.display_image|thumb(480) }}"{% endif %}
+         {% if game.blurhash %}data-bh-bg="{{ game.blurhash }}"{% endif %}></div>
     <div class="hero-content">
         <div class="hero-image-wrap" style="background: url('{{ game.display_image|thumb(200) }}') center/cover">
             <img src="{{ game.display_image|thumb(200) }}" alt="{{ game.name }}" class="hero-image"

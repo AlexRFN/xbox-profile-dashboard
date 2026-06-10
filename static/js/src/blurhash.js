@@ -10,7 +10,11 @@
 // Images are observed via IntersectionObserver (rootMargin 400px) so off-screen
 // items in long lists never get decoded until they're near the viewport.
 //
-// globals: initBlurhash
+// Large blurred backdrop divs (.hero-bg, .profile-np-bg) use the deferred-bg
+// path instead: blurhash placeholder paints in the same frame, the real image
+// swaps in only after an off-thread fetch + decode (initDeferredBg).
+//
+// globals: initBlurhash, initDeferredBg
 
 // ── Worker source (blob-embedded — no separate served file needed) ────────────
 const _BH_WORKER_SRC = /* js */`
@@ -86,7 +90,9 @@ function _getBhWorker() {
             _bhPending.delete(id);
             if (!img || err) return;
             // Image loaded before the worker finished — nothing to show.
+            // (`complete` is undefined for deferred-bg divs; they use bgLoaded.)
             if (img.complete && img.naturalWidth > 0) return;
+            if (img.dataset.bgLoaded) return;
             // Cheap main-thread work: create canvas and blit pixels.
             const canvas = document.createElement('canvas');
             canvas.width = 16; canvas.height = 16;
@@ -170,5 +176,46 @@ function initBlurhash(scope) {
 
         // Phase 2: full blur — worker does the math when image is near viewport.
         obs.observe(img);
+    });
+}
+
+// ── Deferred backgrounds — div[data-bg-src] ───────────────────────────────────
+// For big blurred backdrops, an inline background-image forces the browser to
+// fetch + decode a large image and repaint a heavy CSS filter mid-entrance-
+// animation. Instead: blurhash placeholder now, real image only after
+// Image.decode() resolves off-thread. Under blur(24-40px) the swap is invisible.
+function initDeferredBg(scope) {
+    const els = (scope || document).querySelectorAll('[data-bg-src]');
+    els.forEach(el => {
+        if (el.dataset.bgApplied) return;
+        el.dataset.bgApplied = '1';
+
+        const hash = el.dataset.bhBg;
+        if (hash && hash.length >= 6) {
+            // Same two-phase pipeline as <img>: DC color this frame, full
+            // 16×16 decode from the worker (its onmessage writes our
+            // backgroundImage; bgLoaded guards against late arrival).
+            el.style.backgroundColor = _bhDominantColor(hash);
+            const id = ++_bhIdCounter;
+            _bhPending.set(id, el);
+            _getBhWorker().postMessage({ id, hash });
+        }
+
+        const src = el.dataset.bgSrc;
+        if (!src) return;
+        const img = new Image();
+        img.decoding = 'async';
+        const apply = () => {
+            el.dataset.bgLoaded = '1';
+            el.style.backgroundImage = `url("${src}")`;
+        };
+        // decode() failure still means the bytes are fetched — apply anyway and
+        // let the browser decode on paint (same cost as the old inline style).
+        img.onload = () => {
+            (img.decode ? img.decode() : Promise.resolve()).then(apply, apply);
+        };
+        // On fetch error keep the blurhash placeholder — same silent fallback
+        // the glass backdrop manager uses.
+        img.src = src;
     });
 }

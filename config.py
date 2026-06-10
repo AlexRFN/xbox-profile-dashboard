@@ -16,6 +16,12 @@ SCHEDULED_GAME_BUDGET_PCT = 0.50  # Fraction of remaining budget for scheduled d
 SCHEDULED_GAME_BUDGET_CAP = 30  # Hard cap on API calls per scheduled detail sync run
 MIN_SYNC_BUDGET = 5  # Minimum remaining calls required to start any sync
 
+# ── Image proxy warming ────────────────────────────────────────────────────────
+# Proxy widths pre-encoded into the /img disk cache at sync time so first page
+# views never pay the upstream-fetch + encode cost. Mirrors the template
+# `thumb()` sizes for game art (48/160/200/240/480 → size * 2).
+IMG_WARM_WIDTHS = (96, 320, 400, 480, 960)
+
 # ── Pagination ─────────────────────────────────────────────────────────────────
 LIBRARY_PAGE_SIZE = 50
 ACHIEVEMENTS_PAGE_SIZE = 60

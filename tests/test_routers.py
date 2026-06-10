@@ -159,7 +159,7 @@ def _patch_background_tasks():
     with (
         patch("database.warm_stats_cache", new_callable=AsyncMock),
         patch("sync.orchestrator.warm_stats_cache", new_callable=AsyncMock),
-        patch("sync.orchestrator.backfill_blurhashes", new_callable=AsyncMock),
+        patch("sync.orchestrator.backfill_game_art", new_callable=AsyncMock),
     ):
         yield
 

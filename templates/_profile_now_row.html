@@ -13,7 +13,9 @@
            hx-push-url="true" hx-headers='{"X-SPA-Nav":"true"}'
            aria-label="{{ np.name }} — open game detail"></a>
         {% if np.display_image %}
-        <div class="profile-np-bg" style="background-image: url('{{ np.display_image|thumb(480) }}')"></div>
+        <div class="profile-np-bg"
+             data-bg-src="{{ np.display_image|thumb(480) }}"
+             {% if np.blurhash %}data-bh-bg="{{ np.blurhash }}"{% endif %}></div>
         {% endif %}
         <div class="profile-np-head">
             <span class="profile-np-live">Recently played</span>
