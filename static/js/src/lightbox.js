@@ -82,14 +82,26 @@ function openLightboxAt(index) {
     img.style.display = '';
     if (loading) loading.style.display = 'flex';
 
-    // Simple Image preload: try full-res first, fall back to thumbnail
+    // Image preload: try full-res first, fall back to thumbnail.
+    // onload fires when the bytes are ready, NOT when pixels are decoded —
+    // swapping src at that point forces a synchronous main-thread decode of a
+    // full-res screenshot (1080p+, unproxied CDN original) right as the fade-in
+    // transition starts. decode() finishes the decode off-thread first, so the
+    // swap composites already-rasterized pixels. Falls through to an immediate
+    // show when decode() is unavailable or rejects (same behavior as before).
     const preload = new Image();
+    preload.decoding = 'async';
     _lightboxPreload = preload;
-    preload.onload = () => {
+    const show = () => {
         if (_lightboxPreload !== preload) return; // stale
         img.src = preload.src;
         img.style.opacity = '1';
         if (loading) loading.style.display = 'none';
+    };
+    preload.onload = () => {
+        if (_lightboxPreload !== preload) return; // stale
+        if (preload.decode) preload.decode().then(show, show);
+        else show();
     };
     preload.onerror = () => {
         if (_lightboxPreload !== preload) return; // stale
