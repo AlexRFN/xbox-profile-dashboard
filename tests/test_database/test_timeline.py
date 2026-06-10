@@ -192,3 +192,37 @@ async def test_stats_cached_and_invalidated_by_writes():
     stats_after, months_after = await db.get_timeline_stats_and_months()
     assert stats_after["achievement_count"] == 2
     assert "2024-07" in months_after
+
+
+@pytest.mark.asyncio
+async def test_deep_page_served_from_materialized_table():
+    """Page 2+ reads come from timeline_events with correct order and has_more."""
+    await db.upsert_games_bulk([_GAME])
+    achs = [
+        dict(_ACH, achievement_id=f"DP{i}", name=f"Deep {i}", time_unlocked=f"2024-0{i}-01T10:00:00Z")
+        for i in range(1, 4)
+    ]
+    await db.upsert_achievements("TL001", achs)
+
+    page2, has_more = await db.get_timeline_events(page=2, per_page=1, event_type="achievement")
+    assert len(page2) == 1
+    assert page2[0]["event_title"] == "Deep 2"  # second-newest unlock
+    assert has_more is True
+
+    page3, has_more = await db.get_timeline_events(page=3, per_page=1, event_type="achievement")
+    assert page3[0]["event_title"] == "Deep 1"
+    assert has_more is False
+
+
+@pytest.mark.asyncio
+async def test_materialized_table_refreshes_after_writes():
+    """A write between reads marks the table dirty; the next read rebuilds it."""
+    await _seed()
+    events, _ = await db.get_timeline_events(game_search="Timeline")  # uncached filtered read
+    count_before = len(events)
+
+    new_ach = dict(_ACH, achievement_id="MAT1", name="Materialized", time_unlocked="2024-08-01T10:00:00Z")
+    await db.upsert_achievements("TL001", [new_ach])
+    events_after, _ = await db.get_timeline_events(game_search="Timeline")
+    assert len(events_after) > count_before
+    assert any(e["event_title"] == "Materialized" for e in events_after)

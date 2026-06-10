@@ -47,7 +47,7 @@ from .settings import get_setting, set_setting
 from .setup import init_db
 from .stats import get_achievement_stats, get_dashboard_stats, get_page_context_data, get_status_counts
 from .sync import clear_sync_failures, create_sync_log, get_sync_failures, log_sync_failure, update_sync_log
-from .timeline import get_timeline_events, get_timeline_stats_and_months
+from .timeline import get_timeline_events, get_timeline_stats_and_months, invalidate_timeline, mark_timeline_dirty
 
 __all__ = [
     "RATE_LIMIT_BUDGET",
@@ -102,8 +102,10 @@ __all__ = [
     "get_timeline_stats_and_months",
     # setup
     "init_db",
+    "invalidate_timeline",
     "log_sync_failure",
     "mark_game_fetched",
+    "mark_timeline_dirty",
     "recalc_all_games_from_achievements",
     "recalc_game_from_achievements",
     "run_optimize",

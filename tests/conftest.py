@@ -44,7 +44,10 @@ async def clear_db():
     from database.cache import _cache_clear_all
 
     _cache_clear_all()
+    from database.timeline import mark_timeline_dirty
+
     conn = await get_connection()
+    await conn.execute("DELETE FROM timeline_events")
     await conn.execute("DELETE FROM achievements")
     await conn.execute("DELETE FROM screenshots")
     await conn.execute("DELETE FROM sync_log")
@@ -54,6 +57,9 @@ async def clear_db():
     await conn.execute("DELETE FROM settings")
     await conn.execute("DELETE FROM games")
     await conn.commit()
+    # The materialized timeline derives from the tables just cleared; force a
+    # rebuild so no events leak from the previous test.
+    mark_timeline_dirty()
 
 
 from sync.core import reset_sync_gate as _reset_sync_gate  # noqa: E402

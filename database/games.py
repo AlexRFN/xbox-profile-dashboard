@@ -4,8 +4,9 @@ import orjson
 
 from config import CacheKey
 
-from .cache import _UNSET, _cache_invalidate, _cache_invalidate_prefix
+from .cache import _UNSET, _cache_invalidate
 from .connection import get_connection, get_read_connection
+from .timeline import invalidate_timeline
 
 log = logging.getLogger("xbox.db")
 
@@ -70,7 +71,7 @@ async def upsert_games_bulk(games: list[dict]) -> int:
     _cache_invalidate(CacheKey.DASHBOARD_STATS, CacheKey.ACHIEVEMENT_STATS, CacheKey.PAGE_CONTEXT)
     # Timeline completion events embed game name/image/progress, so a library
     # upsert can change them without touching the achievements table.
-    _cache_invalidate_prefix(CacheKey.TIMELINE_PREFIX)
+    invalidate_timeline()
     log.info("Upserted %d games", len(rows))
     return len(rows)
 
@@ -221,7 +222,7 @@ async def recalc_game_from_achievements(title_id: str):
     )
     await conn.commit()
     _cache_invalidate(CacheKey.DASHBOARD_STATS)
-    _cache_invalidate_prefix(CacheKey.TIMELINE_PREFIX)  # completion events show current_gamerscore
+    invalidate_timeline()  # completion events show current_gamerscore
 
 
 async def recalc_all_games_from_achievements():
@@ -243,7 +244,7 @@ async def recalc_all_games_from_achievements():
     updated = cursor.rowcount
     await conn.commit()
     _cache_invalidate(CacheKey.DASHBOARD_STATS, CacheKey.ACHIEVEMENT_STATS, CacheKey.PAGE_CONTEXT)
-    _cache_invalidate_prefix(CacheKey.TIMELINE_PREFIX)
+    invalidate_timeline()
     log.info("Batch recalc: updated %d games from achievements table", updated)
     return updated
 
@@ -303,7 +304,7 @@ async def update_tracking(title_id: str, status=_UNSET, notes=_UNSET, finished_d
         await conn.execute(f"UPDATE games SET {', '.join(updates)} WHERE title_id = ?", params)
         await conn.commit()
         _cache_invalidate(CacheKey.DASHBOARD_STATS)
-        _cache_invalidate_prefix(CacheKey.TIMELINE_PREFIX)  # finished_date can date a completion event
+        invalidate_timeline()  # finished_date can date a completion event
 
 
 async def get_game_index() -> list[dict]:

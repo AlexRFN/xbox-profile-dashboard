@@ -4,8 +4,8 @@ import logging
 from config import IMG_WARM_WIDTHS, SCHEDULED_SYNC_CONCURRENCY, CacheKey
 from database import (
     _cache_invalidate,
-    _cache_invalidate_prefix,
     get_games_with_art,
+    invalidate_timeline,
     set_setting,
     update_game_blurhash,
     upsert_friends,
@@ -83,7 +83,7 @@ async def backfill_game_art(max_count: int = 50):
         # and timeline renders until their TTLs expire. One flush at the end —
         # not per game — keeps the rebuild cost bounded.
         _cache_invalidate(CacheKey.DASHBOARD_STATS)
-        _cache_invalidate_prefix(CacheKey.TIMELINE_PREFIX)
+        invalidate_timeline()
     log.info("Game art backfill complete: %d/%d games", done, len(todo))
 
 

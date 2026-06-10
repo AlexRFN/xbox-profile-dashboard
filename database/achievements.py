@@ -2,11 +2,12 @@ import logging
 
 import orjson
 
-from config import CacheKey
+from config import TIMELINE_PAGE_SIZE, CacheKey
 
 from .cache import _cache_get, _cache_invalidate, _cache_invalidate_prefix, _cache_set
 from .connection import get_connection, get_read_connection
 from .stats import get_achievement_stats, get_dashboard_stats
+from .timeline import get_timeline_events, get_timeline_stats_and_months, invalidate_timeline
 
 log = logging.getLogger("xbox.db")
 
@@ -22,7 +23,8 @@ def _invalidate_achievement_caches() -> None:
     year/month, so clear by prefix rather than enumerating keys.
     """
     _cache_invalidate(CacheKey.DASHBOARD_STATS, CacheKey.ACHIEVEMENT_STATS, CacheKey.GAMES_WITH_ACHIEVEMENTS)
-    _cache_invalidate_prefix(CacheKey.HEATMAP_PREFIX, CacheKey.ACTIVITY_PREFIX, CacheKey.TIMELINE_PREFIX)
+    _cache_invalidate_prefix(CacheKey.HEATMAP_PREFIX, CacheKey.ACTIVITY_PREFIX)
+    invalidate_timeline()
 
 
 async def get_achievements(title_id: str) -> list[dict]:
@@ -247,6 +249,11 @@ async def warm_stats_cache() -> None:
     try:
         await get_dashboard_stats()
         await get_achievement_stats()
+        # Rebuilds the materialized timeline table (marked dirty by the sync's
+        # writes) and caches the exact entries the dashboard preview and the
+        # timeline page read, so the first post-sync view is warm.
+        await get_timeline_events(1, TIMELINE_PAGE_SIZE)
+        await get_timeline_stats_and_months()
         log.debug("Stats cache warmed")
     except Exception:
         log.warning("Stats cache warming failed (non-critical)", exc_info=True)

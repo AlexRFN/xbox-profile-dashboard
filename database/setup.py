@@ -122,6 +122,35 @@ async def _create_schema(conn) -> None:
                 value TEXT
             );
 
+            -- Materialized timeline (see database/timeline.py). Rebuilt from
+            -- achievements+games whenever a writer marks it dirty; serves all
+            -- timeline pages/filters/stats as plain indexed queries instead of
+            -- re-running the three-branch UNION ALL per request.
+            -- event_day = DATE(event_date, 'localtime') for sargable date math;
+            -- type_rank = completion 0 / achievement 1 / other 2 tiebreaker.
+            CREATE TABLE IF NOT EXISTS timeline_events (
+                event_type TEXT NOT NULL,
+                event_date TEXT NOT NULL,
+                event_day TEXT NOT NULL,
+                type_rank INTEGER NOT NULL,
+                event_title TEXT,
+                event_detail TEXT,
+                event_value INTEGER,
+                rarity TEXT,
+                rarity_pct REAL,
+                title_id TEXT,
+                game_name TEXT,
+                game_image TEXT,
+                game_blurhash TEXT,
+                achievement_media TEXT
+            );
+            CREATE INDEX IF NOT EXISTS idx_timeline_events_date
+                ON timeline_events(event_date DESC, type_rank);
+            CREATE INDEX IF NOT EXISTS idx_timeline_events_type_date
+                ON timeline_events(event_type, event_date DESC, type_rank);
+            CREATE INDEX IF NOT EXISTS idx_timeline_events_day
+                ON timeline_events(event_day);
+
             -- New performance indexes
             CREATE INDEX IF NOT EXISTS idx_rate_limit_timestamp ON rate_limit_log(timestamp);
             CREATE INDEX IF NOT EXISTS idx_sync_log_type_started ON sync_log(sync_type, started_at DESC);
