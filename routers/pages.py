@@ -42,8 +42,10 @@ async def dashboard(request: Request):
             db.get_dashboard_stats(),
             db.get_heatmap_data(),
             db.get_heatmap_year_range(),
-            # Timeline preview: pull a small slab so batching/dedup has material to work with
-            db.get_timeline_events(page=1, per_page=12),
+            # Timeline preview: request the same page size as the timeline page
+            # so both views share one cached UNION ALL result; batching below
+            # collapses it and only the first 4 entries are rendered.
+            db.get_timeline_events(page=1, per_page=TIMELINE_PAGE_SIZE),
         )
         ctx = await ctx_task
         ctx["stats"] = stats

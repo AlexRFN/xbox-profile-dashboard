@@ -87,9 +87,21 @@ async def proxy_capture_download(url: str = Query(...), filename: str = Query("c
     content_length = upstream.headers.get("Content-Length")
     if content_length:
         headers["Content-Length"] = content_length
+
+    async def _stream():
+        # try/finally (not only BackgroundTask) so the upstream response is
+        # released even when the client disconnects mid-download and the
+        # iterator is closed early — background-task timing on aborted
+        # responses varies across Starlette versions.
+        try:
+            async for chunk in upstream.aiter_bytes():
+                yield chunk
+        finally:
+            await upstream.aclose()
+
     return StreamingResponse(
-        upstream.aiter_bytes(),
+        _stream(),
         media_type=upstream.headers.get("Content-Type", "image/png"),
         headers=headers,
-        background=BackgroundTask(upstream.aclose),
+        background=BackgroundTask(upstream.aclose),  # aclose is idempotent
     )

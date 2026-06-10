@@ -152,6 +152,10 @@ async def get_timeline_events(
     has_more = len(rows) > per_page  # if we got the +1 extra row, there's more to load
     if cache_key:
         _cache_set(cache_key, (events, has_more))
+        # Same shallow copy as the hit path, so the cached list itself is never
+        # handed to a caller. Event dicts inside are shared and read-only by
+        # convention (the codebase never mutates rows it didn't build).
+        return list(events), has_more
     return events, has_more
 
 
@@ -164,7 +168,9 @@ async def get_timeline_stats_and_months(
         cached = _cache_get(cache_key, ttl=_TIMELINE_TTL)
         if cached is not None:
             stats, months = cached
-            return dict(stats), months
+            # Shallow top-level copies; per-month dicts are shared and
+            # read-only by convention.
+            return dict(stats), dict(months)
 
     conn = await get_read_connection()
     outer_where, params = _build_timeline_where(event_type, game_search, date_from, date_to)
@@ -255,5 +261,5 @@ async def get_timeline_stats_and_months(
 
     if cache_key:
         _cache_set(cache_key, (stats, months))
-        return dict(stats), months
+        return dict(stats), dict(months)
     return stats, months
