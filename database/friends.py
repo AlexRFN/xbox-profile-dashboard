@@ -5,7 +5,7 @@ import orjson
 from config import CacheKey
 
 from .cache import _cache_get, _cache_invalidate, _cache_set
-from .connection import get_connection
+from .connection import get_connection, get_read_connection
 
 log = logging.getLogger("xbox.db")
 
@@ -72,7 +72,7 @@ async def get_friends() -> list[dict]:
     cached = _cache_get(CacheKey.FRIENDS, ttl=300)
     if cached is not None:
         return cached
-    conn = await get_connection()
+    conn = await get_read_connection()
     cursor = await conn.execute("""
         SELECT xuid, gamertag, display_pic, gamer_score,
                presence_state, presence_text, is_favorite, raw_json

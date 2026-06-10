@@ -46,3 +46,25 @@ async def test_snapshot_db_overwrites_stale_backup():
             conn.close()
     finally:
         backup_path.unlink(missing_ok=True)
+
+
+@pytest.mark.asyncio
+async def test_read_pool_is_read_only_and_sees_committed_writes():
+    """Read-pool connections are distinct from the writer, reject writes, and
+    observe data as soon as the writer commits (WAL snapshot isolation)."""
+    from database.connection import get_connection, get_read_connection
+
+    write_conn = await get_connection()
+    read_conn = await get_read_connection()
+    assert read_conn is not write_conn
+
+    # PRAGMA query_only=ON: any write through a reader must fail.
+    with pytest.raises(sqlite3.OperationalError):
+        await read_conn.execute("INSERT INTO settings (key, value) VALUES ('ro_probe', 'x')")
+
+    await write_conn.execute("INSERT INTO settings (key, value) VALUES ('rp_key', 'rp_value')")
+    await write_conn.commit()
+    cursor = await read_conn.execute("SELECT value FROM settings WHERE key = 'rp_key'")
+    row = await cursor.fetchone()
+    assert row is not None
+    assert row["value"] == "rp_value"

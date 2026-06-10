@@ -4,8 +4,8 @@ import orjson
 
 from config import CacheKey
 
-from .cache import _cache_invalidate, _cache_invalidate_prefix
-from .connection import get_connection
+from .cache import _cache_get, _cache_invalidate, _cache_invalidate_prefix, _cache_set
+from .connection import get_connection, get_read_connection
 from .stats import get_achievement_stats, get_dashboard_stats
 
 log = logging.getLogger("xbox.db")
@@ -15,17 +15,18 @@ def _invalidate_achievement_caches() -> None:
     """Invalidate every cache slice derived from achievement rows.
 
     Unlocks drive the dashboard stats, the heatmap grids (rolling + per-year),
-    the year-range selector, and the per-month activity popovers. The last three
-    are dynamically keyed (heatmap_{year}, activity_{year}_{month}), and a first
-    sync of a legacy title can insert unlocks in any past year/month, so clear
-    by prefix rather than enumerating keys.
+    the year-range selector, the per-month activity popovers, the timeline
+    (events + stats), and the games-with-achievements filter list. Several are
+    dynamically keyed (heatmap_{year}, activity_{year}_{month}, timeline event
+    pages), and a first sync of a legacy title can insert unlocks in any past
+    year/month, so clear by prefix rather than enumerating keys.
     """
-    _cache_invalidate(CacheKey.DASHBOARD_STATS, CacheKey.ACHIEVEMENT_STATS)
-    _cache_invalidate_prefix(CacheKey.HEATMAP_PREFIX, CacheKey.ACTIVITY_PREFIX)
+    _cache_invalidate(CacheKey.DASHBOARD_STATS, CacheKey.ACHIEVEMENT_STATS, CacheKey.GAMES_WITH_ACHIEVEMENTS)
+    _cache_invalidate_prefix(CacheKey.HEATMAP_PREFIX, CacheKey.ACTIVITY_PREFIX, CacheKey.TIMELINE_PREFIX)
 
 
 async def get_achievements(title_id: str) -> list[dict]:
-    conn = await get_connection()
+    conn = await get_read_connection()
     cursor = await conn.execute(
         """SELECT * FROM achievements WHERE title_id = ?
            ORDER BY CASE WHEN progress_state = 'Achieved' THEN 0 ELSE 1 END,
@@ -128,7 +129,7 @@ async def get_achievements_page(
     sort: str = "date_desc",
     group: str = "",
 ) -> tuple:
-    conn = await get_connection()
+    conn = await get_read_connection()
     where_clauses = []
     params: list = []
 
@@ -175,8 +176,10 @@ async def get_achievements_page(
 
     full_order = f"{group_order}CASE WHEN a.progress_state = 'Achieved' THEN 0 ELSE 1 END, {order_sql}, a.name ASC"
 
+    # Only the q filter references g.* — skip the join for every other count.
+    count_from = "achievements a JOIN games g ON a.title_id = g.title_id" if q else "achievements a"
     cursor = await conn.execute(
-        f"SELECT COUNT(*) FROM achievements a JOIN games g ON a.title_id = g.title_id WHERE {where_sql}",
+        f"SELECT COUNT(*) FROM {count_from} WHERE {where_sql}",
         params,
     )
     row = await cursor.fetchone()
@@ -200,7 +203,12 @@ async def get_achievements_page(
 
 
 async def get_games_with_achievements() -> list:
-    conn = await get_connection()
+    # Full-table join + group-by that only changes when a sync writes — cached
+    # and invalidated alongside the other achievement-derived slices.
+    cached = _cache_get(CacheKey.GAMES_WITH_ACHIEVEMENTS, ttl=300)
+    if cached is not None:
+        return list(cached)
+    conn = await get_read_connection()
     cursor = await conn.execute("""
         SELECT g.title_id, g.name, COUNT(a.achievement_id) as ach_count
         FROM games g
@@ -209,27 +217,24 @@ async def get_games_with_achievements() -> list:
         ORDER BY g.name
     """)
     rows = await cursor.fetchall()
-    return [dict(r) for r in rows]
+    result = [dict(r) for r in rows]
+    _cache_set(CacheKey.GAMES_WITH_ACHIEVEMENTS, result)
+    return result
 
 
 async def get_near_completion_games(threshold: int = 80, limit: int = 10) -> list:
-    conn = await get_connection()
+    # current/total achievements come straight off the games row (kept fresh by
+    # the title-history upsert and recalc_*_from_achievements) — no need to
+    # re-aggregate the whole achievements table per request.
+    conn = await get_read_connection()
     cursor = await conn.execute(
         """
-        SELECT g.name, g.title_id, g.display_image, g.blurhash, g.progress_percentage,
-               g.current_gamerscore, g.total_gamerscore,
-               COALESCE(ac.achieved, 0) as current_achievements,
-               COALESCE(ac.total, 0) as total_achievements
-        FROM games g
-        LEFT JOIN (
-            SELECT title_id,
-                   SUM(CASE WHEN progress_state = 'Achieved' THEN 1 ELSE 0 END) as achieved,
-                   COUNT(*) as total
-            FROM achievements
-            GROUP BY title_id
-        ) ac ON ac.title_id = g.title_id
-        WHERE g.progress_percentage >= ? AND g.progress_percentage < 100
-        ORDER BY g.progress_percentage DESC
+        SELECT name, title_id, display_image, blurhash, progress_percentage,
+               current_gamerscore, total_gamerscore,
+               current_achievements, total_achievements
+        FROM games
+        WHERE progress_percentage >= ? AND progress_percentage < 100
+        ORDER BY progress_percentage DESC
         LIMIT ?
     """,
         (threshold, limit),

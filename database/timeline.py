@@ -10,8 +10,19 @@ All branches filter locked-achievement timestamps with valid_ts_sql() to exclude
 Xbox's sentinel value '0001-01-01T...' for unearned achievements.
 """
 
-from .connection import get_connection
+from config import CacheKey
+
+from .cache import _cache_get, _cache_set
+from .connection import get_read_connection
 from .validators import valid_ts_sql
+
+# The UNION ALL below scans every achievement and sorts the combined result on
+# each run — the most expensive query in the request path, and it only changes
+# when a sync writes. The unfiltered first page (dashboard preview + default
+# timeline view) and unfiltered stats are cached; filtered variants are not,
+# because game_search is free text and would grow the cache without bound.
+# Writers invalidate via CacheKey.TIMELINE_PREFIX.
+_TIMELINE_TTL = 300
 
 
 def _build_timeline_where(event_type: str, game_search: str, date_from: str, date_to: str) -> tuple[str, list]:
@@ -40,7 +51,15 @@ async def get_timeline_events(
     date_from: str = "",
     date_to: str = "",
 ) -> tuple[list[dict], bool]:
-    conn = await get_connection()
+    cache_key = None
+    if page == 1 and not (event_type or game_search or date_from or date_to):
+        cache_key = CacheKey.timeline_events(per_page)
+        cached = _cache_get(cache_key, ttl=_TIMELINE_TTL)
+        if cached is not None:
+            events, has_more = cached
+            return list(events), has_more  # shallow copy: callers slice/extend the list
+
+    conn = await get_read_connection()
     offset = (page - 1) * per_page
     outer_where, params = _build_timeline_where(event_type, game_search, date_from, date_to)
 
@@ -131,13 +150,23 @@ async def get_timeline_events(
 
     events = [dict(r) for r in rows[:per_page]]
     has_more = len(rows) > per_page  # if we got the +1 extra row, there's more to load
+    if cache_key:
+        _cache_set(cache_key, (events, has_more))
     return events, has_more
 
 
 async def get_timeline_stats_and_months(
     event_type: str = "", game_search: str = "", date_from: str = "", date_to: str = ""
 ) -> tuple[dict, dict[str, dict]]:
-    conn = await get_connection()
+    cache_key = None
+    if not (event_type or game_search or date_from or date_to):
+        cache_key = CacheKey.TIMELINE_STATS
+        cached = _cache_get(cache_key, ttl=_TIMELINE_TTL)
+        if cached is not None:
+            stats, months = cached
+            return dict(stats), months
+
+    conn = await get_read_connection()
     outer_where, params = _build_timeline_where(event_type, game_search, date_from, date_to)
 
     cursor = await conn.execute(
@@ -224,4 +253,7 @@ async def get_timeline_stats_and_months(
         elif et == "first_played":
             m["first_played_count"] += cnt
 
+    if cache_key:
+        _cache_set(cache_key, (stats, months))
+        return dict(stats), months
     return stats, months

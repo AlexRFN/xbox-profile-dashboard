@@ -13,22 +13,22 @@ import database.connection  # noqa: E402
 
 database.connection.DB_PATH = test_db_path
 
-from database.connection import get_connection  # noqa: E402
+from database.connection import close_connection, get_connection  # noqa: E402
 from database.setup import init_db  # noqa: E402
 
 
 @pytest.fixture(scope="session", autouse=True)
 async def setup_test_db():
-    # Setup
-    if test_db_path.exists():
-        test_db_path.unlink()
+    # Setup — also drop WAL sidecars a killed previous run may have left behind.
+    for suffix in ("", "-wal", "-shm"):
+        p = test_db_path.with_name(test_db_path.name + suffix)
+        if p.exists():
+            p.unlink()
     await init_db()
     yield
-    # Teardown
-    conn = await get_connection()
-    await conn.close()
-    # Also need to clear the global connection so it reconnects if necessary or closes properly
-    database.connection._conn = None
+    # Teardown: close the writer AND the read pool — aiosqlite worker threads
+    # are non-daemon, so any unclosed connection blocks interpreter exit.
+    await close_connection()
     if test_db_path.exists():
         with contextlib.suppress(OSError):  # Windows might still hold a lock briefly
             test_db_path.unlink()

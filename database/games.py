@@ -4,8 +4,8 @@ import orjson
 
 from config import CacheKey
 
-from .cache import _UNSET, _cache_invalidate
-from .connection import get_connection
+from .cache import _UNSET, _cache_invalidate, _cache_invalidate_prefix
+from .connection import get_connection, get_read_connection
 
 log = logging.getLogger("xbox.db")
 
@@ -68,6 +68,9 @@ async def upsert_games_bulk(games: list[dict]) -> int:
     )
     await conn.commit()
     _cache_invalidate(CacheKey.DASHBOARD_STATS, CacheKey.ACHIEVEMENT_STATS, CacheKey.PAGE_CONTEXT)
+    # Timeline completion events embed game name/image/progress, so a library
+    # upsert can change them without touching the achievements table.
+    _cache_invalidate_prefix(CacheKey.TIMELINE_PREFIX)
     log.info("Upserted %d games", len(rows))
     return len(rows)
 
@@ -83,7 +86,7 @@ async def get_all_games(
     page: int = 1,
     per_page: int = 50,
 ) -> tuple[list[dict], int]:
-    conn = await get_connection()
+    conn = await get_read_connection()
     where_clauses = []
     params = []
 
@@ -155,7 +158,7 @@ async def get_all_games(
 
 
 async def get_game(title_id: str) -> dict | None:
-    conn = await get_connection()
+    conn = await get_read_connection()
     cursor = await conn.execute("SELECT * FROM games WHERE title_id = ?", (title_id,))
     row = await cursor.fetchone()
     return dict(row) if row else None
@@ -218,6 +221,7 @@ async def recalc_game_from_achievements(title_id: str):
     )
     await conn.commit()
     _cache_invalidate(CacheKey.DASHBOARD_STATS)
+    _cache_invalidate_prefix(CacheKey.TIMELINE_PREFIX)  # completion events show current_gamerscore
 
 
 async def recalc_all_games_from_achievements():
@@ -239,12 +243,13 @@ async def recalc_all_games_from_achievements():
     updated = cursor.rowcount
     await conn.commit()
     _cache_invalidate(CacheKey.DASHBOARD_STATS, CacheKey.ACHIEVEMENT_STATS, CacheKey.PAGE_CONTEXT)
+    _cache_invalidate_prefix(CacheKey.TIMELINE_PREFIX)
     log.info("Batch recalc: updated %d games from achievements table", updated)
     return updated
 
 
 async def get_games_needing_details(limit: int = 0) -> list[dict]:
-    conn = await get_connection()
+    conn = await get_read_connection()
     # SQLite sorts NULLs last on DESC, so unplayed games land at the bottom
     # naturally — the explicit CASE prefix isn't needed and blocks idx_games_last_played.
     sql = """
@@ -298,10 +303,11 @@ async def update_tracking(title_id: str, status=_UNSET, notes=_UNSET, finished_d
         await conn.execute(f"UPDATE games SET {', '.join(updates)} WHERE title_id = ?", params)
         await conn.commit()
         _cache_invalidate(CacheKey.DASHBOARD_STATS)
+        _cache_invalidate_prefix(CacheKey.TIMELINE_PREFIX)  # finished_date can date a completion event
 
 
 async def get_game_index() -> list[dict]:
-    conn = await get_connection()
+    conn = await get_read_connection()
     cursor = await conn.execute(
         """SELECT title_id, name, display_image, progress_percentage, status
            FROM games ORDER BY name COLLATE NOCASE"""
@@ -313,7 +319,7 @@ async def get_game_index() -> list[dict]:
 async def get_games_with_art() -> list[dict]:
     """All games that have art, with blurhash status — feeds the sync-time
     image warmer, which decides per game whether anything is missing."""
-    conn = await get_connection()
+    conn = await get_read_connection()
     cursor = await conn.execute(
         """SELECT title_id, display_image, blurhash FROM games
            WHERE display_image != '' AND display_image IS NOT NULL"""
@@ -329,7 +335,7 @@ async def update_game_blurhash(title_id: str, bh: str):
 
 
 async def get_random_backlog_game() -> dict | None:
-    conn = await get_connection()
+    conn = await get_read_connection()
     cursor = await conn.execute(
         """SELECT title_id, name, display_image
            FROM games WHERE status = 'backlog'

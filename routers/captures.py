@@ -3,7 +3,8 @@ import re
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, Query, Request
-from fastapi.responses import HTMLResponse, Response
+from fastapi.responses import HTMLResponse, Response, StreamingResponse
+from starlette.background import BackgroundTask
 
 import database as db
 from config import CAPTURES_PAGE_SIZE
@@ -68,20 +69,27 @@ async def proxy_capture_download(url: str = Query(...), filename: str = Query("c
         return Response(status_code=403, content="Forbidden host")
     # Strip path traversal chars and shell-unsafe characters from the filename
     safe_filename = re.sub(r"[^\w\s\-\.]", "", filename).strip() or "capture.png"
+    client = get_client()
+    if client is None:
+        return Response(status_code=503, content="HTTP client not initialized")
+    # Stream upstream → client instead of buffering: captures are multi-MB PNGs,
+    # so this keeps memory flat and starts the download on the first chunk.
     try:
-        client = get_client()
-        if client is None:
-            return Response(status_code=503, content="HTTP client not initialized")
-        resp = await client.get(url, timeout=30)
-        resp.raise_for_status()
+        upstream = await client.send(client.build_request("GET", url, timeout=30), stream=True)
     except Exception as e:
         log.warning("Capture download failed: %s", e)
         return Response(status_code=502, content="Failed to fetch from Xbox CDN")
-    return Response(
-        content=resp.content,
-        media_type=resp.headers.get("Content-Type", "image/png"),
-        headers={
-            "Content-Disposition": f'attachment; filename="{safe_filename}"',
-            "Content-Length": resp.headers.get("Content-Length", ""),
-        },
+    if upstream.status_code != 200:
+        await upstream.aclose()
+        log.warning("Capture download upstream %d for %s", upstream.status_code, url)
+        return Response(status_code=502, content="Failed to fetch from Xbox CDN")
+    headers = {"Content-Disposition": f'attachment; filename="{safe_filename}"'}
+    content_length = upstream.headers.get("Content-Length")
+    if content_length:
+        headers["Content-Length"] = content_length
+    return StreamingResponse(
+        upstream.aiter_bytes(),
+        media_type=upstream.headers.get("Content-Type", "image/png"),
+        headers=headers,
+        background=BackgroundTask(upstream.aclose),
     )

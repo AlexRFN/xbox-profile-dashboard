@@ -1,8 +1,8 @@
-from .connection import get_connection
+from .connection import get_connection, get_read_connection
 
 
 async def get_setting(key: str) -> str | None:
-    conn = await get_connection()
+    conn = await get_read_connection()
     cursor = await conn.execute("SELECT value FROM settings WHERE key = ?", (key,))
     row = await cursor.fetchone()
     return row["value"] if row else None

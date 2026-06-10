@@ -3,7 +3,7 @@ import logging
 from config import CacheKey
 
 from .cache import _cache_invalidate
-from .connection import get_connection
+from .connection import get_connection, get_read_connection
 
 log = logging.getLogger("xbox.db")
 
@@ -92,7 +92,7 @@ async def get_existing_screenshot_ids() -> set[str]:
 
 
 async def get_all_screenshots(page: int = 1, per_page: int = 50) -> tuple[list[dict], int, bool]:
-    conn = await get_connection()
+    conn = await get_read_connection()
     cursor = await conn.execute("SELECT COUNT(*) as cnt FROM screenshots")
     total_row = await cursor.fetchone()
     total = total_row["cnt"]
@@ -114,7 +114,7 @@ async def get_all_screenshots(page: int = 1, per_page: int = 50) -> tuple[list[d
 
 
 async def get_screenshots_by_game() -> list[dict]:
-    conn = await get_connection()
+    conn = await get_read_connection()
     cursor = await conn.execute("""
         SELECT s.title_id, s.title_name, g.display_image as game_image,
                COUNT(*) as count, MAX(s.capture_date) as latest_date
@@ -163,7 +163,7 @@ async def get_screenshots_by_game() -> list[dict]:
 
 
 async def get_screenshots_for_game(title_id: str, limit: int = 0) -> list[dict]:
-    conn = await get_connection()
+    conn = await get_read_connection()
     sql = "SELECT * FROM screenshots WHERE title_id = ? ORDER BY capture_date DESC"
     params: list = [title_id]
     if limit > 0:
@@ -175,7 +175,7 @@ async def get_screenshots_for_game(title_id: str, limit: int = 0) -> list[dict]:
 
 
 async def get_screenshot_count(title_id: str | None = None) -> int:
-    conn = await get_connection()
+    conn = await get_read_connection()
     if title_id:
         cursor = await conn.execute("SELECT COUNT(*) as cnt FROM screenshots WHERE title_id = ?", (title_id,))
         row = await cursor.fetchone()

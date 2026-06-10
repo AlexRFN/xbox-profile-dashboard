@@ -43,12 +43,20 @@ class CacheKey:
     HEATMAP_ROLLING = "heatmap_rolling"
     HEATMAP_YEAR_RANGE = "heatmap_year_range"
     FRIENDS = "friends"
+    GAMES_WITH_ACHIEVEMENTS = "games_with_achievements"
+    TIMELINE_STATS = "timeline_stats"
 
     # Prefixes covering the dynamically-keyed entries below (heatmap_year/activity),
     # for use with _cache_invalidate_prefix. HEATMAP_PREFIX also matches
-    # HEATMAP_ROLLING and HEATMAP_YEAR_RANGE by construction.
+    # HEATMAP_ROLLING and HEATMAP_YEAR_RANGE by construction; TIMELINE_PREFIX
+    # matches TIMELINE_STATS and the per-page-size timeline event entries.
     HEATMAP_PREFIX = "heatmap_"
     ACTIVITY_PREFIX = "activity_"
+    TIMELINE_PREFIX = "timeline_"
+
+    @staticmethod
+    def timeline_events(per_page: int) -> str:
+        return f"timeline_events_p1_{per_page}"
 
     @staticmethod
     def heatmap_year(year: int) -> str:

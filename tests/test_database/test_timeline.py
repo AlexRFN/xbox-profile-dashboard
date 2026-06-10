@@ -147,3 +147,48 @@ async def test_stats_counts_achievements():
     assert stats["total_events"] >= 1
     # month key should exist for the unlock date
     assert any("2024-05" in mk for mk in months)
+
+
+@pytest.mark.asyncio
+async def test_unfiltered_page1_cached_and_invalidated_by_writes():
+    """The unfiltered first page is served from cache until a write invalidates it."""
+    from config import CacheKey
+    from database.cache import _cache_get
+
+    await _seed()
+    events_first, _ = await db.get_timeline_events()
+    assert len(events_first) >= 1
+    assert _cache_get(CacheKey.timeline_events(50), ttl=300) is not None
+
+    events_cached, _ = await db.get_timeline_events()
+    assert events_cached == events_first
+
+    # A new unlock must bust the cache, not serve the stale page.
+    new_ach = dict(_ACH, achievement_id="A99", name="Cache Buster", time_unlocked="2024-06-20T10:00:00Z")
+    await db.upsert_achievements("TL001", [new_ach])
+    events_after, _ = await db.get_timeline_events()
+    assert any(e["event_title"] == "Cache Buster" for e in events_after)
+
+
+@pytest.mark.asyncio
+async def test_filtered_queries_are_not_cached():
+    """Filtered variants bypass the cache (free-text keys would grow unbounded)."""
+    from config import CacheKey
+    from database.cache import _cache_get
+
+    await _seed()
+    await db.get_timeline_events(game_search="Timeline")
+    assert _cache_get(CacheKey.timeline_events(50), ttl=300) is None
+
+
+@pytest.mark.asyncio
+async def test_stats_cached_and_invalidated_by_writes():
+    await _seed()
+    stats_first, _months_first = await db.get_timeline_stats_and_months()
+    assert stats_first["achievement_count"] == 1
+
+    new_ach = dict(_ACH, achievement_id="A77", time_unlocked="2024-07-01T10:00:00Z")
+    await db.upsert_achievements("TL001", [new_ach])
+    stats_after, months_after = await db.get_timeline_stats_and_months()
+    assert stats_after["achievement_count"] == 2
+    assert "2024-07" in months_after

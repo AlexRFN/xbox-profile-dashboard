@@ -1,7 +1,9 @@
 import logging
+import os
 from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
+from functools import lru_cache
 from pathlib import Path
 from urllib.parse import quote
 
@@ -18,13 +20,18 @@ import xbox_api
 log = logging.getLogger("xbox.helpers")
 BASE_DIR = Path(__file__).parent
 
+# Dev mode (uvicorn --reload + asset watcher) is signalled via XBOX_DEV.
+_DEV_MODE = bool(os.environ.get("XBOX_DEV"))
+
 _bytecode_dir = BASE_DIR / "data" / "jinja_cache"
 _bytecode_dir.mkdir(parents=True, exist_ok=True)
 _bytecode_cache = FileSystemBytecodeCache(str(_bytecode_dir))
 
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 templates.env.bytecode_cache = _bytecode_cache
-templates.env.auto_reload = True
+# auto_reload stats every template file on every render — only worth paying
+# for in dev, where templates change under a running server.
+templates.env.auto_reload = _DEV_MODE
 
 
 # --- Asset bundling ---
@@ -48,16 +55,24 @@ def _build_bundle(files: list[str], out_path: Path, file_header: str) -> str:
             parts.append(file_header.format(f) + "\n" + p.read_text(encoding="utf-8"))
             max_mtime = max(max_mtime, int(p.stat().st_mtime))
     body = "\n".join(parts)
-    out_path.write_text(body, encoding="utf-8")
+    url = f"/static/{out_path.relative_to(static_dir).as_posix()}?v={max_mtime}"
     br_path = out_path.with_suffix(out_path.suffix + ".br")
+
+    # Skip the quality-11 Brotli pass (the expensive part of startup) when the
+    # bundle content is byte-identical to what's already on disk.
+    try:
+        if br_path.exists() and out_path.read_text(encoding="utf-8") == body:
+            log.info("Bundle unchanged, reusing: %s", url)
+            return url
+    except OSError:
+        pass  # unreadable previous bundle — rebuild it
+
+    out_path.write_text(body, encoding="utf-8")
     compressed = brotli.compress(body.encode("utf-8"), quality=11)
     br_path.write_bytes(compressed)
     # Match mtime so the .br and the original share a ctag — prevents the
     # server from holding a stale .br when the bundle is rebuilt.
-    import os as _os
-
-    _os.utime(br_path, (out_path.stat().st_atime, out_path.stat().st_mtime))
-    url = f"/static/{out_path.relative_to(static_dir).as_posix()}?v={max_mtime}"
+    os.utime(br_path, (out_path.stat().st_atime, out_path.stat().st_mtime))
     log.info(
         "Bundle built: %s (%d files, %d bytes raw, %d bytes br)",
         url,
@@ -132,16 +147,28 @@ def get_js_bundle_url() -> str | None:
     return _js_bundle_url
 
 
+_static_url_cache: dict[str, str] = {}
+
+
 def static_url(path: str) -> str:
     """Return a versioned static URL using file mtime for cache-busting.
     e.g. static_url('css/base.css') → '/static/css/base.css?v=1708345600'
     Combined with the cache middleware this allows immutable caching with automatic invalidation.
+
+    Memoized outside dev mode: it's called several times per page render and
+    static mtimes only change on deploy (which restarts the process).
     """
+    cached = _static_url_cache.get(path)
+    if cached is not None:
+        return cached
     try:
         mtime = int((BASE_DIR / "static" / path).stat().st_mtime)
-        return f"/static/{path}?v={mtime}"
     except OSError:
-        return f"/static/{path}"
+        return f"/static/{path}"  # missing file — don't cache, it may appear later
+    url = f"/static/{path}?v={mtime}"
+    if not _DEV_MODE:
+        _static_url_cache[path] = url
+    return url
 
 
 # --- Jinja2 filters ---
@@ -150,8 +177,14 @@ def static_url(path: str) -> str:
 _LOCAL_TZ = datetime.now(UTC).astimezone().tzinfo
 
 
+@lru_cache(maxsize=4096)
 def _parse_iso(iso_str: str) -> datetime | None:
-    """Parse ISO datetime string, handling Z suffix. Returns local-time datetime."""
+    """Parse ISO datetime string, handling Z suffix. Returns local-time datetime.
+
+    lru_cache because timeline rendering parses each event's timestamp once
+    while grouping by month and again while batching same-day unlocks —
+    datetimes are immutable, so sharing the parsed instance is safe.
+    """
     if not iso_str:
         return None
     try:

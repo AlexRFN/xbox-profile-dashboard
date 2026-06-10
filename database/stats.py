@@ -3,7 +3,7 @@ from datetime import date, timedelta
 from config import CacheKey
 
 from .cache import _cache_get, _cache_set
-from .connection import get_connection
+from .connection import get_read_connection
 from .rate_limit import get_api_calls_last_hour
 from .validators import valid_ts_sql
 
@@ -49,7 +49,7 @@ async def get_dashboard_stats() -> dict:
     cached = _cache_get(CacheKey.DASHBOARD_STATS, ttl=60)
     if cached is not None:
         return cached
-    conn = await get_connection()
+    conn = await get_read_connection()
     cursor = await conn.execute("""
         SELECT
             COUNT(*) as total_games,
@@ -200,7 +200,7 @@ async def get_dashboard_stats() -> dict:
 
 
 async def get_status_counts() -> dict:
-    conn = await get_connection()
+    conn = await get_read_connection()
     cursor = await conn.execute("SELECT status, COUNT(*) as cnt FROM games GROUP BY status")
     rows = await cursor.fetchall()
     return {r["status"]: r["cnt"] for r in rows}
@@ -210,7 +210,7 @@ async def get_achievement_stats() -> dict:
     cached = _cache_get(CacheKey.ACHIEVEMENT_STATS, ttl=60)
     if cached is not None:
         return cached
-    conn = await get_connection()
+    conn = await get_read_connection()
     cursor = await conn.execute("""
         SELECT
             COUNT(*) as total_achievements,
@@ -301,7 +301,7 @@ async def get_page_context_data() -> dict:
     cached = _cache_get(CacheKey.PAGE_CONTEXT, ttl=30)
     if cached is not None:
         return dict(cached)
-    conn = await get_connection()
+    conn = await get_read_connection()
     cursor = await conn.execute(
         """SELECT * FROM sync_log WHERE sync_type IN ('full_library', 'smart_sync', 'unified_sync')
            ORDER BY started_at DESC LIMIT 1"""

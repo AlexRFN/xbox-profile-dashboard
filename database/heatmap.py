@@ -1,7 +1,7 @@
 from config import CacheKey
 
 from .cache import _cache_get, _cache_set
-from .connection import get_connection
+from .connection import get_read_connection
 from .validators import valid_ts_sql
 
 _YEAR_RANGE_NONE = object()  # sentinel: distinguishes "cached absence" from cache miss
@@ -12,7 +12,7 @@ async def get_heatmap_data(year: int | None = None) -> list[dict]:
     cached = _cache_get(cache_key, ttl=300)
     if cached is not None:
         return cached
-    conn = await get_connection()
+    conn = await get_read_connection()
     if year is not None:
         # 'localtime' converts UTC timestamps to the local calendar day for display
         cursor = await conn.execute(
@@ -47,7 +47,7 @@ async def get_heatmap_year_range() -> tuple[int, int] | None:
     cached = _cache_get(CacheKey.HEATMAP_YEAR_RANGE, ttl=600)
     if cached is not None:
         return None if cached is _YEAR_RANGE_NONE else cached
-    conn = await get_connection()
+    conn = await get_read_connection()
     cursor = await conn.execute(f"""
         SELECT
             MIN(CAST(strftime('%Y', time_unlocked, 'localtime') AS INTEGER)) as min_year,
@@ -71,7 +71,7 @@ async def get_monthly_activity(year: int, month: int) -> dict:
     cached = _cache_get(cache_key, ttl=300)
     if cached is not None:
         return cached
-    conn = await get_connection()
+    conn = await get_read_connection()
     cursor = await conn.execute(
         f"""
         SELECT CAST(strftime('%d', time_unlocked, 'localtime') AS INTEGER) as day, COUNT(*) as count

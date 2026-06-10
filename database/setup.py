@@ -188,6 +188,14 @@ async def _run_migrations(conn) -> None:
             "Add (progress_state, gamerscore DESC) composite index",
             "CREATE INDEX IF NOT EXISTS idx_achievements_progress_gs ON achievements(progress_state, gamerscore DESC)",
         ),
+        # get_game_index() orders by name COLLATE NOCASE for the command palette /
+        # search index; the binary-collation idx_games_name can't serve that order,
+        # so every fetch paid a temp b-tree sort.
+        (
+            8,
+            "Add case-insensitive games name index",
+            "CREATE INDEX IF NOT EXISTS idx_games_name_nocase ON games(name COLLATE NOCASE)",
+        ),
     ]
     for version, description, sql in MIGRATIONS:
         if version not in applied:
