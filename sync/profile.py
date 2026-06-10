@@ -1,8 +1,15 @@
 import asyncio
 import logging
 
-from config import IMG_WARM_WIDTHS, SCHEDULED_SYNC_CONCURRENCY
-from database import get_games_with_art, set_setting, update_game_blurhash, upsert_friends
+from config import IMG_WARM_WIDTHS, SCHEDULED_SYNC_CONCURRENCY, CacheKey
+from database import (
+    _cache_invalidate,
+    _cache_invalidate_prefix,
+    get_games_with_art,
+    set_setting,
+    update_game_blurhash,
+    upsert_friends,
+)
 from helpers import normalize_image_url
 from xbox_api import get_friends as api_get_friends
 from xbox_api import get_profile
@@ -44,11 +51,12 @@ async def backfill_game_art(max_count: int = 50):
     log.info("Game art backfill: %d games to process", len(todo))
     sem = asyncio.Semaphore(SCHEDULED_SYNC_CONCURRENCY)  # limit concurrent Xbox CDN downloads
     done = 0
+    blurhashes_written = 0
 
     async with httpx.AsyncClient(timeout=15) as client:
 
         async def _process(game, needs_blurhash, needs_thumbs):
-            nonlocal done
+            nonlocal done, blurhashes_written
             url = game["display_image"]
             async with sem:
                 try:
@@ -61,6 +69,7 @@ async def backfill_game_art(max_count: int = 50):
                         bh = await asyncio.to_thread(encode_from_bytes, resp.content)
                         if bh:
                             await update_game_blurhash(game["title_id"], bh)
+                            blurhashes_written += 1
                     if needs_thumbs:
                         await asyncio.to_thread(warm_thumbs, url, resp.content, IMG_WARM_WIDTHS)
                     done += 1
@@ -68,6 +77,13 @@ async def backfill_game_art(max_count: int = 50):
                     log.debug("Game art backfill failed for %s: %s", game["title_id"], e)
 
         await asyncio.gather(*[_process(g, nb, nt) for g, nb, nt in todo])
+    if blurhashes_written:
+        # Backfill runs after the post-sync cache flush/warm, so the freshly
+        # written blurhashes would otherwise be missing from cached dashboard
+        # and timeline renders until their TTLs expire. One flush at the end —
+        # not per game — keeps the rebuild cost bounded.
+        _cache_invalidate(CacheKey.DASHBOARD_STATS)
+        _cache_invalidate_prefix(CacheKey.TIMELINE_PREFIX)
     log.info("Game art backfill complete: %d/%d games", done, len(todo))
 
 
