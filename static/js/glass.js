@@ -1686,6 +1686,9 @@
 
         // Drive Lenis smooth scroll on same rAF tick as WebGL —
         // scroll position + panel rects + render all happen in one frame.
+        // Claim the Lenis driver role from the provisional shell loop (which stops
+        // itself once this flag is set, flipping __lenisOwnRaf back to false).
+        window.__glassDrivesLenis = true;
         if (window.lenis && !window.__lenisOwnRaf) window.lenis.raf(t);
 
         // Drain queued row-reveal DOM mutations AFTER lenis.raf so invalidations

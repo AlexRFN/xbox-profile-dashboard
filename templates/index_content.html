@@ -169,9 +169,13 @@
         <a href="/game/{{ game.title_id }}" class="completed-game-card reveal-item anim-pop" style="--i: {{ loop.index0 }}"
            hx-get="/game/{{ game.title_id }}" hx-target="#main" hx-swap="innerHTML show:window:top"
            hx-push-url="true" hx-headers='{"X-SPA-Nav":"true"}'>
-            <img src="{{ game.display_image|thumb(240) }}" alt="{{ game.name }}" class="completed-game-img"
+            {# thumb(48): CSS renders this at 48x48 - the previous thumb(240) fetched a
+               480px-wide image per card (~25x the pixels needed) and decoded up to 100
+               of them while scrolling the dashboard. width/height reserve the box so
+               lazy loads can't shift layout. #}
+            <img src="{{ game.display_image|thumb(48) }}" alt="{{ game.name }}" class="completed-game-img"
                  {% if game.blurhash %}data-blurhash="{{ game.blurhash }}"{% endif %}
-                 loading="lazy" decoding="async">
+                 loading="lazy" decoding="async" width="48" height="48">
             <div class="completed-game-info">
                 <div class="completed-game-name">{{ game.name }}</div>
                 <div class="completed-game-meta">

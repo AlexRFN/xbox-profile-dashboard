@@ -1933,6 +1933,9 @@ fn rboxSDF(p: vec2f, b: vec2f, r: f32) -> f32 {
         _time = t * 0.001;
         _simTime += _frameDt;  // advances by at most 100ms per frame — never wall-clock jumps
 
+        // Claim the Lenis driver role from the provisional shell loop (which stops
+        // itself once this flag is set, flipping __lenisOwnRaf back to false).
+        window.__glassDrivesLenis = true;
         if (window.lenis && !window.__lenisOwnRaf) window.lenis.raf(t);
 
         // Drain queued row-reveal DOM mutations AFTER lenis.raf. IntersectionObserver

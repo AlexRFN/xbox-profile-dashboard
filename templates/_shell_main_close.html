@@ -71,21 +71,27 @@
         // ("lenis") — instance methods shadow the prototype, base class stays applied.
         window.lenis.updateClassName = function() {};
         window.lenis.cleanUpClassName = function() {};
-        window.__lenisOwnRaf = false;
-        setTimeout(function() {
-            if (!document.documentElement.classList.contains('glass-refract')) {
-                window.__lenisOwnRaf = true;
-                (function tick(t) {
-                    window.lenis.raf(t);
-                    var q = window.__rowMutationQueue;
-                    if (q && q.length) {
-                        for (var mi = 0; mi < q.length; mi++) { try { q[mi](); } catch (_) {} }
-                        q.length = 0;
-                    }
-                    requestAnimationFrame(tick);
-                })(performance.now());
+        // Provisional rAF driver. Lenis runs with autoRaf:false because the glass
+        // frame loop normally calls lenis.raf() — but glass only starts after async
+        // GPU init (adapter + device + pipeline compile), and on machines with no
+        // GPU path it never starts at all. Until SOMETHING calls lenis.raf(), wheel
+        // events are virtualized but the animated scroll never advances — scroll is
+        // dead. Drive it ourselves from first paint; the glass loop sets
+        // __glassDrivesLenis on its first tick and we hand over. (The old version
+        // waited 3s and checked for the glass-refract class once — scroll stayed
+        // frozen until GPU init on every load, and 3 full seconds without GPU.)
+        window.__glassDrivesLenis = false;
+        window.__lenisOwnRaf = true;
+        requestAnimationFrame(function tick(t) {
+            if (window.__glassDrivesLenis) { window.__lenisOwnRaf = false; return; } // glass took over
+            window.lenis.raf(t);
+            var q = window.__rowMutationQueue;
+            if (q && q.length) {
+                for (var mi = 0; mi < q.length; mi++) { try { q[mi](); } catch (_) {} }
+                q.length = 0;
             }
-        }, 3000);
+            requestAnimationFrame(tick);
+        });
     })();
     </script>
 

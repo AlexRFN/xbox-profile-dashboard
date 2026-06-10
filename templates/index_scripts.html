@@ -1,6 +1,18 @@
 {% if stats.total_games > 0 %}
 <script>
-var _statsData = {{ stats | tojson }};
+/* Only the fields the charts read (charts.worker.js + main-thread fallback).
+   Inlining the full stats object shipped the 100-entry completed_list,
+   playing/recent lists, and blurhash strings as page bytes parsed on the
+   main thread - tens of KB the charts never touch. */
+var _statsData = {{ {
+    'total_games': stats.total_games,
+    'zero_progress': stats.zero_progress,
+    'low_progress': stats.low_progress,
+    'high_progress': stats.high_progress,
+    'completed_games': stats.completed_games,
+    'monthly_stats': stats.monthly_stats,
+    'most_played': stats.most_played,
+} | tojson }};
 function _runCharts() { initDashboardCharts(_statsData); }
 function _workerChartsOk() {
     return typeof OffscreenCanvas !== 'undefined' &&
