@@ -556,6 +556,13 @@
     var slopeW = 0, slopeH = 0;
     var fboSlope = null, texSlope = null;
     var fboSlopeScratch = null, texSlopeScratch = null;
+    // Slope-field validity: the field is a pure function of (panel VBO cells,
+    // scrollY, viewport) — slopeProg's only uniforms are uViewport + uScrollY.
+    // Re-render only when an input changed; on idle aurora frames (static panels,
+    // animated background) the cached texture is reused, skipping 3 passes over
+    // a half-res RGBA16F target — the largest per-frame bandwidth item on iGPUs
+    // with shared memory.
+    var _slopeValid = false, _slopeScrollY = -1, _slopePanelCount = -1;
     // Adaptive Gaussian blur pyramid (liquid-dom). A = final pyramid (glass samples
     // it by per-tier LOD); B = scratch holding the horizontal-pass result. Both are
     // mip-complete via texStorage2D so each level is both an FBO target and a
@@ -673,6 +680,7 @@
         fboSlope = sl.fbo; texSlope = sl.tex;
         var sls = makeFBO(slopeW, slopeH, true);
         fboSlopeScratch = sls.fbo; texSlopeScratch = sls.tex;
+        _slopeValid = false; // fresh textures hold garbage — force a slope render
 
         // Rebuild the blur pyramid (A = final, B = scratch), bounded by half-res dims.
         blurMipCount = Math.max(1, Math.min(
@@ -1541,6 +1549,9 @@
 
         // Upload panel VBOs now so BOTH the slope prepass and the glass pass read this
         // frame's positions (the slope prepass reuses the glass VS).
+        // Capture buffer dirtiness BEFORE the upload consumes it — it's one of
+        // the slope field's staleness inputs.
+        var panelsChanged = _buffDirty;
         if (panelCount > 0 && _buffDirty) {
             gl.bindBuffer(gl.ARRAY_BUFFER, panelRectBuf);
             gl.bufferSubData(gl.ARRAY_BUFFER, 0, panelRectData.subarray(0, panelCount * 4));
@@ -1556,10 +1567,18 @@
             _buffDirty = false;
         }
 
-        // Pass 2c: Slope field — every frame (panels move on scroll). Prepass renders
-        // each panel's bevel slope into texSlope, then a separable Gaussian
-        // (H→scratch, V→texSlope) so the glass pass reads a clean normal.
-        if (panelCount > 0) {
+        // Pass 2c: Slope field — prepass renders each panel's bevel slope into
+        // texSlope, then a separable Gaussian (H→scratch, V→texSlope) so the glass
+        // pass reads a clean normal. Gated on its actual inputs (panel cells /
+        // scrollY / panelCount / FBO recreation): on idle aurora frames panels are
+        // static and the cached field is byte-identical, so the three half-res
+        // RGBA16F passes are skipped entirely.
+        if (panelCount > 0 &&
+            (panelsChanged || !_slopeValid ||
+             _slopeScrollY !== frameScrollY || _slopePanelCount !== panelCount)) {
+            _slopeValid = true;
+            _slopeScrollY = frameScrollY;
+            _slopePanelCount = panelCount;
             gl.useProgram(slopeProg);
             gl.uniform2f(slopeU.viewport, vpW, vpH);
             gl.uniform1f(slopeU.scrollY, frameScrollY);

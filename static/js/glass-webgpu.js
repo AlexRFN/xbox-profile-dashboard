@@ -663,6 +663,13 @@ fn rboxSDF(p: vec2f, b: vec2f, r: f32) -> f32 {
     var slopeW = 0, slopeH = 0;
     var texSlope = null, viewSlope = null;            // blurred result (glass binding 5)
     var texSlopeScratch = null, viewSlopeScratch = null; // H-pass scratch
+    // Slope-field validity: the field is a pure function of (panel buffer cells,
+    // scrollY, viewport) — SLOPE_FS reads no time/mouse uniforms. Re-render only
+    // when one of those inputs changed; on idle aurora frames (static panels,
+    // animated background) the cached texture is reused, skipping 3 passes over
+    // a half-res rgba16float target — the largest per-frame bandwidth item on
+    // iGPUs with shared memory.
+    var _slopeValid = false, _slopeScrollY = -1, _slopePanelCount = -1;
     var slopeBindGroup = null;                        // slope prepass (uniform + storage)
     var slopeBlurBindH = null, slopeBlurBindV = null; // gauss H/V over the slope field
     var slopeBlurBufH = null, slopeBlurBufV = null;
@@ -752,6 +759,7 @@ fn rboxSDF(p: vec2f, b: vec2f, r: f32) -> f32 {
         texSlopeScratch = createRT(slopeW, slopeH, 1, slopeFormat);
         viewSlope = texSlope.createView();
         viewSlopeScratch = texSlopeScratch.createView();
+        _slopeValid = false; // fresh textures hold garbage — force a slope render
 
         // Pyramid level count — capped, and bounded by the half-res dimensions. >=1.
         blurMipCount = Math.max(1, Math.min(
@@ -1807,6 +1815,9 @@ fn rboxSDF(p: vec2f, b: vec2f, r: f32) -> f32 {
         // Upload glass uniforms + panel storage now so BOTH the slope prepass and
         // the glass pass read this frame's scroll/positions (slope VS reuses the
         // glass VS, so a stale upload would lag the slope field by one frame).
+        // Capture buffer dirtiness BEFORE the upload consumes it — it's one of
+        // the slope field's staleness inputs.
+        var panelsChanged = _buffDirty;
         if (panelCount > 0) {
             glassUniformData[0] = vpW;
             glassUniformData[1] = vpH;
@@ -1823,10 +1834,18 @@ fn rboxSDF(p: vec2f, b: vec2f, r: f32) -> f32 {
             }
         }
 
-        // Pass 2c: Slope field — runs every frame (panels move on scroll) so the
-        // glass pass reads a clean, pre-blurred bevel normal. Prepass renders each
-        // panel's slope into texSlope, then a separable Gaussian (H→scratch, V→texSlope).
-        if (panelCount > 0 && slopePipeline) {
+        // Pass 2c: Slope field — prepass renders each panel's bevel slope into
+        // texSlope, then a separable Gaussian (H→scratch, V→texSlope) so the glass
+        // pass reads a clean, pre-blurred normal. Gated on its actual inputs
+        // (panel cells / scrollY / panelCount / RT recreation): on idle aurora
+        // frames panels are static and the cached field is byte-identical, so the
+        // three half-res rgba16float passes are skipped entirely.
+        if (panelCount > 0 && slopePipeline &&
+            (panelsChanged || !_slopeValid ||
+             _slopeScrollY !== frameScrollY || _slopePanelCount !== panelCount)) {
+            _slopeValid = true;
+            _slopeScrollY = frameScrollY;
+            _slopePanelCount = panelCount;
             var slopePass = encoder.beginRenderPass({
                 label: 'slope',
                 colorAttachments: [{
