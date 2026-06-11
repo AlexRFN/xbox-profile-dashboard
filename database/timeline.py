@@ -51,11 +51,48 @@ def mark_timeline_dirty() -> None:
     _dirty = True
 
 
+# Debounced background rebuild: a tracking edit (or any write burst) would
+# otherwise make the NEXT page view pay the ~150-400ms materialization on the
+# request path. Rebuilding ~1.5s after the LAST invalidation moves that cost
+# off the user's next click; sync bursts keep pushing the deadline back so the
+# whole burst costs one rebuild. Best-effort — with no running loop (CLI
+# scripts, teardown) the read path still rebuilds lazily.
+_REBUILD_DEBOUNCE_S = 1.5
+_rebuild_handle = None
+
+
+def _schedule_background_rebuild() -> None:
+    global _rebuild_handle
+    import asyncio
+
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        return
+    if _rebuild_handle is not None:
+        _rebuild_handle.cancel()
+
+    def _fire() -> None:
+        global _rebuild_handle
+        _rebuild_handle = None
+        if not _dirty:
+            return
+        task = loop.create_task(_ensure_materialized())
+        # Retrieve the exception so a failed background rebuild doesn't log
+        # "exception was never retrieved" — _ensure_materialized re-marks
+        # dirty on failure, so the next read retries on the request path.
+        task.add_done_callback(lambda t: None if t.cancelled() else t.exception())
+
+    _rebuild_handle = loop.call_later(_REBUILD_DEBOUNCE_S, _fire)
+
+
 def invalidate_timeline() -> None:
-    """Single entry point for writers: flush the timeline caches and schedule
-    a rebuild of the materialized table on the next timeline read."""
+    """Single entry point for writers: flush the timeline caches, schedule a
+    debounced background rebuild, and keep the lazy read-path rebuild as the
+    fallback for anything the background task misses."""
     _cache_invalidate_prefix(CacheKey.TIMELINE_PREFIX)
     mark_timeline_dirty()
+    _schedule_background_rebuild()
 
 
 _EVENT_COLUMNS = """event_type, event_date, event_title, event_detail, event_value,

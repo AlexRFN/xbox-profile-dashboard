@@ -31,6 +31,16 @@
     });
     if (!gl) return;
 
+    // Software rasterizers (SwiftShader, llvmpipe) run the entire blur pipeline
+    // on the CPU — profiled at 200ms+ per frame in software-GL environments.
+    // The static CSS aurora fallback is strictly better there, so bail before
+    // claiming the glass-refract class.
+    var _dbgInfo = gl.getExtension('WEBGL_debug_renderer_info');
+    var _renderer = String(
+        (_dbgInfo && gl.getParameter(_dbgInfo.UNMASKED_RENDERER_WEBGL)) || gl.getParameter(gl.RENDERER) || ''
+    );
+    if (/swiftshader|llvmpipe|softpipe|software/i.test(_renderer)) return;
+
     // Float render targets (slope field stores raw signed slope). Near-universal in
     // WebGL2; if absent the slope field falls back to rgba8 and refraction goes flat
     // (no artifacts, just no lensing) rather than breaking.

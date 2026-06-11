@@ -41,6 +41,10 @@
     try {
         adapter = await navigator.gpu.requestAdapter();
         if (!adapter) { loadWebGL2Fallback(); return; }
+        // A fallback adapter is software rendering (SwiftShader-Vulkan) — the
+        // machine may still have hardware GL, so defer to the WebGL2 path,
+        // whose own renderer-string guard bails to CSS if that's software too.
+        if (adapter.isFallbackAdapter) { loadWebGL2Fallback(); return; }
         device = await adapter.requestDevice();
         if (!device) { loadWebGL2Fallback(); return; }
         ctx = canvas.getContext('webgpu');
