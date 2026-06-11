@@ -2,7 +2,7 @@
     </main>
 
     <!-- Command Palette (Ctrl+K) -->
-    <div class="cmd-palette" id="cmd-palette" role="dialog" aria-modal="true" aria-label="Command palette" style="display:none">
+    <div class="cmd-palette" id="cmd-palette" role="dialog" aria-modal="true" aria-label="Command palette" style="display:none" data-lenis-prevent>
         <div class="cmd-backdrop" onclick="closeCmdPalette()"></div>
         <div class="cmd-panel">
             <div class="cmd-search-wrap">
@@ -20,7 +20,7 @@
     </div>
 
     <!-- Keyboard shortcuts overlay -->
-    <div class="shortcuts-overlay" id="shortcuts-overlay" style="display:none">
+    <div class="shortcuts-overlay" id="shortcuts-overlay" style="display:none" data-lenis-prevent>
         <div class="cmd-backdrop" onclick="closeShortcuts()"></div>
         <div class="shortcuts-panel">
             <h3>Keyboard Shortcuts</h3>
@@ -45,23 +45,21 @@
     <script>
     (function() {
         var reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-        window.lenis = new Lenis({
-            smoothWheel: !reduced,
-            syncTouch: false,
-            lerp: reduced ? 1 : 0.1,
-            duration: 1.0,
-            easing: function(t) {
-                return 1 - Math.pow(1 - t, 3.5);
-            },
-            autoRaf: false,
-            prevent: function(node) {
-                return node.closest && (
-                    node.closest('.cmd-palette') ||
-                    node.closest('.shortcuts-overlay') ||
-                    node.closest('.lightbox')
-                );
-            }
-        });
+        // Lenis animates with duration+easing when both are set — that branch takes
+        // precedence over lerp (Animate.advance), so a lerp option here would be dead
+        // config. Reduced motion: native wheel (smoothWheel:false) and lerp:1 so
+        // programmatic scrollTo lands instantly instead of playing the 1s tween.
+        // Overlay scroll containment uses data-lenis-prevent attributes on the
+        // overlay roots (native fast path + overscroll-behavior:contain from
+        // lenis.css) instead of a per-wheel-event closest() callback.
+        var lenisOpts = { smoothWheel: !reduced, syncTouch: false, autoRaf: false };
+        if (reduced) {
+            lenisOpts.lerp = 1;
+        } else {
+            lenisOpts.duration = 1.0;
+            lenisOpts.easing = function(t) { return 1 - Math.pow(1 - t, 3.5); };
+        }
+        window.lenis = new Lenis(lenisOpts);
         // Lenis rewrites <html>.className TWICE per scroll start/stop (cleanUpClassName +
         // updateClassName toggling lenis-scrolling / lenis-smooth). Every root class write
         // invalidates style for the entire document — measured ~4ms recalc per write on a

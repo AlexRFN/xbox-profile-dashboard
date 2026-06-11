@@ -1928,31 +1928,28 @@ fn rboxSDF(p: vec2f, b: vec2f, r: f32) -> f32 {
 
     function frame(t) {
         if (!reduced) requestAnimationFrame(frame);
-        // Skip all work while paused (SPA nav) or hidden (browser tab switch).
-        // Canvas holds its last presented frame — no blank flash, zero GPU submissions.
-        if (document.hidden || _glassPaused) return;
+        if (document.hidden) return; // rAF barely fires here anyway — belt and braces
 
-        _frameDt = _prevFrameTime ? Math.min((t - _prevFrameTime) * 0.001, 0.1) : 0.016;
-        _prevFrameTime = t;
-        _time = t * 0.001;
-        _simTime += _frameDt;  // advances by at most 100ms per frame — never wall-clock jumps
-
-        // Claim the Lenis driver role from the provisional shell loop (which stops
-        // itself once this flag is set, flipping __lenisOwnRaf back to false).
+        // Drive Lenis and drain queued row mutations BEFORE the pause gate:
+        // pauseGlass() exists to keep GPU work off the nav critical path, but the
+        // pause spans the whole SPA fetch window (exit anim -> response -> swap) —
+        // scroll must stay alive through it. lenis.raf is ~free when not scrolling.
         window.__glassDrivesLenis = true;
         if (window.lenis && !window.__lenisOwnRaf) window.lenis.raf(t);
-
-        // Drain queued row-reveal DOM mutations AFTER lenis.raf. IntersectionObserver
-        // callbacks fire between frames and push their class/style writes into this
-        // queue instead of applying directly. Running them before lenis.raf would
-        // leave invalidations pending when scrollTo reads layout, forcing a sync
-        // style recalc. Running them after means the invalidations flush during the
-        // browser's natural post-rAF layout phase — no forced reflow.
         var q = window.__rowMutationQueue;
         if (q && q.length) {
             for (var mi = 0; mi < q.length; mi++) { try { q[mi](); } catch (_) {} }
             q.length = 0;
         }
+
+        // Skip all GPU/render work while paused (SPA nav) or hidden (tab switch).
+        // Canvas holds its last presented frame — no blank flash, zero GPU submissions.
+        if (_glassPaused) return;
+
+        _frameDt = _prevFrameTime ? Math.min((t - _prevFrameTime) * 0.001, 0.1) : 0.016;
+        _prevFrameTime = t;
+        _time = t * 0.001;
+        _simTime += _frameDt;  // advances by at most 100ms per frame — never wall-clock jumps
 
         resizeTargets();
         updatePhysics(_simTime);
