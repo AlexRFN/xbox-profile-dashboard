@@ -556,12 +556,31 @@ function initScrollNav() {
     const THRESHOLD = 20;
     let scrolled = false;
 
+    // Back-to-top button lives outside <main> (persists across SPA nav). Driven
+    // from the same scroll signal as the nav, so there's one scroll subscription.
+    const backTop = document.getElementById('back-to-top');
+    let backVisible = false;
+
     function check(scrollY) {
         const isScrolled = scrollY > THRESHOLD;
         if (isScrolled !== scrolled) {
             scrolled = isScrolled;
             nav.classList.toggle('scrolled', scrolled);
         }
+        if (backTop) {
+            const show = scrollY > window.innerHeight * 1.5;
+            if (show !== backVisible) {
+                backVisible = show;
+                backTop.classList.toggle('visible', show);
+            }
+        }
+    }
+
+    if (backTop) {
+        backTop.addEventListener('click', () => {
+            if (window.lenis) window.lenis.scrollTo(0);
+            else window.scrollTo({ top: 0, behavior: 'smooth' });
+        });
     }
 
     // Defer initial scrollY read off the critical path; reading window.scrollY

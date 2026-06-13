@@ -40,6 +40,14 @@
     <!-- Overlay container (lightbox etc.) -->
     <div id="spa-overlay-container">{{ overlay_html|safe }}</div>
 
+    <!-- Back to top — fixed, lives outside <main> so the SPA-nav transform on
+         <main> doesn't break position:fixed (same reason as the overlays above). -->
+    <button id="back-to-top" class="back-to-top" type="button" aria-label="Back to top">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <path d="M12 19V5M5 12l7-7 7 7"/>
+        </svg>
+    </button>
+
     <!-- Lenis smooth scroll (sync — must init before deferred scripts for stable layout timing) -->
     <script src="{{ static_url('js/vendor/lenis.min.js') }}"></script>
     <script>
