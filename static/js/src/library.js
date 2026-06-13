@@ -392,13 +392,17 @@ window.onInlineGridLoad = function(gw) {
     _syncLibraryRequestBindings('grid', filtersEl);
 };
 
-// Show a toast for failed htmx partial requests (filter changes, infinite-scroll appends, etc.)
+// Show a toast for failed htmx partial requests (filter changes, etc.). Append
+// failures are owned by infinite.js's inline retry UX — skip them here so the
+// generic toast doesn't stack on top of the Retry control.
 document.body.addEventListener('htmx:responseError', (evt) => {
+    if (evt.detail.elt?.classList?.contains('inf-sentinel')) return;
     const status = evt.detail.xhr?.status;
     showToast(status ? `Request failed (${status})` : 'Request failed', true);
 });
 
-document.body.addEventListener('htmx:sendError', () => {
+document.body.addEventListener('htmx:sendError', (evt) => {
+    if (evt.detail.elt?.classList?.contains('inf-sentinel')) return;
     showToast('Network error — check your connection', true);
 });
 

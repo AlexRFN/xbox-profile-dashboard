@@ -173,3 +173,65 @@ function _mergeAchGroupContinuations(wrap) {
         cur.remove();
     }
 }
+
+// ─── Append-failure recovery ──────────────────────────────────────────────────
+// `inf-load once` burns its trigger on the first fire regardless of outcome, and
+// the observer unobserves the sentinel after firing — so a failed append (5xx or
+// dropped connection) leaves a deaf, unobserved sentinel and the chain is dead
+// until a full reload. Recover by re-arming: a sentinel CLONE is a fresh node
+// with no consumed-`once` state, so cloning + htmx.process + re-observe revives
+// the chain (a re-observed sentinel still in view re-fires next frame). One
+// silent auto-retry absorbs a transient blip; a second failure swaps in a visible
+// Retry control. responseError = HTTP non-2xx, sendError = network failure —
+// both leave the sentinel un-swapped.
+const _INF_RETRY_DELAY = 1500;
+
+function _reviveSentinel(dead) {
+    const fresh = dead.cloneNode(true);
+    fresh.dataset.infRetries = String(parseInt(dead.dataset.infRetries || '0', 10) + 1);
+    dead.replaceWith(fresh);
+    if (typeof htmx !== 'undefined') htmx.process(fresh);
+    _infObserver().observe(fresh);
+    _infSeen.add(fresh);
+}
+
+function _showInfRetry(dead) {
+    const isRow = dead.tagName === 'TR';
+    // A fresh sentinel kept aside for when the user clicks Retry (counter reset).
+    const reborn = dead.cloneNode(true);
+    reborn.dataset.infRetries = '0';
+
+    const retry = document.createElement(isRow ? 'tr' : 'div');
+    retry.className = 'inf-retry';
+    let host = retry;
+    if (isRow) {
+        const td = document.createElement('td');
+        const oldTd = dead.querySelector('td');
+        td.colSpan = oldTd ? oldTd.colSpan : 7;
+        retry.appendChild(td);
+        host = td;
+    }
+    host.innerHTML = '<span>Couldn’t load more.</span><button type="button" class="inf-retry-btn">Retry</button>';
+    dead.replaceWith(retry);
+
+    host.querySelector('.inf-retry-btn').addEventListener('click', () => {
+        retry.replaceWith(reborn);
+        if (typeof htmx !== 'undefined') htmx.process(reborn);
+        _infObserver().observe(reborn);
+        _infSeen.add(reborn);
+        _fireSentinel(reborn);  // user asked for it — fire now, don't wait for re-intersect
+    }, { once: true });
+}
+
+function _onSentinelError(evt) {
+    const el = evt.detail && evt.detail.elt;
+    if (!el || !el.classList || !el.classList.contains('inf-sentinel') || !el.isConnected) return;
+    if (parseInt(el.dataset.infRetries || '0', 10) < 1) {
+        setTimeout(() => { if (el.isConnected) _reviveSentinel(el); }, _INF_RETRY_DELAY);
+    } else {
+        _showInfRetry(el);
+    }
+}
+
+document.body.addEventListener('htmx:responseError', _onSentinelError);
+document.body.addEventListener('htmx:sendError', _onSentinelError);
