@@ -3,6 +3,28 @@
 <svg class="icon {{ cls }}" width="{{ size }}" height="{{ size }}" aria-hidden="true"><use href="/static/img/icons.svg#icon-{{ name }}"/></svg>
 {%- endmacro %}
 
+{# Infinite-scroll terminator. Emits EITHER the self-replacing sentinel (when a
+   next page exists) OR the end-of-list cap (once the user has scrolled past page
+   1 to the end). Replaces the per-surface sentinel blocks across all four list
+   surfaces. The rendered sentinel attributes are byte-equivalent to the old
+   inline markup, so the infinite.js contract (inf-load once + outerHTML +
+   sync-drop) is unchanged.
+     endpoint  : list partial URL, e.g. "/api/library/grid"
+     page      : current page number (first-render/content templates pass 1)
+     has_more  : truthy when a next page exists
+     dom_id    : sentinel element id, e.g. "library-grid-sentinel"
+     tag       : "div" (default) or "tr" for tbody swaps
+     include   : hx-include selector, "" to omit
+     colspan   : <td colspan> for the tr variant, 0 for div
+     end_label : end-cap text #}
+{% macro inf_sentinel(endpoint, page, has_more, dom_id, tag='div', include='', colspan=0, end_label="You've reached the end") -%}
+{%- if has_more -%}
+<{{ tag }} id="{{ dom_id }}" class="inf-sentinel" aria-hidden="true" hx-get="{{ endpoint }}?page={{ page + 1 }}" hx-trigger="inf-load once" hx-swap="outerHTML"{% if include %} hx-include="{{ include }}"{% endif %} hx-sync="this:drop">{% if colspan %}<td colspan="{{ colspan }}"></td>{% endif %}</{{ tag }}>
+{%- elif page > 1 -%}
+{% if colspan %}<tr class="inf-end"><td colspan="{{ colspan }}"><span>{{ end_label }}</span></td></tr>{% else %}<div class="inf-end"><span>{{ end_label }}</span></div>{% endif %}
+{%- endif -%}
+{%- endmacro %}
+
 {# Stat card — reusable across profile and achievements pages.
    Use as a call block: {% call stat_card(value, label) %}<svg>...</svg>{% endcall %} #}
 {% macro stat_card(value, label, color="", i=0, value_id="") %}

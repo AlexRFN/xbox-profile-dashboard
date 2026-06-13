@@ -1,4 +1,4 @@
-{% from "macros.html" import progress_bar, device_tags, gamerscore_display %}
+{% from "macros.html" import progress_bar, device_tags, gamerscore_display, inf_sentinel %}
 {# Result-count marker only on page 1 — appends (page > 1) would stack
    duplicate hidden rows and the total doesn't change within a filter set. #}
 {% if page == 1 %}<tr style="display:none" data-total="{{ total }}"></tr>{% endif %}
@@ -54,11 +54,5 @@
 <tr><td colspan="7" class="empty-state">No games found matching your filters.</td></tr>
 {% endif %}
 
-{# Infinite-scroll sentinel — a <tr> because htmx tbody swaps accept only rows.
-   Self-replaces (outerHTML) with the next page of rows + a fresh sentinel. #}
-{% if page * per_page < total %}
-<tr id="library-table-sentinel" class="inf-sentinel" aria-hidden="true"
-    hx-get="/api/library/table?page={{ page + 1 }}"
-    hx-trigger="inf-load once" hx-swap="outerHTML"
-    hx-include="#filters" hx-sync="this:drop"><td colspan="7"></td></tr>
-{% endif %}
+{# Infinite-scroll sentinel / end cap — a <tr> because htmx tbody swaps accept only rows. #}
+{{ inf_sentinel('/api/library/table', page, page * per_page < total, 'library-table-sentinel', tag='tr', include='#filters', colspan=7) }}

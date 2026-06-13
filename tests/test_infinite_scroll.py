@@ -218,3 +218,28 @@ async def test_no_pagination_or_load_more_markup_anywhere(client):
         html = client.get(path).text
         assert 'class="pagination' not in html, f"{path} re-grew pagination markup"
         assert "Load More" not in html, f"{path} re-grew a Load More button"
+
+
+# ── End-of-list cap (U1) ──────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_library_table_last_page_shows_end_cap(client):
+    await _seed_games(60)  # per_page=50 → 2 pages
+    page2 = client.get("/api/library/table?page=2").text
+    assert 'class="inf-end"' in page2, "exhausted multi-page list must show an end cap"
+    assert _sentinel(page2, "library-table-sentinel") is None, "end cap must not re-arm a sentinel"
+
+
+@pytest.mark.asyncio
+async def test_library_grid_last_page_shows_end_cap(client):
+    await _seed_games(60)  # per_page=48 → 2 pages
+    page2 = client.get("/api/library/grid?page=2").text
+    assert 'class="inf-end"' in page2
+
+
+@pytest.mark.asyncio
+async def test_library_single_page_shows_no_end_cap(client):
+    await _seed_games(5)  # 1 page
+    html = client.get("/api/library/table").text
+    assert "inf-end" not in html, "single-page list must not show an end cap"

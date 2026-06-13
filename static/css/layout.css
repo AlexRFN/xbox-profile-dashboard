@@ -345,6 +345,32 @@ tr.inf-sentinel > td {
     border: 0;
 }
 
+/* End-of-list cap — emitted by the inf_sentinel macro in place of the sentinel
+   once a multi-page list is exhausted. Self-contained opacity entrance (no
+   reliance on the JS reveal observer, which the append path may not reach). */
+.lib-grid > .inf-end,
+.captures-grid > .inf-end,
+.ach-grid > .inf-end {
+    grid-column: 1 / -1;
+}
+
+.inf-end,
+tr.inf-end > td {
+    text-align: center;
+    padding: 2.5rem 1rem;
+}
+.inf-end span {
+    font-size: 0.72rem;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    opacity: 0.4;
+}
+.inf-end span::before { content: "\00b7\00a0\00a0"; }
+.inf-end span::after  { content: "\00a0\00a0\00b7"; }
+.inf-end { animation: inf-end-in 0.5s var(--ease-effect) both; }
+@keyframes inf-end-in { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .inf-end { animation: none; } }
+
 /* ========== Footer ========== */
 footer {
     border-top: 1px solid var(--border-subtle);

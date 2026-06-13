@@ -1,3 +1,4 @@
+{% from "macros.html" import inf_sentinel %}
 {% for game in games %}
 <a href="/game/{{ game.title_id }}" class="lib-grid-card reveal-item anim-pop" style="--i: {{ loop.index0 }}; transition-delay: calc(var(--stagger, 60ms) * {{ loop.index0 }})"
    hx-get="/game/{{ game.title_id }}" hx-target="#main" hx-swap="innerHTML show:window:top"
@@ -40,11 +41,5 @@
 <div class="lib-grid-empty">No games found matching your filters.</div>
 {% endif %}
 
-{# Infinite-scroll sentinel — last grid item (full row via CSS). Self-replaces
-   (outerHTML) with the next page of cards + a fresh sentinel. #}
-{% if page * per_page < total %}
-<div id="library-grid-sentinel" class="inf-sentinel" aria-hidden="true"
-     hx-get="/api/library/grid?page={{ page + 1 }}"
-     hx-trigger="inf-load once" hx-swap="outerHTML"
-     hx-include="#filters" hx-sync="this:drop"></div>
-{% endif %}
+{# Infinite-scroll sentinel / end cap — full grid row via CSS. #}
+{{ inf_sentinel('/api/library/grid', page, page * per_page < total, 'library-grid-sentinel', include='#filters') }}
