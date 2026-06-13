@@ -1,4 +1,4 @@
-{% from "macros.html" import icon %}
+{% from "macros.html" import icon, inf_sentinel %}
 {# htmx partial — achievement browse grid cards + OOB result count + infinite-scroll sentinel #}
 
 {% if group == "game" %}
@@ -68,12 +68,6 @@
 <span id="ach-result-count" hx-swap-oob="true">{{ "{:,}".format(ach_total) }} achievements</span>
 {% endif %}
 
-{# Infinite-scroll sentinel — last child of #ach-grid-wrap (full row via CSS).
-   Rendered in both the initial {% include %} and htmx partials; self-replaces
-   (outerHTML) with the next page of cards + a fresh sentinel. #}
-{% if ach_page * ach_per_page < ach_total %}
-<div id="ach-sentinel" class="inf-sentinel" aria-hidden="true"
-     hx-get="/api/achievements/grid?page={{ ach_page + 1 }}"
-     hx-trigger="inf-load once" hx-swap="outerHTML"
-     hx-include="#ach-filters" hx-sync="this:drop"></div>
-{% endif %}
+{# Infinite-scroll sentinel / end cap — last child of #ach-grid-wrap. Rendered in
+   both the initial include and htmx partials. #}
+{{ inf_sentinel('/api/achievements/grid', ach_page, ach_page * ach_per_page < ach_total, 'ach-sentinel', include='#ach-filters') }}

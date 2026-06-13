@@ -243,3 +243,19 @@ async def test_library_single_page_shows_no_end_cap(client):
     await _seed_games(5)  # 1 page
     html = client.get("/api/library/table").text
     assert "inf-end" not in html, "single-page list must not show an end cap"
+
+
+@pytest.mark.asyncio
+async def test_achievements_last_page_shows_end_cap(client):
+    games = await _seed_games(1)
+    await _seed_achievements(games[0]["title_id"], 70)  # per_page=60 → 2 pages
+    page2 = client.get("/api/achievements/grid?page=2").text
+    assert 'class="inf-end"' in page2
+
+
+@pytest.mark.asyncio
+async def test_captures_last_page_shows_end_cap(client):
+    games = await _seed_games(1)
+    await _seed_screenshots(games[0]["title_id"], 55)  # per_page=50 → 2 pages
+    page2 = client.get("/api/captures/grid?page=2").text
+    assert 'class="inf-end"' in page2

@@ -1,4 +1,4 @@
-{% from "macros.html" import capture_card %}
+{% from "macros.html" import capture_card, inf_sentinel %}
 <div class="page-header-actions">
     <hgroup class="anim-drop">
         <h1>Captures</h1>
@@ -41,12 +41,7 @@
         {% for s in screenshots %}
             {{ capture_card(s, i=loop.index0) }}
         {% endfor %}
-        {% if has_more %}
-        <div id="captures-sentinel" class="inf-sentinel" aria-hidden="true"
-             hx-get="/api/captures/grid?page=2"
-             hx-trigger="inf-load once" hx-swap="outerHTML"
-             hx-sync="this:drop"></div>
-        {% endif %}
+        {{ inf_sentinel('/api/captures/grid', 1, has_more, 'captures-sentinel') }}
     </div>
     {% else %}
     <div class="empty-state">

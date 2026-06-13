@@ -1,4 +1,4 @@
-{% from "macros.html" import timeline_event_card %}
+{% from "macros.html" import timeline_event_card, inf_sentinel %}
 {# Re-emit the vertical timeline line only on filter swaps (page == 1, innerHTML mode).
    Load More (page >= 2) uses beforeend, where this would create a duplicate line. #}
 {% if page == 1 %}<div class="timeline-line anim-blur-rise"></div>{% endif %}
@@ -38,15 +38,10 @@
 {% endif %}
 {% endfor %}
 
-{# Fresh sentinel for the next page. Page 1 (filter swap, innerHTML of #timeline)
-   renders it as the new last child; page >= 2 (sentinel self-replace, outerHTML)
-   re-inserts it at the old sentinel's position — the end of #timeline. #}
-{% if has_more %}
-<div id="timeline-sentinel" class="inf-sentinel" aria-hidden="true"
-     hx-get="/api/timeline/events?page={{ page + 1 }}"
-     hx-trigger="inf-load once" hx-swap="outerHTML"
-     hx-include="#timeline-filters" hx-sync="this:drop"></div>
-{% endif %}
+{# Fresh sentinel for the next page / end cap. Page 1 (filter swap) renders it as
+   the new last child; page >= 2 (outerHTML self-replace) re-inserts it at the
+   end of #timeline. #}
+{{ inf_sentinel('/api/timeline/events', page, has_more, 'timeline-sentinel', include='#timeline-filters') }}
 
 <!-- OOB swap: update subtitle. Single <p> replace — no count-up animation needed
      because filter changes are user-initiated and the new total appears in step. -->

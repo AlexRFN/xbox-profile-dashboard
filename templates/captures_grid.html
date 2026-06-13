@@ -1,14 +1,7 @@
-{% from "macros.html" import capture_card %}
+{% from "macros.html" import capture_card, inf_sentinel %}
 {% for s in screenshots %}
     {{ capture_card(s, eager_count=0) }}
 {% endfor %}
 
-{# Sentinel self-replace (outerHTML): cards above land where the old sentinel
-   was — the end of #captures-grid — and this fresh sentinel re-arms below
-   them. Omitted on the last page, which ends the cycle. #}
-{% if has_more %}
-<div id="captures-sentinel" class="inf-sentinel" aria-hidden="true"
-     hx-get="/api/captures/grid?page={{ page + 1 }}"
-     hx-trigger="inf-load once" hx-swap="outerHTML"
-     hx-sync="this:drop"></div>
-{% endif %}
+{# Sentinel self-replace (outerHTML) / end cap. #}
+{{ inf_sentinel('/api/captures/grid', page, has_more, 'captures-sentinel') }}

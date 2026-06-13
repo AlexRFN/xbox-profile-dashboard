@@ -1,4 +1,4 @@
-{% from "macros.html" import icon, timeline_event_card %}
+{% from "macros.html" import icon, timeline_event_card, inf_sentinel %}
 {% set ts = timeline_stats %}
 <div class="page-header-actions">
     <hgroup class="anim-drop">
@@ -123,12 +123,7 @@
             {% endfor %}
         </div>
         {% endfor %}
-        {% if has_more %}
-        <div id="timeline-sentinel" class="inf-sentinel" aria-hidden="true"
-             hx-get="/api/timeline/events?page={{ page + 1 }}"
-             hx-trigger="inf-load once" hx-swap="outerHTML"
-             hx-include="#timeline-filters" hx-sync="this:drop"></div>
-        {% endif %}
+        {{ inf_sentinel('/api/timeline/events', page, has_more, 'timeline-sentinel', include='#timeline-filters') }}
     </div>
 </div>
 {% endif %}
