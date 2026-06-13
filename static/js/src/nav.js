@@ -354,9 +354,14 @@ function _reinitMain(main) {
     _tableDirty = false;
 
     window.scrollTo(0, 0);
-    if (window.lenis) window.lenis.scrollTo(0, { immediate: true });
+    if (window.lenis) {
+        window.lenis.scrollTo(0, { immediate: true });
+        // New page = new height; don't leave the scroll limit stale for the
+        // ~250ms Lenis ResizeObserver debounce.
+        window.lenis.resize();
+    }
 
-    // Skip .anim-persist — bottom-of-page elements (load-more, pagination) whose
+    // Skip .anim-persist — bottom-of-page elements whose
     // anim-blur-rise hidden state translates them off the document, so the IO can
     // never see them cross into view to re-add animate-in. Keeping animate-in
     // pinned means they stay visible across SPA navs but still participate in
@@ -427,8 +432,15 @@ function _reinitMain(main) {
     });
 }
 
+// htmx 2 fires afterSwap once per inserted top-level node — a page swap into
+// #main dispatches it dozens of times in one task. Run the (expensive) re-init
+// pipeline once per swap batch; the microtask reset re-arms for the next nav.
+let _mainSwapHandled = false;
 document.body.addEventListener('htmx:afterSwap', (evt) => {
     if (evt.detail.target.id !== 'main') return;
+    if (_mainSwapHandled) return;
+    _mainSwapHandled = true;
+    queueMicrotask(() => { _mainSwapHandled = false; });
 
     const main = evt.detail.target;
     _spaNavInFlight = false;

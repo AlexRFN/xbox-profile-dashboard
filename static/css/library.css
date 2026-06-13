@@ -881,68 +881,6 @@ html:not(.glass-refract) #library-table-wrap {
 }
 
 
-/* ========== Pagination ========== */
-.pagination {
-    display: flex;
-    justify-content: center;
-    margin: 1.5rem 0;
-}
-
-.pagination nav {
-    display: flex;
-    align-items: center;
-    gap: 0.2rem;
-}
-
-.pagination a {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 2rem;
-    height: 2rem;
-    padding: 0 0.5rem;
-    border-radius: var(--radius-btn);
-    text-decoration: none;
-    font-family: var(--font-mono);
-    font-size: 0.85rem;
-    color: var(--text-secondary);
-    transition: background var(--dur-fast) var(--ease-effect), color var(--dur-fast) var(--ease-effect), transform var(--dur-micro) var(--ease-spatial);
-}
-
-.pagination a:hover:not(.disabled) {
-    background: var(--surface-elevated);
-    color: var(--text-primary);
-    transform: scale(1.08);
-}
-
-.pagination a.active {
-    background: var(--xbox-green);
-    color: white;
-    font-weight: 600;
-    box-shadow: 0 0 12px var(--xbox-green-glow);
-}
-
-.pagination .pg-arrow {
-    font-size: 1.1rem;
-    font-weight: 700;
-}
-
-.pagination .pg-arrow.disabled {
-    opacity: 0.3;
-    pointer-events: none;
-}
-
-.pagination .pg-ellipsis {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 1.5rem;
-    height: 2rem;
-    color: var(--text-tertiary);
-    font-size: 0.85rem;
-    pointer-events: none;
-}
-
 /* ========== Library Grid View ========== */
 .lib-grid {
     display: grid;

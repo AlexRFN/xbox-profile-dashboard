@@ -41,19 +41,13 @@
         {% for s in screenshots %}
             {{ capture_card(s, i=loop.index0) }}
         {% endfor %}
+        {% if has_more %}
+        <div id="captures-sentinel" class="inf-sentinel" aria-hidden="true"
+             hx-get="/api/captures/grid?page=2"
+             hx-trigger="inf-load once" hx-swap="outerHTML"
+             hx-sync="this:drop"></div>
+        {% endif %}
     </div>
-    {% if has_more %}
-    <div id="captures-load-more" class="load-more-wrap">
-        <button class="outline anim-blur-rise animate-in anim-persist"
-                hx-get="/api/captures/grid?page=2"
-                hx-target="#captures-grid"
-                hx-swap="beforeend"
-                hx-indicator="#captures-load-more-spinner">
-            Load More
-        </button>
-        <span id="captures-load-more-spinner" class="htmx-indicator" aria-busy="true"></span>
-    </div>
-    {% endif %}
     {% else %}
     <div class="empty-state">
         <p>No captures yet. Click "Sync Captures" to fetch your Xbox screenshots.</p>
@@ -64,7 +58,11 @@
 <!-- By Game view (lazy-loaded on first toggle) -->
 <div id="captures-by-game-wrap" style="display:none"></div>
 
-<div id="captures-select-bar" class="captures-select-bar">
+{# aria-hidden: closed bar is invisible (opacity 0) and non-interactive — hide it
+   from assistive tech and the glass renderer (which skips aria-hidden subtrees,
+   so its outline buttons don't render as orphan glass pills). toggleSelectMode
+   flips it together with .is-open. #}
+<div id="captures-select-bar" class="captures-select-bar" aria-hidden="true">
     <span id="select-count">0 selected</span>
     <button class="outline" onclick="selectAllCaptures()">Select All</button>
     <button class="outline" onclick="clearCaptureSelection()">Clear</button>

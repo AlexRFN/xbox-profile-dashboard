@@ -319,6 +319,32 @@
     color: var(--text-primary);
 }
 
+/* ========== Infinite-scroll sentinels ========== */
+/* Invisible strips at the end of each list, observed by infinite.js. They keep
+   a layout box (visibility, not display) so IntersectionObserver can see them;
+   sentinels inside a display:none view have no box and stay dormant. */
+.inf-sentinel {
+    visibility: hidden;
+    height: 2px;
+    padding: 0;
+    border: 0;
+    margin: 0;
+}
+
+/* As a grid item the sentinel must claim a full row, or it would sit beside
+   cards and trigger one column-width early/late. */
+.lib-grid > .inf-sentinel,
+.captures-grid > .inf-sentinel,
+.ach-grid > .inf-sentinel {
+    grid-column: 1 / -1;
+}
+
+tr.inf-sentinel > td {
+    height: 2px;
+    padding: 0;
+    border: 0;
+}
+
 /* ========== Footer ========== */
 footer {
     border-top: 1px solid var(--border-subtle);

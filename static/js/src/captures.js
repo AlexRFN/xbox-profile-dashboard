@@ -240,8 +240,14 @@ function toggleSelectMode() {
         : '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" style="display:inline;vertical-align:-2px"><rect x="3" y="3" width="18" height="18" rx="2"/><polyline points="9 11 12 14 22 4"/></svg> Select';
     // Class-driven open/close so opacity+transform can transition. The bar stays
     // in the layout tree the whole time; pointer-events on .is-open keeps the
-    // hidden state non-interactive.
-    if (bar) bar.classList.toggle('is-open', _selectMode);
+    // hidden state non-interactive. aria-hidden tracks the same state: it hides
+    // the closed bar from assistive tech AND from the glass renderer, whose
+    // cacheElements skips [aria-hidden="true"] subtrees — without it the two
+    // outline buttons render as orphan glass pills while the bar is invisible.
+    if (bar) {
+        bar.classList.toggle('is-open', _selectMode);
+        bar.setAttribute('aria-hidden', String(!_selectMode));
+    }
     const topDl = document.getElementById('download-selected-top');
     if (topDl) topDl.style.display = _selectMode ? '' : 'none';
     // Force a synchronous re-scan: the bar's inner outline buttons transition

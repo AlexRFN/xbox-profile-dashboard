@@ -1,4 +1,3 @@
-{% from "macros.html" import pagination %}
 <div class="page-header-actions">
     <hgroup class="anim-drop">
         <h1>Game Library</h1>
@@ -147,10 +146,8 @@
     if (localStorage.getItem('libraryView') === 'grid') {
         document.getElementById('library-table-wrap').style.display = 'none';
         var gw = document.getElementById('library-grid-wrap');
-        var pg = document.getElementById('pagination');
         gw.style.display = '';
         gw.style.minHeight = '100vh';
-        if (pg) pg.style.display = 'none';
         if (toggle) toggle.querySelectorAll('.view-btn').forEach(function(b) {
             b.classList.toggle('active', b.dataset.view === 'grid');
         });
@@ -165,7 +162,6 @@
                 if (gw.children.length) return; // htmx beat us — don't overwrite
                 gw.innerHTML = html;
                 gw.style.minHeight = '';
-                if (pg) pg.style.display = '';
                 if (typeof htmx !== 'undefined') htmx.process(gw);
                 // onInlineGridLoad syncs dirty flags, glass, entrance direction, and animations
                 // exactly like an htmx grid swap would — defined in app.js.
@@ -182,6 +178,3 @@
     }
 })();
 </script>
-
-<!-- Pagination -->
-{{ pagination(page, total, per_page, "/api/library/table", "#game-table-body") }}

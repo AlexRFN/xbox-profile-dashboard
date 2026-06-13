@@ -136,6 +136,15 @@
         }
 
         try {
+            // Synthetic beforeSwap first: IntersectionObserver cleanup walkers
+            // (infinite.js sentinels, animations.js offscreen-pause) key on it
+            // to drop observations on the outgoing subtree — without it every
+            // short-circuit nav leaks the detached nodes the observers pin.
+            main.dispatchEvent(new CustomEvent('htmx:beforeSwap', {
+                bubbles: true,
+                cancelable: false,
+                detail: { target: main, elt: main, requestConfig: cfg }
+            }));
             main.innerHTML = text;
             if (typeof htmx.process === 'function') htmx.process(main);
             main.dispatchEvent(new CustomEvent('htmx:afterSwap', {
@@ -186,6 +195,13 @@
         const run = (text) => {
             if (gen !== popInFlight) return; // superseded by a newer pop
             try {
+                // Same synthetic beforeSwap as the short-circuit path — lets
+                // observer-cleanup walkers release the outgoing subtree.
+                main.dispatchEvent(new CustomEvent('htmx:beforeSwap', {
+                    bubbles: true,
+                    cancelable: false,
+                    detail: { target: main, elt: main, requestConfig: { path: url, elt: main, verb: 'get' } }
+                }));
                 main.innerHTML = text;
                 if (typeof htmx.process === 'function') htmx.process(main);
                 main.dispatchEvent(new CustomEvent('htmx:afterSwap', {

@@ -155,10 +155,33 @@
     margin-bottom: 0.5rem;
     text-decoration: none;
     color: inherit;
-    /* content-visibility:auto removed — its render-skip placeholder geometry
-       desyncs IntersectionObserver intersection reporting for variable-height
-       events (compact first_played at ~57px vs the 110px placeholder), so
-       below-fold cards never receive `animate-in` and stay opacity:0. */
+    /* No content-visibility on the wrapper: paint containment would clip the
+       absolutely-positioned .timeline-dot at left:-27px. The render-skip
+       lives on .timeline-event-card below instead. */
+}
+
+/* Render-skip for offscreen event cards — keeps deep infinite scroll
+   layout/paint-bounded like every other list surface. An earlier attempt put
+   one 110px placeholder on the wrapper, which desynced the reveal observers
+   for 57px compact cards (cards stuck at opacity 0). Each card type renders
+   at exactly one height at desktop width (measured: 95/104/57/88), so
+   per-type intrinsic sizes remove the drift, and the `auto` keyword pins the
+   true size after first render for any viewport width. */
+.timeline-event-card {
+    content-visibility: auto;
+    contain-intrinsic-block-size: auto 104px;
+}
+
+.timeline-batch-card {
+    contain-intrinsic-block-size: auto 95px;
+}
+
+.timeline-event-card-compact {
+    contain-intrinsic-block-size: auto 57px;
+}
+
+.timeline-event-card-celebration {
+    contain-intrinsic-block-size: auto 88px;
 }
 
 .timeline-event:hover {
@@ -511,22 +534,6 @@
 .timeline-batch-item-legendary { border-left: 2px solid var(--rarity-legendary); }
 .timeline-batch-item-epic { border-left: 2px solid var(--rarity-epic); }
 .timeline-batch-item-rare { border-left: 2px solid var(--rarity-rare); }
-
-/* ========== Load More ========== */
-.timeline-load-more {
-    text-align: center;
-    padding: 1rem 0;
-    margin-top: 0.5rem;
-}
-
-.timeline-load-more .htmx-indicator {
-    display: none;
-    margin-left: 0.5rem;
-}
-
-.timeline-load-more .htmx-indicator[aria-busy="true"] {
-    display: inline-block;
-}
 
 /* ========== Two-column layout ========== */
 .timeline-layout {

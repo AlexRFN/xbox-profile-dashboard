@@ -1259,6 +1259,53 @@ fn rboxSDF(p: vec2f, b: vec2f, r: f32) -> f32 {
         _stickyParentDocBottom[idx] = pTop + (parent.offsetHeight || 0);
     }
 
+    // Style-derived statics memo: radius, z-index, sticky/fixed, sticky-ancestor
+    // and tier name never change for an element's lifetime here, but deriving
+    // them costs getComputedStyle calls — including an ancestor walk that paid
+    // ~5 of them PER ELEMENT. At 512 registered panels that was ~2,500
+    // getComputedStyle calls (~48ms) on every re-cache, which infinite-scroll
+    // appends now trigger routinely. The memo drops re-cache cost to O(new
+    // elements). Cleared on resize (breakpoints can change radii); tier VALUES
+    // stay a live lookup so theme switches keep working.
+    var _elStaticMemo = new WeakMap();
+    window.addEventListener('resize', function () { _elStaticMemo = new WeakMap(); }, { passive: true });
+
+    function _elStatics(el) {
+        var m = _elStaticMemo.get(el);
+        if (m) return m;
+        var style = getComputedStyle(el);
+        var pos = style.position;
+        m = {
+            radius: ((parseFloat(style.borderTopLeftRadius) || 0) +
+                (parseFloat(style.borderTopRightRadius) || 0) +
+                (parseFloat(style.borderBottomLeftRadius) || 0) +
+                (parseFloat(style.borderBottomRightRadius) || 0)) * 0.25,
+            z: parseFloat(style.zIndex) || 0,
+            sticky: pos === 'sticky' ? 1 : 0,
+            fixed: pos === 'fixed' ? 1 : 0,
+            stickyTop: pos === 'sticky' ? (parseFloat(style.top) || 0) : 0,
+            stickyAnc: 0,
+            tierName: getTierName(el),
+            reveal: el.matches(REVEAL_SEL) ? 1 : 0
+        };
+        // Ancestor position detection — static children of sticky parents need
+        // the stuck-offset compensation (see collectPanels), and static children
+        // of FIXED parents (captures select-bar buttons) are viewport-anchored:
+        // without inheriting the fixed flag they get doc-space coordinates
+        // (rect.top + scrollY) and render as glass pinned mid-document.
+        if (!m.sticky && !m.fixed) {
+            var anc = el.parentElement;
+            while (anc && anc !== document.body) {
+                var ancPos = getComputedStyle(anc).position;
+                if (ancPos === 'sticky') { m.stickyAnc = 1; break; }
+                if (ancPos === 'fixed') { m.fixed = 1; break; }
+                anc = anc.parentElement;
+            }
+        }
+        _elStaticMemo.set(el, m);
+        return m;
+    }
+
     function cacheElements() {
         _anyAnimating = true;         // DOM changed — stay awake until collectPanels confirms idle
         _layoutDirty = false;
@@ -1282,41 +1329,32 @@ fn rboxSDF(p: vec2f, b: vec2f, r: f32) -> f32 {
         if (_isMobile) { panelCount = 0; return; }
         if (!_mainEl) _mainEl = document.querySelector('main');
 
-        var els = document.querySelectorAll(GLASS_SEL);
+        // Over MAX_CACHED (deep infinite scroll), keep the candidates nearest
+        // the viewport instead of the first 512 in document order — otherwise
+        // every row/card below ~page 9 silently renders without glass.
+        var els = core.selectCacheWindow(document.querySelectorAll(GLASS_SEL), MAX_CACHED);
         for (var i = 0; i < els.length && _cachedEls.length < MAX_CACHED; i++) {
             var el = els[i];
             var closestArt = el.closest('article');
             if (closestArt && el !== closestArt && el.matches('select, input, textarea') && !el.closest('.tracking-form')) continue;
+            // aria-hidden subtrees are invisible-but-laid-out UI (e.g. the closed
+            // captures select bar) — drawing glass for them produces orphan pills.
+            if (el.closest('[aria-hidden="true"]')) continue;
             var idx = _cachedEls.length;
-            var style = getComputedStyle(el);
-            _cachedRadius[idx] = ((parseFloat(style.borderTopLeftRadius) || 0) +
-                (parseFloat(style.borderTopRightRadius) || 0) +
-                (parseFloat(style.borderBottomLeftRadius) || 0) +
-                (parseFloat(style.borderBottomRightRadius) || 0)) * 0.25;
-            var _tn = getTierName(el);
-            _cachedTierValues[idx] = getTierValues(_tn);
-            _cachedReveal[idx] = el.matches(REVEAL_SEL) ? 1 : 0;
-            _cachedZIndex[idx] = parseFloat(style.zIndex) || 0;
-            var pos = style.position;
-            _cachedSticky[idx] = pos === 'sticky' ? 1 : 0;
-            _cachedFixed[idx] = pos === 'fixed' ? 1 : 0;
-            if (_cachedSticky[idx]) {
-                _stickyTopOffset[idx] = parseFloat(style.top) || 0;
+            // Style-derived statics come from the per-element memo (see
+            // _elStatics) — only elements never seen before pay getComputedStyle.
+            var st = _elStatics(el);
+            _cachedRadius[idx] = st.radius;
+            _cachedTierValues[idx] = getTierValues(st.tierName);
+            _cachedReveal[idx] = st.reveal;
+            _cachedZIndex[idx] = st.z;
+            _cachedSticky[idx] = st.sticky;
+            _cachedFixed[idx] = st.fixed;
+            if (st.sticky) {
+                _stickyTopOffset[idx] = st.stickyTop;
                 _refreshStickyDocGeom(idx, el);
             }
-            // Detect sticky ancestor — sidebar widgets inside a sticky parent
-            // have static position themselves but their visual viewport top is
-            // displaced by the parent's stuck offset, so the doc-top + scrollY
-            // stable-cache path produces drift once the parent sticks (e.g. after
-            // timeline Load More grows the page enough for the sidebar to stick).
-            _cachedStickyAnc[idx] = 0;
-            if (!_cachedSticky[idx] && !_cachedFixed[idx]) {
-                var anc = el.parentElement;
-                while (anc && anc !== document.body) {
-                    if (getComputedStyle(anc).position === 'sticky') { _cachedStickyAnc[idx] = 1; break; }
-                    anc = anc.parentElement;
-                }
-            }
+            _cachedStickyAnc[idx] = st.stickyAnc;
             var cl = el.classList;
             _cachedHasAnim[idx] = (cl.contains('anim-blur-rise') || cl.contains('anim-drop') ||
                 cl.contains('anim-pop') || cl.contains('anim-blur-scale') ||
@@ -1988,6 +2026,11 @@ fn rboxSDF(p: vec2f, b: vec2f, r: f32) -> f32 {
         // Rebuild the panel cache only on frames that will actually render. Aurora
         // frames bypass the early-return above, so cache stays in sync within ≤16ms
         // of any DOM mutation that flipped _layoutDirty.
+        // Windowed registry (infinite scroll): when the cache was capped to a
+        // window around the viewport, re-center it as the user nears its edge.
+        // Scroll frames never take the idle early-return above, so this check
+        // runs on every frame where it could possibly flip.
+        if (core.cacheWindowStale(frameScrollY, window.innerHeight)) _layoutDirty = true;
         if (_layoutDirty) cacheElements();
 
         collectPanels(frameScrollY);

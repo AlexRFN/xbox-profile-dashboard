@@ -36,9 +36,6 @@ async def library_table(
             "gamepass": f.gamepass,
             "sort_by": f.sort_by,
             "sort_dir": f.sort_dir,
-            # oob_pagination=True tells the template to emit the pagination block with
-            # hx-swap-oob="true" so htmx can update it outside the main swap target.
-            "oob_pagination": True,
         },
     )
 

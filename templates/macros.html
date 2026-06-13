@@ -218,36 +218,6 @@
 </div>
 {% endmacro %}
 
-{# Pagination — shared across library table/grid views.
-   hx_endpoint: "/api/library/table" or "/api/library/grid"
-   hx_target: "#game-table-body" or "#library-grid-wrap"
-   oob: true for OOB swap (htmx partials), false for initial render #}
-{% macro pagination(page, total, per_page, hx_endpoint, hx_target, oob=false) %}
-<div id="pagination" class="pagination anim-blur-rise animate-in anim-persist"{% if oob %} hx-swap-oob="true"{% endif %}>
-    {% set total_pages = (total / per_page) | round(0, 'ceil') | int %}
-    {% if total_pages > 1 %}
-    <nav>
-        <a href="#" class="pg-arrow {% if page <= 1 %}disabled{% endif %}"
-           {% if page > 1 %}hx-get="{{ hx_endpoint }}?page={{ page - 1 }}" hx-target="{{ hx_target }}" hx-include="#filters"{% endif %}>&lsaquo;</a>
-        {% for p in range(1, total_pages + 1) %}
-            {% if p == 1 or p == total_pages or (p >= page - 1 and p <= page + 1) %}
-        <a href="#" class="{% if p == page %}active{% endif %}"
-           hx-get="{{ hx_endpoint }}?page={{ p }}"
-           hx-target="{{ hx_target }}"
-           hx-include="#filters">{{ p }}</a>
-            {% elif p == 2 and page > 3 %}
-        <span class="pg-ellipsis">&hellip;</span>
-            {% elif p == total_pages - 1 and page < total_pages - 2 %}
-        <span class="pg-ellipsis">&hellip;</span>
-            {% endif %}
-        {% endfor %}
-        <a href="#" class="pg-arrow {% if page >= total_pages %}disabled{% endif %}"
-           {% if page < total_pages %}hx-get="{{ hx_endpoint }}?page={{ page + 1 }}" hx-target="{{ hx_target }}" hx-include="#filters"{% endif %}>&rsaquo;</a>
-    </nav>
-    {% endif %}
-</div>
-{% endmacro %}
-
 {# Achievement card — used by achievements.html (recent, rarest, highest) #}
 {% macro achievement_card(ach, show_percentage=false, show_date=true, i=0) %}
 <a href="/game/{{ ach.title_id }}" class="ach-card ach-unlocked anim-pop" style="--i: {{ i }}"

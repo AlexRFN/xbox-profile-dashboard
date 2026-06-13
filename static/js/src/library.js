@@ -23,12 +23,6 @@ function _currentLibraryFilters() {
     );
 }
 
-function _currentLibraryPage() {
-    const active = document.querySelector('#pagination a.active');
-    const match = active?.getAttribute('hx-get')?.match(/page=(\d+)/);
-    return match ? match[1] : '1';
-}
-
 function _libraryViewConfig(view) {
     return LIBRARY_VIEW_CONFIG[view] || LIBRARY_VIEW_CONFIG.table;
 }
@@ -39,7 +33,6 @@ function _libraryViewElements() {
         gridWrap: document.getElementById('library-grid-wrap'),
         toggle: document.getElementById('view-toggle'),
         filtersEl: document.getElementById('filters'),
-        paginationEl: document.getElementById('pagination'),
     };
 }
 
@@ -51,11 +44,13 @@ function _setLibraryToggleState(toggle, view) {
     updateToggleSlider(toggle);
 }
 
-function _syncLibraryRequestBindings(view, filtersEl, paginationEl) {
+function _syncLibraryRequestBindings(view, filtersEl) {
     // Bail on non-library pages. `.library-filter-input` is the shared chrome class
     // for any filter control (timeline/achievements reuse it); the library's own
     // filter container is `#filters` (aliased to filtersEl). If it's missing we're
     // on a different page and must not touch inputs that look similar.
+    // Infinite-scroll sentinels need no retargeting — each view's sentinel is a
+    // fixed element baked with its own endpoint and swap target.
     if (!filtersEl) return;
     const { endpoint, target } = _libraryViewConfig(view);
     filtersEl.querySelectorAll('.library-filter-input').forEach(el => {
@@ -63,19 +58,8 @@ function _syncLibraryRequestBindings(view, filtersEl, paginationEl) {
         el.setAttribute('hx-target', target);
     });
 
-    if (paginationEl) {
-        paginationEl.querySelectorAll('a[hx-get]').forEach(a => {
-            const page = a.getAttribute('hx-get').match(/page=(\d+)/);
-            if (page) {
-                a.setAttribute('hx-get', endpoint + '?page=' + page[1]);
-                a.setAttribute('hx-target', target);
-            }
-        });
-    }
-
     requestAnimationFrame(() => {
         htmx.process(filtersEl);
-        if (paginationEl) htmx.process(paginationEl);
     });
 }
 
@@ -87,22 +71,20 @@ function _ensureLibraryTableHeadVisible(tableWrap) {
     }
 }
 
-function _loadLibraryGridView(gridWrap, paginationEl) {
+function _loadLibraryGridView(gridWrap) {
     gridWrap.innerHTML = '';
     // Detached elements remain in _cachedEls — force a fresh rect read so stale glass
     // panels don't linger at old positions until the periodic _RECT_MAX_AGE flush.
     if (window.invalidateGlassRects) window.invalidateGlassRects();
     gridWrap.style.display = '';
     gridWrap.style.minHeight = '100vh';
-    if (paginationEl) paginationEl.style.display = 'none';
 
-    return htmx.ajax('GET', `/api/library/grid?page=${_currentLibraryPage()}`, {
+    return htmx.ajax('GET', '/api/library/grid', {
         target: '#library-grid-wrap',
         swap: 'innerHTML',
         values: _currentLibraryFilters(),
     }).finally(() => {
         gridWrap.style.minHeight = '';
-        if (paginationEl) paginationEl.style.display = '';
         _viewToggleSwap = false;
     });
 }
@@ -112,7 +94,7 @@ function _loadLibraryTableView(tableWrap, gridWrap) {
     gridWrap.style.display = 'none';
     _ensureLibraryTableHeadVisible(tableWrap);
 
-    return htmx.ajax('GET', `/api/library/table?page=${_currentLibraryPage()}`, {
+    return htmx.ajax('GET', '/api/library/table', {
         target: '#game-table-body',
         swap: 'innerHTML',
         values: _currentLibraryFilters(),
@@ -132,12 +114,10 @@ function applyEarlyLibraryView() {
     const tableWrap = document.getElementById('library-table-wrap');
     const gw = document.getElementById('library-grid-wrap');
     if (!tableWrap || !gw) return;  // not on /library
-    const pg = document.getElementById('pagination');
     const toggle = document.getElementById('view-toggle');
 
     tableWrap.style.display = 'none';
     gw.style.display = '';
-    if (pg) pg.style.display = 'none';
     if (toggle) {
         toggle.querySelectorAll('.view-btn').forEach(b => {
             b.classList.toggle('active', b.dataset.view === 'grid');
@@ -162,7 +142,6 @@ function applyEarlyLibraryView() {
             if (gw.children.length) return;  // htmx beat us
             gw.innerHTML = html;
             gw.style.minHeight = '';
-            if (pg) pg.style.display = '';
             if (typeof htmx !== 'undefined') htmx.process(gw);
             if (typeof onInlineGridLoad === 'function') onInlineGridLoad(gw);
         });
@@ -176,15 +155,15 @@ function restoreLibraryView() {
         // initialized it (glass, animations, direction). Calling setLibraryView here
         // would reset and re-animate without the entrance direction.
         if (gridWrap && !_gridDirty && gridWrap.children.length > 0) {
-            const { filtersEl, paginationEl } = _libraryViewElements();
-            _syncLibraryRequestBindings('grid', filtersEl, paginationEl);
+            const { filtersEl } = _libraryViewElements();
+            _syncLibraryRequestBindings('grid', filtersEl);
             prewarmLibraryOffView();
             return;
         }
         setLibraryView('grid');
     } else {
-        const { filtersEl, paginationEl } = _libraryViewElements();
-        _syncLibraryRequestBindings(_currentLibView, filtersEl, paginationEl);
+        const { filtersEl } = _libraryViewElements();
+        _syncLibraryRequestBindings(_currentLibView, filtersEl);
     }
     prewarmLibraryOffView();
 }
@@ -199,29 +178,28 @@ function prewarmLibraryOffView() {
     _prewarmTried = true;
 
     const run = () => {
-        const page = _currentLibraryPage();
         const values = _currentLibraryFilters();
         // Suppress dirty-flag cross-flip inside the swap handlers.
         _viewToggleSwap = true;
-        // The prewarm fetch responds with an OOB-swapped #pagination block pointing
-        // at the off-view endpoint. Re-sync bindings to the currently visible view
-        // after the swap so pagination clicks hit the correct endpoint/target.
+        // Re-sync filter bindings to the currently visible view after the swap —
+        // the prewarm response was for the off-view endpoint.
         const restore = () => {
             _viewToggleSwap = false;
-            const { filtersEl, paginationEl } = _libraryViewElements();
-            _syncLibraryRequestBindings(_currentLibView, filtersEl, paginationEl);
+            const { filtersEl } = _libraryViewElements();
+            _syncLibraryRequestBindings(_currentLibView, filtersEl);
         };
 
         if (_currentLibView === 'table' && _gridDirty) {
             // gridWrap is display:none at rest — htmx.ajax only updates innerHTML,
-            // so it stays hidden throughout the swap.
-            htmx.ajax('GET', `/api/library/grid?page=${page}`, {
+            // so it stays hidden throughout the swap. Its sentinel hides with it
+            // and arms when the grid view is shown.
+            htmx.ajax('GET', '/api/library/grid', {
                 target: '#library-grid-wrap',
                 swap: 'innerHTML',
                 values,
             }).finally(() => { gridWrap.style.display = 'none'; restore(); });
         } else if (_currentLibView === 'grid' && !document.querySelector('#game-table-body .game-row')) {
-            htmx.ajax('GET', `/api/library/table?page=${page}`, {
+            htmx.ajax('GET', '/api/library/table', {
                 target: '#game-table-body',
                 swap: 'innerHTML',
                 values,
@@ -238,30 +216,26 @@ function setLibraryView(view) {
     _currentLibView = view;
     localStorage.setItem('libraryView', view);
 
-    const { tableWrap, gridWrap, toggle, filtersEl, paginationEl } = _libraryViewElements();
+    const { tableWrap, gridWrap, toggle, filtersEl } = _libraryViewElements();
     if (!tableWrap || !gridWrap) return;
 
     _setLibraryToggleState(toggle, view);
-    _syncLibraryRequestBindings(view, filtersEl, paginationEl);
+    _syncLibraryRequestBindings(view, filtersEl);
 
     if (view === 'grid') {
         tableWrap.style.display = 'none';
         if (!_gridDirty && gridWrap.children.length > 0) {
             gridWrap.style.display = '';
-            // Cached-grid path: pagination links were already retargeted by
-            // _syncLibraryRequestBindings above, so it's valid to keep visible.
-            if (paginationEl) paginationEl.style.display = '';
             _showCachedGridView(gridWrap);
         } else {
             _viewToggleSwap = true;
-            _loadLibraryGridView(gridWrap, paginationEl);
+            _loadLibraryGridView(gridWrap);
         }
     } else {
         gridWrap.style.display = 'none';
         if (!_tableDirty && document.querySelector('#game-table-body .game-row')) {
             tableWrap.style.display = '';
             _ensureLibraryTableHeadVisible(tableWrap);
-            if (paginationEl) paginationEl.style.display = '';
             _showCachedTableView(tableWrap);
         } else {
             _viewToggleSwap = true;
@@ -405,31 +379,20 @@ function _handleLibraryGridSwap(target) {
 // Called by library.html's inline grid fetch — equivalent to an htmx grid swap
 // but without firing htmx:afterSwap. Keeps dirty flags, glass, and animations in sync.
 window.onInlineGridLoad = function(gw) {
-    // The grid response includes an OOB pagination element (oob=true — no anim-blur-rise,
-    // links target the grid endpoint). Because the inline fetch uses gw.innerHTML = html
-    // instead of htmx's response pipeline, htmx.process() does NOT run OOB swaps — the
-    // element ends up as a child of #library-grid-wrap (left-aligned in the card flex
-    // layout) instead of replacing the top-level #pagination. Extract and move it now.
-    const oobPg = gw.querySelector('[hx-swap-oob][id="pagination"]');
-    if (oobPg) {
-        const topLevelPg = Array.from(document.querySelectorAll('#pagination'))
-            .find(el => !gw.contains(el));
-        oobPg.remove();
-        oobPg.removeAttribute('hx-swap-oob');
-        if (topLevelPg) topLevelPg.replaceWith(oobPg);
-    }
-
     _handleLibraryGridSwap(gw);
     _reapplyEntranceDir(gw);  // apply SPA nav entrance direction if available
     initRevealHighlight(gw);
     initBlurhash(gw);
+    // The inline fetch bypasses htmx's response pipeline, so the sentinel that
+    // arrived in the HTML was never seen by the htmx:afterSwap rescan — observe it.
+    if (typeof initInfiniteScroll === 'function') initInfiniteScroll(gw);
     // setLibraryView wasn't called for this path (restoreLibraryView returned early),
     // so sync filter htmx bindings to grid endpoints manually.
-    const { filtersEl, paginationEl } = _libraryViewElements();
-    _syncLibraryRequestBindings('grid', filtersEl, paginationEl);
+    const { filtersEl } = _libraryViewElements();
+    _syncLibraryRequestBindings('grid', filtersEl);
 };
 
-// Show a toast for failed htmx partial requests (filter changes, pagination, load-more, etc.)
+// Show a toast for failed htmx partial requests (filter changes, infinite-scroll appends, etc.)
 document.body.addEventListener('htmx:responseError', (evt) => {
     const status = evt.detail.xhr?.status;
     showToast(status ? `Request failed (${status})` : 'Request failed', true);
@@ -458,26 +421,131 @@ document.body.addEventListener('htmx:beforeRequest', (evt) => {
     }
 });
 
+// Re-init modules after an infinite-scroll append. The sentinel swapped ITSELF
+// (outerHTML) for the new items, so evt.detail.target is the detached sentinel,
+// not the list container — which conveniently keeps appends out of the filter-
+// swap handlers below (no scroll-to-top, no table-loading fade, no dirty-flag
+// flips).
+//
+// Appends land mid-scroll, so the budget is one frame: only revealAppended
+// (observer setup — required before the new items can scroll into view) runs
+// in the swap task; everything else defers to idle. The new content sits
+// ≥1200px below the viewport (sentinel prefetch margin), so observers and
+// decorations arriving a few frames late are unobservable.
+// Two pipelines are deliberately NOT re-run here:
+//   initScrollAnimations — destructive (disconnects the page-wide observer,
+//     bumps the generation), which orphans below-fold elements outside the
+//     container and cancels the entrance cascade when a prefetch lands during
+//     page entry. revealAppended (infinite.js) is the additive equivalent.
+//   initRevealHighlight — every list container uses one delegated mousemove
+//     listener (reveal-container / .grid-rows) and items carry reveal-item in
+//     markup; re-running it cost ~70ms per append and grew with list size.
+function _appendIdle(fn) {
+    if (window.requestIdleCallback) requestIdleCallback(fn, { timeout: 500 });
+    else setTimeout(fn, 50);
+}
+
+function _handleInfiniteAppend(sentinelId) {
+    if (sentinelId === 'library-table-sentinel') {
+        const tbody = document.getElementById('game-table-body');
+        if (!tbody) return;
+        revealAppended(tbody);
+        _appendIdle(() => {
+            if (!tbody.isConnected) return;
+            initClickableRows();
+            initRowScrollReveal(tbody);
+            initEdgeScale();
+            initBlurhash(tbody);
+            initOffscreenAnimationPause(tbody);
+            // Rows are glass panels (.grid-rows .game-row) — register the new batch.
+            requestGlassPanelsUpdate();
+        });
+    } else if (sentinelId === 'library-grid-sentinel') {
+        const wrap = document.getElementById('library-grid-wrap');
+        if (!wrap) return;
+        revealAppended(wrap);
+        _appendIdle(() => {
+            if (!wrap.isConnected) return;
+            initAmbientGlow(wrap);
+            initBlurhash(wrap);
+            initOffscreenAnimationPause(wrap);
+            requestGlassPanelsUpdate();
+        });
+    } else if (sentinelId === 'captures-sentinel') {
+        const grid = document.getElementById('captures-grid');
+        if (!grid) return;
+        revealAppended(grid);
+        _lightboxDirty = true;
+        _appendIdle(() => {
+            if (!grid.isConnected) return;
+            initBlurhash(grid);
+            requestGlassPanelsUpdate();
+        });
+    } else if (sentinelId === 'ach-sentinel') {
+        const wrap = document.getElementById('ach-grid-wrap');
+        if (!wrap) return;
+        // Merge before animations init so the moved cards' positions are final.
+        if (typeof _mergeAchGroupContinuations === 'function') _mergeAchGroupContinuations(wrap);
+        revealAppended(wrap);
+        _appendIdle(() => {
+            if (!wrap.isConnected) return;
+            initBlurhash(wrap);
+            initOffscreenAnimationPause(wrap);
+            requestGlassPanelsUpdate();
+        });
+    } else if (sentinelId === 'timeline-sentinel') {
+        const timeline = document.getElementById('timeline');
+        if (!timeline) return;
+        revealAppended(timeline);
+        _appendIdle(() => {
+            if (!timeline.isConnected) return;
+            initBlurhash(timeline);
+            requestGlassPanelsUpdate();
+        });
+    }
+}
+
+// htmx 2 fires htmx:afterSwap once PER INSERTED NODE — a 50-row append or
+// filter swap dispatches it 51 times, all in the same task, all with the same
+// detail.target (measured live). Without coalescing, every branch below runs
+// 51× per swap and the stacked re-init work lands as a 50–110ms long task.
+// One handling per target per synchronous batch; the microtask reset re-arms
+// before any genuinely separate swap (always ≥1 task away) can occur.
+const _swapHandled = new WeakSet();
+function _alreadyHandledThisSwap(target) {
+    if (_swapHandled.has(target)) return true;
+    _swapHandled.add(target);
+    queueMicrotask(() => _swapHandled.delete(target));
+    return false;
+}
+
 // Re-init rows + update result count + retrigger animations after htmx swaps
 document.body.addEventListener('htmx:afterSwap', (evt) => {
     // SPA page swaps (#main) are fully handled by the dedicated handler in nav.js — skip here
     if (evt.detail.target.id === 'main') return;
 
+    if (_alreadyHandledThisSwap(evt.detail.target)) return;
+
+    // Lenis debounces its ResizeObserver ~250ms, so a swap that grows the page
+    // (infinite-scroll append) leaves wheel input clamped to the stale scroll
+    // limit — measured up to ~270ms of dead scroll pinned at the old bottom.
+    // Refresh Lenis dimensions in the same task as the DOM change.
+    if (window.lenis) window.lenis.resize();
+
+    // Infinite-scroll appends route to the dedicated light-weight re-init.
+    if (evt.detail.target.classList && evt.detail.target.classList.contains('inf-sentinel')) {
+        _handleInfiniteAppend(evt.detail.target.id);
+        return;
+    }
+
     if (evt.detail.target.id === 'game-table-body') {
         _handleLibraryTableSwap(evt.detail.target);
-    }
-    // Captures all-grid swap (load more)
-    if (evt.detail.target.id === 'captures-grid') {
-        initScrollAnimations(evt.detail.target);
-        _lightboxDirty = true;
-        // New cards + OOB-swapped load-more button need glass panel registration
-        requestGlassPanelsUpdate();
     }
     // Grid view swap — reinit animations + glow + glass panels
     if (evt.detail.target.id === 'library-grid-wrap') {
         _handleLibraryGridSwap(evt.detail.target);
     }
-    // Achievements pagination + timeline load-more append new glass panels
+    // Achievements/timeline filter swaps replace glass panel content
     if (evt.detail.target.id === 'ach-grid-wrap' || evt.detail.target.id === 'timeline') {
         requestGlassPanelsUpdate();
     }
@@ -489,7 +557,7 @@ document.body.addEventListener('htmx:afterSwap', (evt) => {
     if (evt.detail.target.id === 'heatmap-content') {
         requestGlassPanelsUpdate();
     }
-    // Timeline filter/load-more swap — fresh h3 nodes arrive via OOB; re-run countup
+    // Timeline filter swap — fresh h3 nodes arrive via OOB; re-run countup
     if (evt.detail.target.id === 'timeline') {
         animateCountUp();
     }

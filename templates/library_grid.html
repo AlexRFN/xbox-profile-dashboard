@@ -5,7 +5,7 @@
     <div class="lib-grid-art">
         <img src="{{ game.display_image|thumb(240) }}" alt=""
              {% if game.blurhash %}data-blurhash="{{ game.blurhash }}"{% endif %}
-             {% if loop.index0 < 7 %}fetchpriority="high" decoding="async"{% else %}loading="lazy" decoding="async"{% endif %} width="240" height="240">
+             {% if loop.index0 < 7 and page == 1 %}fetchpriority="high" decoding="async"{% else %}loading="lazy" decoding="async"{% endif %} width="240" height="240">
         {% if game.progress_percentage == 100 %}
         <span class="lib-grid-diamond" title="100% Complete">
             <svg viewBox="0 0 24 24" width="20" height="20" fill="none">
@@ -40,5 +40,11 @@
 <div class="lib-grid-empty">No games found matching your filters.</div>
 {% endif %}
 
-{% from "macros.html" import pagination %}
-{{ pagination(page, total, per_page, "/api/library/grid", "#library-grid-wrap", oob=true) }}
+{# Infinite-scroll sentinel — last grid item (full row via CSS). Self-replaces
+   (outerHTML) with the next page of cards + a fresh sentinel. #}
+{% if page * per_page < total %}
+<div id="library-grid-sentinel" class="inf-sentinel" aria-hidden="true"
+     hx-get="/api/library/grid?page={{ page + 1 }}"
+     hx-trigger="inf-load once" hx-swap="outerHTML"
+     hx-include="#filters" hx-sync="this:drop"></div>
+{% endif %}

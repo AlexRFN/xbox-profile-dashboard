@@ -689,12 +689,6 @@ body.select-mode main {
 
 
 
-/* Load more */
-.load-more-wrap {
-    text-align: center;
-    padding: 1.5rem 0;
-}
-
 /* Responsive */
 @media (max-width: 600px) {
     .captures-grid {

@@ -121,6 +121,7 @@ _JS_SRC_FILES = [
     "js/src/toast.js",
     "js/src/reveal.js",
     "js/src/animations.js",
+    "js/src/infinite.js",
     "js/src/nav.js",
     "js/src/preload.js",
     "js/src/charts.js",

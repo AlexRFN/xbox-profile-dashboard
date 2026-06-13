@@ -3,17 +3,12 @@
     {{ capture_card(s, eager_count=0) }}
 {% endfor %}
 
+{# Sentinel self-replace (outerHTML): cards above land where the old sentinel
+   was — the end of #captures-grid — and this fresh sentinel re-arms below
+   them. Omitted on the last page, which ends the cycle. #}
 {% if has_more %}
-<div id="captures-load-more" hx-swap-oob="true" class="load-more-wrap">
-    <button class="outline anim-blur-rise animate-in anim-persist"
-            hx-get="/api/captures/grid?page={{ page + 1 }}"
-            hx-target="#captures-grid"
-            hx-swap="beforeend"
-            hx-indicator="#captures-load-more-spinner">
-        Load More
-    </button>
-    <span id="captures-load-more-spinner" class="htmx-indicator" aria-busy="true"></span>
-</div>
-{% else %}
-<div id="captures-load-more" hx-swap-oob="true"></div>
+<div id="captures-sentinel" class="inf-sentinel" aria-hidden="true"
+     hx-get="/api/captures/grid?page={{ page + 1 }}"
+     hx-trigger="inf-load once" hx-swap="outerHTML"
+     hx-sync="this:drop"></div>
 {% endif %}

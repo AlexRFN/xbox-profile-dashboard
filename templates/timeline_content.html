@@ -92,7 +92,9 @@
 </div>
 {% else %}
 <div class="timeline-main">
-    <div class="timeline" id="timeline">
+    {# reveal-container: one delegated mousemove listener covers every event
+       card, including infinite-scroll appends — no per-card binding. #}
+    <div class="timeline reveal-container" id="timeline">
         <div class="timeline-line anim-blur-rise"></div>
         {% for group in grouped_events %}
         <div class="timeline-month">
@@ -121,21 +123,13 @@
             {% endfor %}
         </div>
         {% endfor %}
+        {% if has_more %}
+        <div id="timeline-sentinel" class="inf-sentinel" aria-hidden="true"
+             hx-get="/api/timeline/events?page={{ page + 1 }}"
+             hx-trigger="inf-load once" hx-swap="outerHTML"
+             hx-include="#timeline-filters" hx-sync="this:drop"></div>
+        {% endif %}
     </div>
-
-    {% if has_more %}
-    <div id="timeline-load-more" class="timeline-load-more">
-        <button class="outline anim-blur-rise animate-in anim-persist"
-                hx-get="/api/timeline/events?page={{ page + 1 }}"
-                hx-target="#timeline"
-                hx-swap="beforeend"
-                hx-include="#timeline-filters"
-                hx-indicator="#load-more-spinner">
-            Load More
-        </button>
-        <span id="load-more-spinner" class="htmx-indicator" aria-busy="true"></span>
-    </div>
-    {% endif %}
 </div>
 {% endif %}
 

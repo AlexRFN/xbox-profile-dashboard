@@ -1107,6 +1107,56 @@
         };
     }
 
+    // ====================================================================
+    // Cache-window selection — infinite scroll can put thousands of glass
+    // candidates in the DOM (library rows, timeline events, achievement
+    // cards), far past MAX_CACHED. Registering the first 512 in document
+    // order means everything below ~page 9 silently loses glass. Instead,
+    // when over budget, keep the MAX_CACHED candidates nearest the viewport
+    // center; a per-frame staleness check (cacheWindowStale) re-caches when
+    // the user scrolls toward the edge of the kept window.
+    //
+    // Under budget (every page at normal depth) this is a length check and
+    // an early return — zero added cost. Over budget it costs one
+    // getBoundingClientRect per candidate at cacheElements time only; the
+    // per-frame draw path is untouched. Fixed/sticky chrome reads as
+    // viewport-relative, so it always scores near the center and is kept.
+    // ====================================================================
+    var _winLimited = false;
+    var _winCenter = 0;   // doc-space viewport center at selection time
+    var _winRadius = 0;   // distance of the farthest kept candidate
+
+    function selectCacheWindow(els, max) {
+        if (els.length <= max) { _winLimited = false; return els; }
+        var scrollY = global.scrollY || 0;
+        var viewCenter = scrollY + (global.innerHeight || 0) / 2;
+        var scored = new Array(els.length);
+        for (var i = 0; i < els.length; i++) {
+            var r = els[i].getBoundingClientRect();
+            scored[i] = { i: i, el: els[i], d: Math.abs(scrollY + r.top + r.height / 2 - viewCenter) };
+        }
+        scored.sort(function (a, b) { return a.d - b.d; });
+        var keep = scored.slice(0, max);
+        _winLimited = true;
+        _winCenter = viewCenter;
+        _winRadius = keep[keep.length - 1].d;
+        // Restore document order — downstream code assumes DOM-ish ordering
+        // for things like first/last-row radius styling heuristics.
+        keep.sort(function (a, b) { return a.i - b.i; });
+        var out = new Array(keep.length);
+        for (var k = 0; k < keep.length; k++) out[k] = keep[k].el;
+        return out;
+    }
+
+    // True when the viewport center has drifted past half the kept window's
+    // radius — time to re-center the registry. Hysteresis of radius/2 keeps
+    // re-caches rare (a 512-row window spans ~14k px → one re-cache per ~7k
+    // px of scroll, and appends re-cache anyway via the layout-dirty path).
+    function cacheWindowStale(scrollY, viewportH) {
+        if (!_winLimited) return false;
+        return Math.abs(scrollY + viewportH / 2 - _winCenter) > _winRadius * 0.5;
+    }
+
     global.__glassCore = {
         // Algorithm constants
         HALF_RES: HALF_RES,
@@ -1129,6 +1179,9 @@
         // Selectors
         GLASS_SEL: GLASS_SEL,
         REVEAL_SEL: REVEAL_SEL,
+        // Cache-window selection (infinite scroll)
+        selectCacheWindow: selectCacheWindow,
+        cacheWindowStale: cacheWindowStale,
         // Theme/tier
         TIER_VALUES: TIER_VALUES,
         SRGB_SAT_CAP: SRGB_SAT_CAP,

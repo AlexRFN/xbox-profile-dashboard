@@ -38,20 +38,15 @@
 {% endif %}
 {% endfor %}
 
-<!-- OOB swap: update the load-more button -->
-<div id="timeline-load-more" hx-swap-oob="true" class="timeline-load-more">
-    {% if has_more %}
-    <button class="outline anim-blur-rise animate-in anim-persist"
-            hx-get="/api/timeline/events?page={{ page + 1 }}"
-            hx-target="#timeline"
-            hx-swap="beforeend"
-            hx-include="#timeline-filters"
-            hx-indicator="#load-more-spinner">
-        Load More
-    </button>
-    <span id="load-more-spinner" class="htmx-indicator" aria-busy="true"></span>
-    {% endif %}
-</div>
+{# Fresh sentinel for the next page. Page 1 (filter swap, innerHTML of #timeline)
+   renders it as the new last child; page >= 2 (sentinel self-replace, outerHTML)
+   re-inserts it at the old sentinel's position — the end of #timeline. #}
+{% if has_more %}
+<div id="timeline-sentinel" class="inf-sentinel" aria-hidden="true"
+     hx-get="/api/timeline/events?page={{ page + 1 }}"
+     hx-trigger="inf-load once" hx-swap="outerHTML"
+     hx-include="#timeline-filters" hx-sync="this:drop"></div>
+{% endif %}
 
 <!-- OOB swap: update subtitle. Single <p> replace — no count-up animation needed
      because filter changes are user-initiated and the new total appears in step. -->
