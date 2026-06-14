@@ -533,8 +533,16 @@ document.body.addEventListener('htmx:afterSwap', (evt) => {
     // Lenis debounces its ResizeObserver ~250ms, so a swap that grows the page
     // (infinite-scroll append) leaves wheel input clamped to the stale scroll
     // limit — measured up to ~270ms of dead scroll pinned at the old bottom.
-    // Refresh Lenis dimensions in the same task as the DOM change.
-    if (window.lenis) window.lenis.resize();
+    // Refresh Lenis dimensions in the same task as the DOM change — but via
+    // dimensions.resize(), NOT the public resize(): the latter also runs
+    // `animatedScroll = targetScroll = actualScroll`, which collapses any
+    // in-flight scroll tween to the current position. Appends prefetch ~1200px
+    // before the bottom, so they almost always land mid-glide; the full resize()
+    // was snapping targetScroll back and killing scroll momentum on every append.
+    // dimensions.resize() refreshes width/height/scrollHeight (and thus the wheel
+    // limit) without touching the animation. Verified: target preserved, limit
+    // updated. nav.js's resize() stays — it's paired with scrollTo(0, immediate).
+    if (window.lenis && window.lenis.dimensions) window.lenis.dimensions.resize();
 
     // Infinite-scroll appends route to the dedicated light-weight re-init.
     if (evt.detail.target.classList && evt.detail.target.classList.contains('inf-sentinel')) {
