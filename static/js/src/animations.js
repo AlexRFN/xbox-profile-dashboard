@@ -50,16 +50,53 @@ let _scrollAnimGen = 0;
 let _revealQueue = null;
 let _revealFlushScheduled = false;
 const _REVEAL_FLUSH_CAP = 4; // cap mutations per frame to spread style-recalc cost
+const _reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+// Above this Lenis velocity, reveals snap straight to settled instead of playing
+// their entrance. A card mid-entrance forces the glass renderer to sync its
+// transformed geometry every frame (setScroll + collectPanels forced reflows —
+// ~28% of frames over budget on a deep timeline scroll, vs ~4% when cards are
+// already settled). Snapping during fast scroll removes the mid-entrance panel —
+// and you can't see a 16ms entrance while blasting past it anyway. Measured: fast
+// scroll runs ~80-140, gentle scroll ~15-30, so 50 cleanly separates them. The
+// entrance still plays at low velocity and when idle, where it's both visible and
+// cheap.
+const _REVEAL_FAST_SCROLL_V = 50;
+function _applyReveal(el, snap) {
+    if (snap) {
+        el.style.transition = 'none'; // jump to the animate-in state, no entrance tween
+        el.classList.add('animate-in');
+        // Clear the inline override next frame: the card is now settled, so removing
+        // it changes no property (no animation fires) but restores CSS-driven
+        // transitions so the card's EXIT animation still plays on later SPA nav.
+        requestAnimationFrame(() => { el.style.transition = ''; });
+        return;
+    }
+    if (el.style.transitionDelay !== '0ms') el.style.transitionDelay = '0ms';
+    el.classList.add('animate-in');
+}
 function _flushRevealQueue() {
     _revealFlushScheduled = false;
     if (!_revealQueue || !_revealQueue.length) return;
     const count = Math.min(_revealQueue.length, _REVEAL_FLUSH_CAP);
-    for (let i = 0; i < count; i++) {
-        const el = _revealQueue[i];
-        if (el.style.transitionDelay !== '0ms') el.style.transitionDelay = '0ms';
-        el.classList.add('animate-in');
+    const batch = _revealQueue.splice(0, count);
+    // Apply animate-in AFTER lenis.raf, not in this standalone rAF. The reveal
+    // class writes invalidate layout/style; when they land BEFORE Lenis's
+    // per-frame scroll write, scrollTo() forces a synchronous reflow to flush
+    // them (traced at ~498ms over a 4s timeline scroll, charged to setScroll —
+    // plus per-frame getBoundingClientRect on the entrance-animating panels in
+    // collectPanels). The glass frame loop and the provisional lenis driver both
+    // drain __rowMutationQueue immediately after lenis.raf — the same post-scroll
+    // phase the edge-scale effect already exploits — so the invalidation flushes
+    // in the browser's natural layout step instead of forcing one. Reduced motion
+    // has no smooth-scroll write to thrash against (and once glass stops re-arming
+    // its rAF there may be no queue drainer), so apply directly there.
+    if (_reducedMotion) {
+        for (let i = 0; i < batch.length; i++) _applyReveal(batch[i], false);
+    } else {
+        const snap = !!window.lenis && Math.abs(window.lenis.velocity || 0) > _REVEAL_FAST_SCROLL_V;
+        const q = (window.__rowMutationQueue = window.__rowMutationQueue || []);
+        q.push(() => { for (let i = 0; i < batch.length; i++) _applyReveal(batch[i], snap); });
     }
-    _revealQueue.splice(0, count);
     if (_revealQueue.length) {
         _revealFlushScheduled = true;
         requestAnimationFrame(_flushRevealQueue);
